@@ -16,7 +16,7 @@ files() { git ls-files --cached --others --exclude-standard; }
 
 @test "every runbook listed in the plan exists" {
   for r in 00-bootstrap-from-zero mac-rebuild cloud-rebuild iphone-setup add-repo remove-repo \
-           sync-settings rotate-secrets upgrade-claude-code troubleshooting verify; do
+           sync-settings rotate-secrets upgrade-claude-code troubleshooting verify tailscale; do
     [ -s "docs/runbooks/$r.md" ] || { echo "missing docs/runbooks/$r.md"; return 1; }
   done
 }
