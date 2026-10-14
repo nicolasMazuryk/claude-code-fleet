@@ -1,0 +1,16 @@
+# secrets and machine-local state: never commit (CLAUDE.md invariant 1)
+.env
+.env.*
+*.pem
+*.key
+**/topic
+*authkey*
+*.bak.*
+.DS_Store
+
+# Claude Code worktrees / local settings
+.claude/worktrees/
+.claude/settings.local.json
+
+# test output
+tests/tmp/
