@@ -77,14 +77,15 @@ fi
 On cloud `$HOME` is `/data/home/agent`, so `~/.local/bin` is `/data/home/agent/.local/bin` (where the Claude Code
 binary lives).
 
-### 2.2 `bin/repo-init <name | path | git-url> [--rc]` (Phase 3)
+### 2.2 `bin/repo-init [--rc] [--no-trust] <name | path | git-url>` (Phase 3)
 
 As the original, plus:
 - a bare name on **cloud** that is not cloned yet is cloned from `https://github.com/nicolasMazuryk/<name>.git`
   into `/data/fleet/<name>` (HTTPS via the gh PAT from Vault, as oci `fleet add` did);
 - `--rc` appends the repo name to `$REPOS_FILE` if missing (then commit that file in this repo);
 - it runs `rc-servers` only when the repo is in `$REPOS_FILE`;
-- the trust step (`claude`, accept, `/exit`) needs a human at a TTY.
+- the trust step (`claude`, accept, `/exit`) needs a human at a TTY; without a TTY, or with `--no-trust`, it is skipped
+  and the command to run is printed.
 
 Commit `.gitignore` (`.claude/worktrees/`) and `.worktreeinclude` (`.env`, `.env.local`) in each repo once.
 Repo directory names must have no spaces (Agent View's `@` list skips them).
@@ -209,9 +210,8 @@ Today the Mac has both notif flags `true` and no `remoteControlAtStartup`; these
 }
 ```
 
-Statusline bug: `~/.claude/statusline-combined.sh` hardcodes node v24.13.0, which is gone. Fix it to use
-`$(command -v node)` or `$NVM_DIR/versions/node/$(cat "$NVM_DIR/alias/default")` (Phase 3), and capture the fixed
-copy into `config/claude/statusline-combined.sh`.
+Statusline (fixed in Phase 3): `config/claude/statusline-combined.sh` uses `node` from PATH, else the newest
+nvm version matching `~/.nvm/alias/default` (the alias is `24`, not a full version). `install.sh mac` installs it.
 
 ### 2.7 Sounds and iPhone pushes
 
@@ -226,7 +226,8 @@ Mac hooks today (reference; keep positions):
 
 - `install.sh mac` appends one `hooks/agent-push.sh` group to `Notification` and one to `Stop`, **after** the existing
   groups, idempotently (match on the command string). The hook path in settings is
-  `~/.claude/hooks/agent-push.sh` (installed as a copy/symlink of `hooks/agent-push.sh`).
+  `~/.claude/hooks/agent-push.sh`, installed as a **copy** of `hooks/agent-push.sh` (a symlink would reach cloud as a
+  dangling Mac path through `cc-sync-settings`' rsync of `~/.claude/hooks`). `cc-capture` does not capture it.
 - `bin/agent-present`, `bin/cc-relay-hook`, `hooks/agent-push.sh`: as the original §2.7. On cloud `stat -c` is GNU,
   fine. The ntfy topic is `~/.config/agent-push/topic` (0600), recovered from Vault `core-secret-ntfy-topic`.
 - Relayed `PreToolUse`/`Stop` handlers run on the Mac via `sh -c` with the cloud payload on stdin; the Stop handler's
@@ -310,9 +311,14 @@ As the original §4.3 (hash-checked; runs the Mac's own handler). Log: `/tmp/age
 
 ### 4.4 LaunchAgents (`config/mac/launchd/*.plist.tmpl`, rendered with real paths by `install.sh mac`)
 
-`cc-orchestrator.claude.agents` (RunAtLoad → `~/.local/bin/cc-orchestrator-start`) and
-`cc-orchestrator.claude.relay` (KeepAlive, ThrottleInterval 30, stderr `/tmp/agent-relay.log`).
-Loaded with `launchctl bootstrap gui/$(id -u) …` (idempotent: `bootout` first if loaded).
+`cc-orchestrator.claude.agents` (RunAtLoad, AbandonProcessGroup) execs
+`/opt/homebrew/bin/tmux -u new-session -d -s cc-start ~/.local/bin/cc-orchestrator-start`. The script then runs inside
+the tmux server. A launchd job that runs a script from `~/Documents` directly gets `Operation not permitted` (found in
+Phase 3), and this way only tmux needs Full Disk Access. Log: `/tmp/cc-orchestrator-start.log`.
+`cc-orchestrator.claude.relay` (KeepAlive, ThrottleInterval 30, stderr `/tmp/agent-relay.log`) is rendered and
+loaded only once `bin/agent-relay` exists (Phase 5); before that it would crash-loop.
+Loaded with `launchctl bootstrap gui/$(id -u) …`; `install.sh` re-bootstraps (`bootout` first) only when the
+rendered plist changed.
 
 **macOS TCC gotcha:** processes started by launchd, sshd or mosh-server that touch `~/Documents` need Full Disk
 Access (or Files & Folders → Documents) for `/opt/homebrew/bin/tmux`, `/usr/libexec/sshd-keygen-wrapper` and
@@ -326,14 +332,18 @@ Remote Login **off today** → on, for user `nicolas` only; `config/mac/sshd-100
 
 ### 4.6 Shell shortcuts (`config/mac/zshrc.snippet`, sourced from `~/.zshrc`) and cmux
 
+`install.sh mac` adds one line to `~/.zshrc` that sources `~/.config/cc-orchestrator/zshrc.snippet`, a symlink to
+`config/mac/zshrc.snippet`:
+
 ```bash
 alias am='tmux -u new -A -s agents ~/.local/bin/agents-loop'
 alias ac='mosh cloud -- tmux -u new -A -s fleet ~/.local/bin/agents-loop'
 # fleet is ~/.local/bin/fleet (on PATH)
 ```
 
-The existing aliases `c`, `ca`, `cw`, `cbg` are kept as they are (captured in Phase 1). `config/mac/cmux.json` →
-`~/.config/cmux/cmux.json` as the original §4.6.
+The existing aliases `c`, `cc`, `ca`, `cw`, `cbg` are kept as they are (captured in Phase 1). `config/mac/cmux.json`
+→ `~/.config/cmux/cmux.json` as the original §4.6. It is written only if the file is absent or is still cmux's
+all-comments template, so settings made in cmux are never overwritten.
 
 ### 4.7 `bin/cc-sync-settings`
 

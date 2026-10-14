@@ -6,9 +6,13 @@
 | Cloud joined as `cloud-1` | A stale `cloud` machine exists (e.g. after `BACKUP=none`). Delete it in the admin console, rename the new one `cloud` |
 | Exit node stopped working after a policy change | The policy lost `autogroup:internet:*` for members. Re-apply `config/tailscale/policy.hujson` |
 | `mosh cloud` "Nothing received from server" | iptables rule on `tailscale0` for UDP 60000:61000 missing (oci bootstrap). `sudo iptables -S INPUT \| grep 60000` on cloud |
-| launchd-started tmux/claude can't read `~/Documents` ("Operation not permitted") | Full Disk Access for `/opt/homebrew/bin/tmux` (and `sshd-keygen-wrapper`, `mosh-server` for phone access) |
+| launchd-started tmux/claude can't read `~/Documents` ("Operation not permitted" in `/tmp/cc-orchestrator-start.log`) | Full Disk Access for `$(realpath /opt/homebrew/bin/tmux)` (and `sshd-keygen-wrapper`, `mosh-server` for phone access). The LaunchAgent must exec tmux, not a script in `~/Documents`: re-run `./install.sh mac` |
+| No `agents`/`rc` tmux sessions after login | `launchctl print gui/$(id -u)/cc-orchestrator.claude.agents`; `cat /tmp/cc-orchestrator-start.log`; start by hand: `cc-orchestrator-start` |
+| `rc:<repo>` window shows `Enable Remote Control? (y/n)` | Remote Control not accepted yet: `tmux attach -t rc:<repo>` → `y` → `Ctrl-b d` |
+| `am`/`ac` not found | new shell, or `. ~/.zshrc`; check `~/.config/cc-orchestrator/zshrc.snippet` links into this repo (`./install.sh mac`) |
+| `~/.local/bin/*` point into a deleted worktree | re-run `./install.sh mac` from `~/Documents/cc-orchestrator` (relinks bin/, rewrites `CC_ORCH_DIR`) |
 | Agent can't find node/pnpm | started without `agent-env`. Dispatch via Agent View / app; on Mac check nvm default alias exists |
-| Statusline shows errors | node path hardcoded to a removed version; fixed by `install.sh mac` (Phase 3) |
+| Statusline shows errors / claude-hud half blank | `echo '{}' \| ~/.claude/statusline-combined.sh`; it needs `node` on PATH or an nvm version matching `~/.nvm/alias/default`; `npm i -g ccstatusline` under that node |
 | No cloud sounds | `/tmp/agent-relay.log` says "skipped": run `make sync`. Relay not running: `launchctl print gui/$(id -u)/cc-orchestrator.claude.relay` |
 | `cc-sync-settings` relays < 4 | a sound hook changed; see [sync-settings](sync-settings.md) |
 | Too many / no pushes | `agent-present; echo $?` on the Mac (0 = present). Cloud: `ls -l ~/.local/state/agent-events/mac-present` age < 90 s |

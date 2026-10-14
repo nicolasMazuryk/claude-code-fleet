@@ -16,10 +16,16 @@ Each phase's PR records the output of its rows. `make doctor` (Phase 7) automate
 | 1e | Capture | `make capture`, then `make capture` again | 2nd run: `cc-capture: no changes` | 1 |
 | 1f | Capture | `bin/cc-capture --check; echo $?` | `config/ matches the Mac`, `0` | 1 |
 | 1g | Capture | `jq '[.hooks[][].hooks[] \| select(.command \| test("afplay"))] \| length' config/claude/settings.mac.json` | `4` | 1 |
-| 2 | Mac | `am` | Agent View in tmux `agents` | 3 |
-| 2b | Mac | `@<repo> hello` in Agent View | worktree `~/Documents/<repo>/.claude/worktrees/…` with `.env` | 3 |
+| 2 | Mac | `am` (new shell, or `. ~/.zshrc`) | Agent View in tmux `agents`, started from `~/Documents` | 3 |
+| 2a | Mac | `./install.sh mac`, then again | 2nd run: `install.sh mac: no changes`; no new `*.bak.*` files | 3 |
+| 2b | Mac | `@<repo> hello` in Agent View (scriptable part: `cd <repo> && claude -w t -p ok`, then `ls .claude/worktrees/t/.env`) | worktree `~/Documents/<repo>/.claude/worktrees/…` with `.env` | 3 |
 | 2c | Mac | `tmux list-windows -t rc -F '#W'` | `idle` + exactly the repos in `config/mac/repos.txt` | 3 |
-| 2d | Mac | `fleet` | Mac sessions listed | 3 |
+| 2d | Mac | `fleet` | Mac sessions listed (`cloud unreachable` on stderr until Phase 4) | 3 |
+| 2e | Mac | `launchctl print gui/$(id -u)/cc-orchestrator.claude.agents \| grep -E 'state\|last exit'`; `cat /tmp/cc-orchestrator-start.log` | loaded, `last exit code = 0`; no `Operation not permitted` (else: Full Disk Access for tmux) | 3 |
+| 2f | Mac | `jq '{remoteControlAtStartup, inputNeededNotifEnabled, agentPushNotifEnabled, p: .env.CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX, push: [.hooks[][].hooks[] \| select(.command \| test("agent-push"))] \| length, afplay: [.hooks[][].hooks[] \| select(.command \| test("afplay"))] \| length}' ~/.claude/settings.json` | `true`, `false`, `false`, `mac`, `2`, `4` | 3 |
+| 2g | Mac | `ssh -G cloud \| grep -E '^(hostname\|user) '`; `stat -f %Lp ~/.config/agent-push/topic` | `hostname cloud`, `user agent`; `600` | 3 |
+| 2h | Mac | `tmux capture-pane -p -t rc:<repo> \| tail -3`, after accepting Remote Control once | server running, no `Enable Remote Control? (y/n)` prompt | 3 |
+| 2i | Mac | `bin/cc-capture --check` | `config/ matches the Mac` (agent-push hooks and `~/.claude/hooks/agent-push.sh` excluded) | 3 |
 | 3 | Cloud | `make sync` | `4 macOS-only hook handler(s) relayed` | 4 |
 | 3b | Cloud | `ac`, then `@<repo> hello` | worktree under `/data/fleet/<repo>/.claude/worktrees/` with `.env` | 4 |
 | 3c | Cloud | `ssh cloud 'systemctl list-units "cc-rc@*" --no-legend'` | one active unit per line of `config/cloud/repos.txt`; no `agent@*` | 4 |
@@ -28,7 +34,7 @@ Each phase's PR records the output of its rows. `make doctor` (Phase 7) automate
 | 4b | Sounds | change a Mac sound hook, trigger on cloud | skipped + logged in `/tmp/agent-relay.log` | 5 |
 | 5 | Pushes | lock the Mac; trigger on both hosts | ntfy push within 30 s from both | 5 |
 | 5b | Pushes | unlocked + moving the mouse | no pushes | 5 |
-| 6 | Remote Control | Claude app → Code | `mac/<repo>` and `cloud/<repo>`; new session lands in a worktree; approve a prompt from the app | 3–4 |
+| 6 | Remote Control | Claude app → Code | `mac/<repo>` (Phase 3) and `cloud/<repo>` (Phase 4); new session lands in a worktree; approve a prompt from the app | 3–4 |
 | 7 | iPhone | Moshi `cloud` and `mac` | dispatch, peek-reply, attach-approve on both; tapping a push opens the session | 6 |
 | 8 | Docs | a fresh agent answers "how do I add a repo to cloud?" from docs alone | → [add-repo](add-repo.md) | 0 |
 | 9 | Repo | `make lint test` | passes | 0+ |

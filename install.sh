@@ -227,13 +227,14 @@ launchd_load() { # launchd_load <label> <plist> <changed 0|1>
 }
 
 step_launchd() {
-  local la="$HOME/Library/LaunchAgents" label tmp dst changed
+  local la="$HOME/Library/LaunchAgents" label tmp dst changed tmux_bin
+  tmux_bin=$(command -v tmux || echo /opt/homebrew/bin/tmux)
   for label in cc-orchestrator.claude.agents cc-orchestrator.claude.relay; do
     if [ "$label" = cc-orchestrator.claude.relay ] && [ ! -x "$REPO/bin/agent-relay" ]; then
       say launchd "skip $label (bin/agent-relay arrives in Phase 5)"; continue
     fi
     dst="$la/$label.plist"; tmp=$(mktemp)
-    sed "s#@HOME@#$HOME#g" "$REPO/config/mac/launchd/$label.plist.tmpl" > "$tmp"
+    sed "s#@HOME@#$HOME#g; s#@TMUX@#$tmux_bin#g" "$REPO/config/mac/launchd/$label.plist.tmpl" > "$tmp"
     plutil -lint "$tmp" >/dev/null || die "rendered $label plist is invalid"
     changed=0
     cmp -s "$tmp" "$dst" 2>/dev/null || { changed=1; install_file launchd "$tmp" "$dst" 644; }

@@ -7,7 +7,7 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
 2. `make capture` (= `bin/cc-capture`) snapshots into `config/claude/` and `config/mac/zshrc.captured`
    (what is captured: [config/README.md](../../config/README.md)). Review `git diff`, commit on a branch, PR.
    - Sanitized: credential-like `env` keys (`TOKEN`, `KEY`, `SECRET`, `PASSWORD`, `AUTH`, `CREDENTIAL`) and
-     `agent-push.sh` handlers are dropped from settings, and credential-like assignments in the zsh blocks are redacted.
+     `agent-push.sh` handlers are dropped from settings (and `~/.claude/hooks/agent-push.sh` is not copied: `install.sh` installs it from `hooks/`), and credential-like assignments in the zsh blocks are redacted.
      If anything still matches a secret pattern, it aborts and writes nothing. Remove the secret on the Mac (move it
      to Vault or a local file) and re-run.
    - Idempotent: an unchanged Mac prints `cc-capture: no changes`.
