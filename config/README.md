@@ -4,7 +4,12 @@
 |---|---|---|
 | `claude/settings.orchestrator.json` | keys this repo enforces on the Mac (deep-merged by `install.sh mac`) | 0 (content), 3 (apply) |
 | `claude/cloud-settings.json` | cloud-only overrides merged by `cc-sync-settings` | 0 (content), 4 (apply) |
-| `claude/settings.mac.json`, `statusline-combined.sh`, `sounds/`, `CLAUDE.md` | sanitized capture of the Mac's `~/.claude` | 1 |
+| `claude/settings.mac.json` | `~/.claude/settings.json`, sanitized (credential-like `env` keys and `agent-push.sh` handlers dropped) | 1 (`make capture`) |
+| `claude/statusline-*.sh`, `claude/sounds/`, `claude/plugins/claude-hud/`, `claude/ccstatusline/settings.json` | statusline scripts, Choo Choo sound, claude-hud wrapper + config, `~/.config/ccstatusline/settings.json` (verbatim) | 1 (`make capture`) |
+| `claude/skills.txt`, `claude/skills/<name>/` | skill inventory (local / link / claude.ai synced) + copies of the local skills | 1 (`make capture`) |
+| `claude/plugins.json` | marketplaces + installed plugins (id, scope, version, project, enabled) | 1 (`make capture`) |
+| `claude/CLAUDE.md`, `keybindings.json`, `agents/`, `commands/`, `output-styles/` | captured if present on the Mac (none today); `CLAUDE.md` is authored here in Phase 3 | 1, 3 |
+| `mac/zshrc.captured` | the `# Claude Code` and `# Tailscale…` blocks of `~/.zshrc` (reference, not sourced) | 1 (`make capture`) |
 | `mac/` | `config`, `repos.txt`, `tmux.conf`, `zshrc.snippet`, `ssh_config.snippet`, `cmux.json`, `sshd-100-keys-only.conf`, `launchd/*.plist.tmpl` | 1, 3, 6 |
 | `cloud/` | `config`, `repos.txt`, `systemd/{cc-agents.service,cc-rc@.service}` | 4 |
 | `tailscale/policy.hujson` | full tailnet policy as applied | 2 |

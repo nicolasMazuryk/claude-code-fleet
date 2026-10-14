@@ -1,0 +1,20 @@
+# ~/.claude/skills inventory, written by cc-capture. Kinds:
+#   local   - a directory in ~/.claude/skills; copied to config/claude/skills/<name>/
+#   link    - a symlink (e.g. installed by the 'skills' CLI into ~/.agents/skills); reinstall from source
+#   synced  - pushed by claude.ai to every logged-in client; not copied, comes back after login
+# name<TAB>kind<TAB>detail
+built-in-browser	synced	claude.ai
+chrome-browser	synced	claude.ai
+computer-use	synced	claude.ai
+deep-research	synced	claude.ai
+docs	synced	claude.ai
+docx	synced	claude.ai
+find-skills	link	→ ../../.agents/skills/find-skills (source: https://github.com/vercel-labs/skills.git skills/find-skills/SKILL.md)
+google-workspace	synced	claude.ai
+import-memory	synced	claude.ai
+morning	synced	claude.ai
+pdf	synced	claude.ai
+pptx	synced	claude.ai
+skill-creator	synced	claude.ai
+update-autoresearch-worktrees	local	config/claude/skills/update-autoresearch-worktrees/
+xlsx	synced	claude.ai

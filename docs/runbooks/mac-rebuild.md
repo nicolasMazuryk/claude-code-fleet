@@ -15,7 +15,7 @@ Status: skeleton. Steps marked (Phase N) become runnable when that phase lands.
 5. `./install.sh mac` (Phase 3) — symlinks `bin/*` → `~/.local/bin`, writes `~/.config/cc-orchestrator/config`,
    `~/.tmux.conf`, `~/.claude/CLAUDE.md`, applies `config/claude/` (backup first, deep-merge), appends agent-push
    hooks, ntfy topic (from Vault or new), LaunchAgents, zsh snippet, cmux.json, statusline fix.
-   Before Phase 3, restore the captured baseline by hand from `config/claude/` (Phase 1).
+   Until Phase 3 lands, restore the captured baseline by hand: see [below](#restore-the-captured-baseline-by-hand).
 6. `[H]` Accept Remote Control once: `cd ~/Documents/<any-repo> && claude remote-control` → `y` → Ctrl+C.
 7. `[H]` Full Disk Access (System Settings → Privacy & Security → Full Disk Access → `+`, Cmd+Shift+G):
    `/opt/homebrew/bin/tmux` (resolve with `realpath`), and for phone access `/usr/libexec/sshd-keygen-wrapper`,
@@ -25,3 +25,38 @@ Status: skeleton. Steps marked (Phase N) become runnable when that phase lands.
    `sudo cp config/mac/sshd-100-keys-only.conf /etc/ssh/sshd_config.d/100-keys-only.conf`; Moshi key into
    `~/.ssh/authorized_keys`; toggle Remote Login; firewall allow mosh-server; `sudo pmset -c sleep 0 displaysleep 10`.
 10. [verify.md](verify.md) Mac section; `make doctor`.
+
+## Restore the captured baseline by hand
+
+Use this until `./install.sh mac` exists (Phase 3). It is safe to re-run: it backs up and deep-merges settings, and
+the copies overwrite with identical content. Run it from the repo root after step 3 (`claude` logged in).
+
+```bash
+ts=$(date +%Y%m%d-%H%M%S); s=~/.claude/settings.json
+mkdir -p ~/.claude/skills ~/.claude/plugins/claude-hud ~/.config/ccstatusline
+if [ -f "$s" ]; then
+  cp "$s" "$s.bak.$ts"
+  jq -s '.[0] * .[1]' "$s" config/claude/settings.mac.json > "$s.new" && mv "$s.new" "$s"
+else
+  cp config/claude/settings.mac.json "$s"
+fi
+install -m 755 config/claude/statusline-*.sh ~/.claude/
+cp -R config/claude/sounds ~/.claude/
+cp -R config/claude/skills/. ~/.claude/skills/
+cp config/claude/plugins/claude-hud/* ~/.claude/plugins/claude-hud/
+[ -f ~/.config/ccstatusline/settings.json ] && cp ~/.config/ccstatusline/settings.json ~/.config/ccstatusline/settings.json.bak.$ts
+cp config/claude/ccstatusline/settings.json ~/.config/ccstatusline/settings.json
+npm install -g ccstatusline                     # under nvm's default node
+jq -r '.marketplaces[] | .repo' config/claude/plugins.json | xargs -n1 claude plugin marketplace add
+jq -r '.plugins[] | select(.scope == "user") | .id' config/claude/plugins.json | xargs -n1 claude plugin install
+```
+
+Then:
+- Project-scoped plugins (`"scope": "project"` in `plugins.json`) are reinstalled from inside that repo:
+  `cd ~/Documents/<project> && claude plugin install <id> --scope project`.
+- Skills of kind `link` in `config/claude/skills.txt` are reinstalled from the listed source (for `find-skills`:
+  the `skills` CLI, e.g. `npx skills add vercel-labs/skills`, then pick `find-skills`, global). Kind `synced` skills come back
+  after `/login`.
+- `~/.zshrc`: copy the blocks from `config/mac/zshrc.captured` that are missing (back up `~/.zshrc` first).
+- Known bug carried in the baseline: `statusline-combined.sh` hardcodes node v24.13.0, so the claude-hud half of the
+  statusline is blank. Phase 3 fixes it, and the fixed copy is captured.

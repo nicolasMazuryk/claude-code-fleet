@@ -1,0 +1,215 @@
+#!/usr/bin/env bash
+# cc-capture — snapshot the Mac's Claude Code setup into config/ (sanitized), then show what changed.
+#
+#   cc-capture            write the snapshot into config/ and print `git status` for it
+#   cc-capture --check    write nothing; exit 1 if config/ differs from the Mac (drift check)
+#
+# Captured (Mac → repo):
+#   ~/.claude/settings.json              → config/claude/settings.mac.json   (sanitized, see below)
+#   ~/.claude/statusline-*.sh            → config/claude/
+#   ~/.claude/sounds/*                   → config/claude/sounds/
+#   ~/.claude/{CLAUDE.md,keybindings.json,agents,commands,output-styles,hooks} → config/claude/ (if present)
+#   ~/.claude/plugins/claude-hud/{config.json,statusline.mjs} → config/claude/plugins/claude-hud/
+#   ~/.config/ccstatusline/settings.json → config/claude/ccstatusline/settings.json
+#   ~/.claude/skills/                    → config/claude/skills.txt (inventory) + local skills copied
+#   ~/.claude/plugins/*.json             → config/claude/plugins.json (marketplaces + installed plugins)
+#   ~/.zshrc blocks "# Claude Code", "# Tailscale…" → config/mac/zshrc.captured
+#
+# Sanitizing: env keys that look like credentials (TOKEN, KEY, SECRET, PASSWORD, AUTH, CREDENTIAL) are dropped
+# from settings, agent-push.sh hook handlers (installed by install.sh, not user state) are dropped, assignments
+# of credential-like names in the zsh blocks are redacted, and any output matching a secret pattern aborts the
+# capture before config/ is touched. Never captured: ~/.claude.json, logins, history, sessions, caches.
+#
+# Env overrides (tests): CC_CAPTURE_HOME (default $HOME), CC_CAPTURE_REPO (default: this repo).
+# Idempotent: a second run with an unchanged Mac changes nothing.
+set -euo pipefail
+
+SRC_HOME=${CC_CAPTURE_HOME:-$HOME}
+# Resolve the ~/.local/bin symlink to find the repo (BSD readlink has no -f).
+self=$0
+while [ -L "$self" ]; do
+  t=$(readlink "$self")
+  case $t in /*) self=$t ;; *) self=$(dirname "$self")/$t ;; esac
+done
+REPO=${CC_CAPTURE_REPO:-$(cd "$(dirname "$self")/.." && pwd)}
+CLAUDE_DIR=$SRC_HOME/.claude
+
+# Keep in sync with the "no secrets in the repo" test in tests/repo.bats.
+SECRET_RE='tskey-[a-z]+-[A-Za-z0-9]{8,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-ant-[A-Za-z0-9_-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|ntfy\.sh/[0-9a-f]{32}'
+CRED_NAME_RE='TOKEN|KEY|SECRET|PASSWORD|PASSWD|AUTH|CREDENTIAL'
+
+check=0
+case ${1:-} in
+  --check) check=1 ;;
+  -h|--help) sed -n '2,/^set -e/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
+  "") ;;
+  *) echo "usage: cc-capture [--check]" >&2; exit 2 ;;
+esac
+
+die() { echo "cc-capture: $*" >&2; exit 1; }
+note() { echo "  $*"; }
+[ -f "$CLAUDE_DIR/settings.json" ] || die "no $CLAUDE_DIR/settings.json"
+command -v jq >/dev/null || die "jq not found"
+
+# Build the whole snapshot in a staging dir, scan it, then mirror it into config/.
+STAGE=$(mktemp -d "${TMPDIR:-/tmp}/cc-capture.XXXXXX")
+trap 'rm -rf "$STAGE"' EXIT
+mkdir -p "$STAGE/claude" "$STAGE/mac"
+
+# Replace the home prefix with ~ in derived (non-verbatim) data.
+tildify() { sed "s#$SRC_HOME/#~/#g; s#$SRC_HOME\$#~#g"; }
+
+echo "cc-capture: $CLAUDE_DIR → $REPO/config"
+
+# --- settings.json (sanitized) ---------------------------------------------------------------
+dropped=$(jq -r --arg re "$CRED_NAME_RE" '(.env // {}) | keys[] | select(test($re; "i"))' "$CLAUDE_DIR/settings.json")
+[ -z "$dropped" ] || note "settings: dropped credential-like env keys: $(echo "$dropped" | tr '\n' ' ')"
+jq --arg re "$CRED_NAME_RE" '
+  (if .env then .env |= with_entries(select(.key | test($re; "i") | not)) else . end)
+  | (if .env == {} then del(.env) else . end)
+  | (if .hooks then
+       .hooks |= (with_entries(
+         .value |= (map(.hooks |= map(select((.command // "") | test("agent-push\\.sh") | not)))
+                    | map(select(.hooks | length > 0))))
+         | with_entries(select(.value | length > 0)))
+     else . end)
+' "$CLAUDE_DIR/settings.json" > "$STAGE/claude/settings.mac.json"
+
+# --- files and dirs copied verbatim (if present) ---------------------------------------------
+for f in "$CLAUDE_DIR"/statusline-*.sh; do
+  if [ -f "$f" ]; then cp -p "$f" "$STAGE/claude/"; fi
+done
+optional="CLAUDE.md keybindings.json sounds agents commands output-styles hooks"
+for item in $optional; do
+  if [ -e "$CLAUDE_DIR/$item" ]; then
+    cp -RL "$CLAUDE_DIR/$item" "$STAGE/claude/$item"
+  fi
+done
+if [ -d "$CLAUDE_DIR/plugins/claude-hud" ]; then
+  mkdir -p "$STAGE/claude/plugins/claude-hud"
+  for f in config.json statusline.mjs; do
+    if [ -f "$CLAUDE_DIR/plugins/claude-hud/$f" ]; then cp "$CLAUDE_DIR/plugins/claude-hud/$f" "$STAGE/claude/plugins/claude-hud/"; fi
+  done
+fi
+if [ -f "$SRC_HOME/.config/ccstatusline/settings.json" ]; then
+  mkdir -p "$STAGE/claude/ccstatusline"
+  cp "$SRC_HOME/.config/ccstatusline/settings.json" "$STAGE/claude/ccstatusline/settings.json"
+fi
+
+# --- skills: inventory + copy of local (hand-written) skills ---------------------------------
+{
+  echo "# ~/.claude/skills inventory, written by cc-capture. Kinds:"
+  echo "#   local   - a directory in ~/.claude/skills; copied to config/claude/skills/<name>/"
+  echo "#   link    - a symlink (e.g. installed by the 'skills' CLI into ~/.agents/skills); reinstall from source"
+  echo "#   synced  - pushed by claude.ai to every logged-in client; not copied, comes back after login"
+  echo "# name<TAB>kind<TAB>detail"
+  if [ -d "$CLAUDE_DIR/skills" ]; then
+    for s in "$CLAUDE_DIR"/skills/*; do
+      [ -e "$s" ] || [ -L "$s" ] || continue
+      name=$(basename "$s")
+      if [ "$name" = synced ]; then
+        for t in "$s"/*/*; do
+          if [ -d "$t" ]; then printf '%s\tsynced\tclaude.ai\n' "$(basename "$t")"; fi
+        done
+      elif [ -L "$s" ]; then
+        target=$(readlink "$s")
+        src=$(jq -r --arg n "$name" '.skills[$n] | select(.) | "\(.sourceUrl // .source) \(.skillPath // "")"' \
+              "$SRC_HOME/.agents/.skill-lock.json" 2>/dev/null || true)
+        printf '%s\tlink\t→ %s%s\n' "$name" "$target" "${src:+ (source: $src)}"
+      elif [ -d "$s" ]; then
+        printf '%s\tlocal\tconfig/claude/skills/%s/\n' "$name" "$name"
+        mkdir -p "$STAGE/claude/skills"
+        cp -R "$s" "$STAGE/claude/skills/$name"
+      fi
+    done | LC_ALL=C sort
+  fi
+} > "$STAGE/claude/skills.txt"
+
+# --- plugins: marketplaces + installed plugins (no caches, no data) ---------------------------
+P=$CLAUDE_DIR/plugins
+km=$P/known_marketplaces.json; ip=$P/installed_plugins.json
+[ -f "$km" ] || km=/dev/null
+[ -f "$ip" ] || ip=/dev/null
+jq -n --slurpfile km <(cat "$km" 2>/dev/null || true) --slurpfile ip <(cat "$ip" 2>/dev/null || true) \
+      --slurpfile st "$CLAUDE_DIR/settings.json" '
+  ($st[0].enabledPlugins // {}) as $en
+  | {
+      "_comment": "written by cc-capture from ~/.claude/plugins; reinstall with claude plugin marketplace add / claude plugin install",
+      marketplaces: (($km[0] // {}) | map_values(.source)),
+      plugins: [ ($ip[0].plugins // {}) | to_entries[] | .key as $id | .value[]
+                 | { id: $id, scope, version, project: .projectPath, enabled: ($en[$id] // null) } ]
+               | sort_by(.id, .scope, (.project // ""))
+    }' | tildify > "$STAGE/claude/plugins.json"
+
+# --- ~/.zshrc: the blocks that matter here -----------------------------------------------------
+# A block is a "# <header>" comment line plus the lines after it up to the next blank line.
+if [ -f "$SRC_HOME/.zshrc" ]; then
+  {
+    echo "# Captured from ~/.zshrc by cc-capture (blocks: # Claude Code, # Tailscale…). Reference, not sourced."
+    awk -v cred="$CRED_NAME_RE" '
+      /^# (Claude Code|Tailscale)/ { inblk = 1; print ""; }
+      /^[[:space:]]*$/            { inblk = 0 }
+      inblk {
+        # redact credential-like assignments: export FOO_TOKEN=... / FOO_KEY="..."
+        if (match($0, "[A-Za-z0-9_]*(" cred ")[A-Za-z0-9_]*=")) {
+          print substr($0, 1, RSTART + RLENGTH - 1) "<redacted>"; next
+        }
+        print
+      }' "$SRC_HOME/.zshrc"
+  } > "$STAGE/mac/zshrc.captured"
+fi
+
+# --- secret scan of everything staged ---------------------------------------------------------
+if hits=$(grep -rIlE "$SECRET_RE" "$STAGE"); then
+  die "secret-looking content found, nothing written: $(echo "$hits" | sed "s#$STAGE/##" | tr '\n' ' ')"
+fi
+
+# --- mirror the staging dir into config/ ------------------------------------------------------
+# Files we own: everything staged, plus captured dirs that are mirrored (stale entries removed).
+# Optional items missing on the Mac are left alone in the repo (e.g. a repo-authored CLAUDE.md).
+mirrored_dirs="claude/skills claude/sounds claude/agents claude/commands claude/output-styles claude/hooks claude/plugins/claude-hud claude/ccstatusline"
+changes=0
+sync_file() { # sync_file <rel>
+  local rel=$1
+  if [ -f "$REPO/config/$rel" ] && cmp -s "$STAGE/$rel" "$REPO/config/$rel"; then return 0; fi
+  changes=$((changes + 1))
+  if [ "$check" -eq 1 ]; then echo "  differs: config/$rel"; return 0; fi
+  mkdir -p "$(dirname "$REPO/config/$rel")"
+  cp "$STAGE/$rel" "$REPO/config/$rel"
+  # keep the executable bit in step with the source
+  if [ -x "$STAGE/$rel" ]; then chmod 755 "$REPO/config/$rel"; else chmod 644 "$REPO/config/$rel"; fi
+}
+while IFS= read -r rel; do
+  sync_file "${rel#./}"
+done < <(cd "$STAGE" && find . -type f | LC_ALL=C sort)
+
+for d in $mirrored_dirs; do
+  [ -d "$REPO/config/$d" ] || continue
+  [ -d "$STAGE/$d" ] || continue   # absent on the Mac: leave the repo copy alone
+  while IFS= read -r rel; do
+    rel=${rel#./}
+    if [ -e "$STAGE/$d/$rel" ]; then continue; fi
+    changes=$((changes + 1))
+    if [ "$check" -eq 1 ]; then echo "  only in repo: config/$d/$rel"; else rm -f "$REPO/config/$d/$rel"; fi
+  done < <(cd "$REPO/config/$d" && find . -type f)
+  [ "$check" -eq 1 ] || find "$REPO/config/$d" -type d -empty -delete
+done
+
+missing=
+for item in $optional; do
+  [ -e "$CLAUDE_DIR/$item" ] || missing="$missing $item"
+done
+[ -z "$missing" ] || note "not on the Mac (repo copies, if any, kept):$missing"
+
+if [ "$check" -eq 1 ]; then
+  if [ "$changes" -eq 0 ]; then echo "cc-capture: config/ matches the Mac"; exit 0; fi
+  echo "cc-capture: $changes difference(s); run 'make capture' and review the diff" >&2
+  exit 1
+fi
+
+if [ "$changes" -eq 0 ]; then
+  echo "cc-capture: no changes"
+else
+  echo "cc-capture: $changes file(s) updated; review and commit:"
+  git -C "$REPO" status --short -- config/ || true
+fi

@@ -1,0 +1,12 @@
+# Captured from ~/.zshrc by cc-capture (blocks: # Claude Code, # Tailscale…). Reference, not sourced.
+
+# Tailscale static IP (Hetzner exit node)
+alias staticipup="tailscale set --exit-node=100.64.0.20 --exit-node-allow-lan-access"
+alias staticipdown="tailscale set --exit-node="
+
+# Claude Code
+alias c='claude'
+alias cc='claude --continue'
+alias ca='claude agents'
+cw()  { claude --worktree "$@"; }                 # cw feature-x
+cbg() { claude --bg --name "$1" "${@:2}"; }       # cbg flaky-fix "investigate…"

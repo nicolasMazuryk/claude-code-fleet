@@ -58,7 +58,7 @@ files() { git ls-files --cached --others --exclude-standard; }
 @test "no secrets in the repo" {
   # Tailscale keys, GitHub tokens, Anthropic keys, private keys, OAuth tokens, ntfy topic URLs
   pat='tskey-[a-z]+-[A-Za-z0-9]{8,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk-ant-[A-Za-z0-9_-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|ntfy\.sh/[0-9a-f]{32}'
-  run bash -c "git ls-files --cached --others --exclude-standard -z -- . ':!tests/repo.bats' | xargs -0 grep -IlE '$pat' --"
+  run bash -c "git ls-files --cached --others --exclude-standard -z -- . ':!tests/repo.bats' | xargs -0 grep -sIlE '$pat' --"
   [ -z "$output" ] || { echo "possible secret in: $output"; return 1; }
 }
 

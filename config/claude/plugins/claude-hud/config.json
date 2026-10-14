@@ -1,0 +1,43 @@
+{
+  "lineLayout": "expanded",
+  "elementOrder": [
+    "project",
+    "usage",
+    "tools",
+    "skills",
+    "mcp",
+    "agents",
+    "todos"
+  ],
+  "gitStatus": {
+    "enabled": false
+  },
+  "display": {
+    "showModel": false,
+    "showProject": false,
+    "showContextBar": false,
+    "showUsage": true,
+    "showTools": true,
+    "showSkills": true,
+    "showMcp": true,
+    "showAgents": true,
+    "showTodos": true,
+    "toolsMaxVisible": 5,
+    "skillsMaxVisible": 4,
+    "toolNameMaxLength": 28,
+    "showConfigCounts": false,
+    "showDuration": false,
+    "showCost": false,
+    "usagePace": true,
+    "showMemoryUsage": false,
+    "showDailyCost": true,
+    "usageCompact": true,
+    "sevenDayThreshold": 0,
+    "mergeGroups": [
+      [
+        "project",
+        "usage"
+      ]
+    ]
+  }
+}

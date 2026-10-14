@@ -10,6 +10,9 @@ Each phase's PR records the output of its rows. `make doctor` (Phase 7) automate
 | 1b | Network | cloud: `tailscale ping -c 2 macbook` | fails (ACL: no `src: tag:cloud`) | 2 |
 | 1c | Network | Mac: `cd ~/Documents/oci && make ssh VM=app CMD=true` | Bastion still works | 2 |
 | 1d | Network | Mac: exit node `static-ip` usable | unchanged | 2 |
+| 1e | Capture | `make capture`, then `make capture` again | 2nd run: `cc-capture: no changes` | 1 |
+| 1f | Capture | `bin/cc-capture --check; echo $?` | `config/ matches the Mac`, `0` | 1 |
+| 1g | Capture | `jq '[.hooks[][].hooks[] \| select(.command \| test("afplay"))] \| length' config/claude/settings.mac.json` | `4` | 1 |
 | 2 | Mac | `am` | Agent View in tmux `agents` | 3 |
 | 2b | Mac | `@<repo> hello` in Agent View | worktree `~/Documents/<repo>/.claude/worktrees/…` with `.env` | 3 |
 | 2c | Mac | `tmux list-windows -t rc -F '#W'` | `idle` + exactly the repos in `config/mac/repos.txt` | 3 |

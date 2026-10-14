@@ -1,0 +1,168 @@
+{
+  "version": 4,
+  "lines": [
+    [
+      {
+        "id": "m",
+        "type": "model",
+        "color": "cyan",
+        "rawValue": true
+      },
+      {
+        "id": "s0",
+        "type": "separator"
+      },
+      {
+        "id": "e",
+        "type": "thinking-effort",
+        "color": "magenta",
+        "rawValue": true
+      },
+      {
+        "id": "s1",
+        "type": "separator"
+      },
+      {
+        "id": "d",
+        "type": "current-working-dir",
+        "color": "blue",
+        "rawValue": true,
+        "metadata": {
+          "abbreviateHome": "true"
+        }
+      },
+      {
+        "id": "s2",
+        "type": "separator"
+      },
+      {
+        "id": "b",
+        "type": "git-branch",
+        "color": "magenta",
+        "metadata": {
+          "hide": "no-git"
+        }
+      },
+      {
+        "id": "c",
+        "type": "git-changes",
+        "color": "yellow",
+        "metadata": {
+          "hide": "zero,no-git"
+        }
+      },
+      {
+        "id": "pr",
+        "type": "git-review",
+        "color": "green",
+        "metadata": {
+          "hide": "no-data,no-git"
+        }
+      },
+      {
+        "id": "swt",
+        "type": "separator"
+      },
+      {
+        "id": "wt",
+        "type": "worktree-name",
+        "color": "brightBlue",
+        "metadata": {
+          "hide": "no-data"
+        }
+      },
+      {
+        "id": "s3",
+        "type": "separator"
+      },
+      {
+        "id": "$",
+        "type": "session-cost",
+        "color": "green",
+        "rawValue": true,
+        "metadata": {
+          "hide": "zero"
+        }
+      },
+      {
+        "id": "s7",
+        "type": "separator"
+      },
+      {
+        "id": "sk",
+        "type": "skills",
+        "color": "brightMagenta",
+        "metadata": {
+          "hide": "empty"
+        }
+      }
+    ],
+    [
+      {
+        "id": "cb",
+        "type": "context-bar",
+        "rawValue": true,
+        "metadata": {
+          "display": "progress-short"
+        }
+      },
+      {
+        "id": "s4",
+        "type": "separator"
+      },
+      {
+        "id": "s6",
+        "type": "separator"
+      },
+      {
+        "id": "ct",
+        "type": "cache-timer",
+        "metadata": {
+          "hide": "empty"
+        },
+        "rawValue": true
+      },
+      {
+        "id": "s8",
+        "type": "separator"
+      },
+      {
+        "id": "sp",
+        "type": "total-speed",
+        "color": "brightBlack",
+        "metadata": {
+          "hide": "no-data"
+        },
+        "rawValue": true
+      },
+      {
+        "id": "s9",
+        "type": "separator"
+      },
+      {
+        "id": "sys",
+        "type": "custom-command",
+        "color": "brightBlack",
+        "commandPath": "~/.claude/statusline-sys.sh",
+        "timeout": 1000
+      }
+    ]
+  ],
+  "flexMode": "full",
+  "compactThreshold": 60,
+  "colorLevel": 2,
+  "inheritSeparatorColors": false,
+  "globalBold": false,
+  "powerline": {
+    "enabled": false,
+    "separators": [
+      ""
+    ],
+    "separatorInvertBackground": [
+      false
+    ],
+    "startCaps": [],
+    "endCaps": [],
+    "autoAlign": false
+  }
+}
