@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# rc-servers — reconcile Remote Control servers against $REPOS_FILE (idempotent).
+#   Mac:   tmux session "rc", one window per listed repo (plus "idle"); windows for unlisted repos are closed.
+#   cloud: systemd cc-rc@<repo> enabled for listed repos, disabled for the rest.
+# shellcheck source=bin/agent-env
+. "$HOME/.local/bin/agent-env"
+: "${REPOS_FILE:?set REPOS_FILE in ~/.config/cc-orchestrator/config}"
+want=$(grep -vE '^[[:space:]]*(#|$)' "$REPOS_FILE" | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//; s/^[[:space:]]*//' | sort -u)
+listed() { [ -n "$want" ] && grep -qxF "$1" <<<"$want"; }
+
+if [ "$AGENT_HOST" = cloud ]; then
+  for r in $want; do
+    [ -d "$AGENTS_ROOT/$r/.git" ] || { echo "skip $r: not cloned (repo-init $r)" >&2; continue; }
+    if ! { systemctl is-enabled --quiet "cc-rc@$r" && systemctl is-active --quiet "cc-rc@$r"; }; then
+      sudo systemctl enable --now "cc-rc@$r" && echo "started cc-rc@$r"
+    fi
+  done
+  for u in $(systemctl list-units 'cc-rc@*' --all --plain --no-legend | awk '{print $1}'); do
+    r=${u#cc-rc@}; r=${r%.service}
+    listed "$r" || { sudo systemctl disable --now "$u" && echo "stopped $u"; }
+  done
+else
+  tmux -u has-session -t '=rc' 2>/dev/null || tmux -u new-session -d -s rc -n idle 'tail -f /dev/null'
+  for r in $want; do
+    d="$AGENTS_ROOT/$r"
+    [ -e "$d/.git" ] || { echo "skip $r: $d is not a git repo" >&2; continue; }
+    tmux list-windows -t '=rc' -F '#W' | grep -qxF "$r" && continue
+    tmux new-window -d -t '=rc:' -n "$r" "$HOME/.local/bin/rc-serve '$d'" && echo "started rc:$r"
+  done
+  tmux list-windows -t '=rc' -F '#W' | while IFS= read -r w; do
+    [ "$w" = idle ] || listed "$w" || { tmux kill-window -t "=rc:=$w" && echo "stopped rc:$w"; }
+  done
+fi
+exit 0

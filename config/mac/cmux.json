@@ -1,0 +1,14 @@
+{
+  "$schema": "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux.schema.json",
+  "schemaVersion": 1,
+  "app": { "newWorkspacePlacement": "afterCurrent", "reorderOnNotification": "agentActivity", "confirmQuit": "dirty-only" },
+  "terminal": { "copyOnSelect": false, "autoResumeAgentSessions": true, "predictiveLocalEcho": true },
+  "sidebar": { "showPullRequests": true, "pathLastSegmentOnly": true, "branchLayout": "inline" },
+  "automation": { "claudeCodeIntegration": true },
+  "browser": { "defaultSearchEngine": "google", "openTerminalLinksInCmuxBrowser": true },
+  "commands": [
+    { "name": "Agents: Mac",   "keywords": ["agents", "mac"],   "command": "tmux -u new -A -s agents ~/.local/bin/agents-loop" },
+    { "name": "Agents: cloud", "keywords": ["agents", "cloud"], "command": "mosh cloud -- tmux -u new -A -s fleet ~/.local/bin/agents-loop" },
+    { "name": "Agents: fleet", "keywords": ["agents", "all"],   "command": "watch -n 15 ~/.local/bin/fleet" }
+  ]
+}

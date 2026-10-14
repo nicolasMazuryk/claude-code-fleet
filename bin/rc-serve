@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# rc-serve <repo-dir> — Remote Control server for one repo ($AGENT_HOST/<repo> in the Claude app).
+# Sessions started from the app each get their own worktree. Loops so a crash or network drop restarts it
+# (Mac: tmux window rc:<repo>; cloud: systemd cc-rc@<repo>, where the loop is redundant but harmless).
+# shellcheck source=bin/agent-env
+. "$HOME/.local/bin/agent-env"
+cd "${1:?usage: rc-serve <repo-dir>}" || exit 1
+while :; do
+  claude remote-control --name "$AGENT_HOST/$(basename "$PWD")" --spawn worktree \
+    --permission-mode "${AGENT_PERMISSION_MODE:-auto}" --no-create-session-in-dir \
+    --remote-control-session-name-prefix "$AGENT_HOST"
+  sleep 10
+done
