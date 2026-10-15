@@ -24,3 +24,14 @@ are merged, not replaced. The Mac node is renamed `macbook`.
 - Login to cloud is by tailnet identity; no SSH keys for cloud on the Mac or phone.
 - Cloud cannot initiate anything toward the Mac/iPhone; everything is Mac-initiated.
 - A compromised tailnet admin account now also reaches cloud (acceptable; same account already controls the exit node).
+
+## Implementation notes (Phase 2)
+- The key is passed as `--auth-key=file:<0600 tmp>`, never on argv. It is read only when the node has no state.
+  On later bootstrap runs a joined node only gets `tailscale set` (no re-auth).
+- tailscaled state lives on `/data/core/tailscale` (drop-in `tailscaled.service.d/10-core-state.conf`,
+  `RequiresMountsFor=/data`). A restore from backup therefore keeps the node identity, so `cloud` never becomes `cloud-1`.
+- `--accept-dns=false` on cloud: the VM keeps OCI's resolver (Vault, apt, Docker). Cloud never needs tailnet names.
+- The policy carries `tests`/`sshTests`, so the "no `src: tag:cloud`" invariant is enforced by Tailscale on save,
+  and by `tests/tailscale-policy.bats` in this repo.
+- Plain `tailscale ping` (disco) from cloud can still get a pong from the Mac: disco runs below the ACL. The check is
+  `tailscale ping --icmp`, which the ACL drops.

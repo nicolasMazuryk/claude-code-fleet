@@ -1,0 +1,43 @@
+// Tailnet policy for tailnet `example.github` (MagicDNS suffix tailnet-example.ts.net): the full file AS APPLIED.
+// Source of truth: this file. Apply by hand (human): admin console → Access controls → JSON editor → replace all
+// → Save. Procedure, merge rules and checks: docs/runbooks/tailscale.md. ADR: docs/decisions/0001-tailscale-on-oci.md.
+//
+// Nodes (2026-10):
+//   macbook    the Mac, user-owned (member). Renamed from `nicolas-macbook-pro` (admin console → machine → Edit
+//              name, or `tailscale set --hostname=macbook`). Uses exit node static-ip.
+//   static-ip  Hetzner VPS, user-owned (member), exit node (approved by hand in the admin console;
+//              repo ~/Documents/static-ip). Must keep working.
+//   cloud      core-vm-app, tagged tag:cloud, joined by the oci bootstrap with a reusable tagged auth key.
+//   iPhone     member (Phase 6).
+//
+// Invariant (CLAUDE.md #4): NO rule, grant or ssh entry may have src tag:cloud. The VM must never open a connection
+// to the Mac or the iPhone. The `tests` below fail the save if that is broken (e.g. by a leftover allow-all rule).
+{
+	// Who may tag a node tag:cloud (needed to create the tagged auth key).
+	"tagOwners": {
+		"tag:cloud": ["autogroup:admin"],
+	},
+
+	"acls": [
+		// Members' devices (macbook, iPhone, static-ip) reach every node and port, and the internet through the
+		// exit node (autogroup:internet is listed explicitly so exit-node use never depends on how "*" is read).
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["*:*", "autogroup:internet:*"]},
+		// Deliberately nothing with src tag:cloud. Do NOT re-add the default allow-all ({"src": ["*"], ...}).
+	],
+
+	"ssh": [
+		// Tailscale SSH into cloud, no prompt (the Mac's LaunchAgents use it unattended: relay, presence, sync, fleet).
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["tag:cloud"], "users": ["agent", "ubuntu"]},
+		// Tailnet default, kept: your own devices, with a periodic re-auth check.
+		{"action": "check", "src": ["autogroup:member"], "dst": ["autogroup:self"], "users": ["autogroup:nonroot", "root"]},
+	],
+
+	// Checked by Tailscale on every save: a policy that breaks them is rejected.
+	"tests": [
+		{"src": "user@github", "accept": ["tag:cloud:22", "tag:cloud:60001"]},
+		{"src": "tag:cloud", "deny": ["user@github:22", "user@github:443", "user@github:60001"]},
+	],
+	"sshTests": [
+		{"src": "user@github", "dst": ["tag:cloud"], "accept": ["agent", "ubuntu"], "deny": ["root"]},
+	],
+}

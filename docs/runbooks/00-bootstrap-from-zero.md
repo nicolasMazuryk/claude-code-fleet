@@ -6,10 +6,10 @@ Each step links to the runbook that has the details. `[H]` = human-only step.
 | # | Step | Runbook | Done when |
 |---|---|---|---|
 | 1 | Clone this repo to `~/Documents/cc-orchestrator` on the Mac (`gh repo clone nicolasMazuryk/cc-orchestrator`) | — | `make help` works |
-| 2 | `[H]` Tailscale on the Mac; rename node to `macbook` | [mac-rebuild](mac-rebuild.md) | `tailscale status` shows `macbook` |
-| 3 | `[H]` Apply `config/tailscale/policy.hujson` in the admin console (keeps exit node `static-ip`) | [cloud-rebuild](cloud-rebuild.md) | policy saved |
+| 2 | `[H]` Tailscale on the Mac; rename node to `macbook` | [tailscale](tailscale.md) §4 | `tailscale status` shows `macbook` |
+| 3 | `[H]` Apply `config/tailscale/policy.hujson` in the admin console (keeps exit node `static-ip`) | [tailscale](tailscale.md) §1 | policy saved |
 | 4 | `[H]` Vault secrets `core-secret-tailscale-authkey`, `core-secret-ntfy-topic` (oci `make secret-put`) | [rotate-secrets](rotate-secrets.md) | `oci secrets` lists them |
-| 5 | VM up with Tailscale + mosh rule (oci repo: `make restore` or first deploy, then `make host-sync VM=app`) | [cloud-rebuild](cloud-rebuild.md) | `ssh cloud true` from the Mac |
+| 5 | VM up with Tailscale + mosh rule (oci repo: `make restore` or first deploy, then `make host-sync VM=app`) | [tailscale](tailscale.md) §3 | `ssh agent@cloud true` from the Mac |
 | 6 | Mac runtime: `brew install tmux mosh shellcheck bats-core && ./install.sh mac` | [mac-rebuild](mac-rebuild.md) | `am` shows Agent View |
 | 7 | `[H]` Mac: accept Remote Control once, Full Disk Access for tmux, `repo-init` allowlisted repos | [mac-rebuild](mac-rebuild.md) | app lists `mac/<repo>` |
 | 8 | Cloud runtime: `./install.sh cloud` | [cloud-rebuild](cloud-rebuild.md) | `ac` shows Agent View; sync reports 4 relayed |

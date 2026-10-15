@@ -8,8 +8,10 @@ Status: skeleton. Steps marked (Phase N) become runnable when that phase lands.
 - Tailscale node name **`macbook`** (tailnet `tailnet-example`; was `nicolas-macbook-pro`). Exit node `static-ip` must keep working.
 
 ## Steps
-1. Homebrew; `brew install tmux mosh shellcheck bats-core gh rsync`; install cmux + Ghostty; nvm + `nvm install 24 && nvm alias default 24 && corepack enable`.
-2. `[H]` Tailscale app, log in, rename: `tailscale set --hostname=macbook` and/or admin console → machine → Edit name. (Phase 2)
+1. Homebrew; `brew install tmux mosh shellcheck bats-core gh rsync` (mosh installed in Phase 2); install cmux + Ghostty; nvm + `nvm install 24 && nvm alias default 24 && corepack enable`.
+2. `[H]` Tailscale app, log in, rename the machine to `macbook`: admin console → machine → Edit machine name (turn
+   off auto-generate); `tailscale set --hostname=macbook` only works if it was never renamed in the console. Re-select the
+   exit node `static-ip` if needed. Details: [tailscale](tailscale.md) §4.
 3. Claude Code: `curl -fsSL https://claude.ai/install.sh | bash`; `[H]` `claude` → `/login`.
 4. `cd ~/Documents && gh repo clone nicolasMazuryk/cc-orchestrator && cd cc-orchestrator`.
 5. `./install.sh mac` (Phase 3) — symlinks `bin/*` → `~/.local/bin`, writes `~/.config/cc-orchestrator/config`,

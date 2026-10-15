@@ -17,6 +17,7 @@ Parallel Claude Code agents on two machines, steered from a third:
 | Understand the design | [docs/architecture.md](docs/architecture.md), [docs/spec.md](docs/spec.md), [docs/decisions/](docs/decisions/) |
 | Build everything from nothing | [docs/runbooks/00-bootstrap-from-zero.md](docs/runbooks/00-bootstrap-from-zero.md) |
 | Rebuild one device | [mac-rebuild](docs/runbooks/mac-rebuild.md) · [cloud-rebuild](docs/runbooks/cloud-rebuild.md) · [iphone-setup](docs/runbooks/iphone-setup.md) |
+| Tailnet policy, cloud node, Mac rename | [tailscale](docs/runbooks/tailscale.md) |
 | Add / remove a repo | [add-repo](docs/runbooks/add-repo.md) · [remove-repo](docs/runbooks/remove-repo.md) |
 | Change Claude Code settings | [sync-settings](docs/runbooks/sync-settings.md) |
 | Check it all works | [verify](docs/runbooks/verify.md) · [troubleshooting](docs/runbooks/troubleshooting.md) |

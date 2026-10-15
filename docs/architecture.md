@@ -27,7 +27,7 @@ Adapted from `prompts/prompt.md` §1 for the real machines. Details and code: [s
 │ cc-sync-settings ═══════════════┼═►│ settings, CLAUDE.md, skills, hooks…   │
 │ cmux · fleet ═══════════════════┼═►│ claude agents --json, systemctl       │
 └─────────────────────────────────┘  └───────────────────────────────────────┘
-  Tailscale (tailnet-example): members → *:* ; no rule with src tag:cloud → cloud can't reach Mac/iPhone.
+  Tailscale (tailnet-example): members → *:* (+ internet via exit node static-ip) ; no rule with src tag:cloud → cloud can't reach Mac/iPhone.
   Existing exit node static-ip keeps working. Break-glass into cloud: OCI Bastion (oci repo, `make ssh VM=app`).
 ```
 

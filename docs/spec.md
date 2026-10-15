@@ -250,14 +250,18 @@ As the original §2.8 with `ssh cloud` = `agent@cloud` and the remote command
 
 The machine part of the original §3.1 is done by oci `host/app/bootstrap.sh` and `make host-sync VM=app`:
 packages (git, tmux, mosh, jq, rsync, gh, build-essential, …), Node 24 + corepack, `agent` user + linger,
-gh auth from `core-secret-github-pat`, Tailscale (`tailscale up --ssh --hostname cloud --advertise-tags=tag:cloud
---authkey "$(secret_get core-secret-tailscale-authkey)"`), and the mosh rule:
+gh auth from `core-secret-github-pat`, Tailscale, and the mosh rule (as implemented in Phase 2, oci `setup_tailscale`):
 
 ```bash
-iptables -C INPUT -i tailscale0 -p udp --dport 60000:61000 -j ACCEPT 2>/dev/null ||
-  iptables -I INPUT -i tailscale0 -p udp --dport 60000:61000 -j ACCEPT   # before Ubuntu's REJECT
-netfilter-persistent save
+# only when the node has no state; the key is read from a 0600 temp file, never put on argv
+tailscale up --ssh --hostname=cloud --advertise-tags=tag:cloud --accept-dns=false \
+  --auth-key="file:$keyfile"            # keyfile ← secret_get core-secret-tailscale-authkey
+allow_udp_on_iface tailscale0 60000:61000   # iptables -I before the image's REJECT + the same line in rules.v4
 ```
+
+tailscaled keeps its state on `/data/core/tailscale` (systemd drop-in), so a restore rejoins as the same node.
+Rules are added to `rules.v4` by line, not with `netfilter-persistent save`, which would also persist Docker's and
+Tailscale's own chains. Details: [runbooks/tailscale.md](runbooks/tailscale.md).
 
 There is **no** "close port 22" step: port 22 was never public (NSG allows it only from the Bastion endpoint).
 Human, once: `sudo -iu agent claude auth login` (persists on `/data`).
@@ -350,7 +354,7 @@ The full policy **as applied**, i.e. the existing policy (incl. exit node `stati
 {
   "tagOwners": { "tag:cloud": ["autogroup:admin"] },
   "acls": [
-    { "action": "accept", "src": ["autogroup:member"], "dst": ["*:*"] }
+    { "action": "accept", "src": ["autogroup:member"], "dst": ["*:*", "autogroup:internet:*"] }
     // no rule with src tag:cloud
   ],
   "ssh": [
@@ -359,7 +363,10 @@ The full policy **as applied**, i.e. the existing policy (incl. exit node `stati
 }
 ```
 
-Applied by a human in the admin console **before** `tailscale up --advertise-tags=tag:cloud`.
+`autogroup:internet:*` keeps the exit node `static-ip` usable. The tailnet default allow-all (`src: ["*"]`) must be
+removed. The file also has `tests`/`sshTests` blocks, so Tailscale rejects a save that breaks the invariants.
+Applied by a human in the admin console **before** `tailscale up --advertise-tags=tag:cloud`
+([runbooks/tailscale.md](runbooks/tailscale.md)).
 
 ## 6. iPhone (Phase 6) — `config/iphone/hosts.md`
 

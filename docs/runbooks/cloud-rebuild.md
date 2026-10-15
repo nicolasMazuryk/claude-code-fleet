@@ -10,11 +10,13 @@ Status: skeleton. Machine = oci repo; Claude Code = this repo ([ADR 0002](../dec
 
 ## Steps
 1. `[H]` Tailnet policy from `config/tailscale/policy.hujson` applied (Phase 2). Auth key in Vault
-   `core-secret-tailscale-authkey` (reusable, tagged `tag:cloud`).
+   `core-secret-tailscale-authkey` (reusable, tagged `tag:cloud`, unexpired). See [tailscale](tailscale.md) §1–2.
+   Tailscale state is on `/data`, so a restore from backup rejoins as `cloud` without the key. On a fresh `/data`
+   (`BACKUP=none`), first delete the old `cloud` machine in the admin console.
 2. `[H]` VM from the oci repo: `make restore BACKUP=<ocid>|none` (after a wipe) — oci runbook `wipe-and-restore.md`.
    Bootstrap installs packages, Node, `agent`, gh auth, Tailscale (`--hostname cloud`), mosh iptables rule.
    On an existing VM, oci changes ship with `[H]` `make host-sync VM=app`.
-3. From the Mac: `ssh cloud true` (accept the Tailscale SSH check if prompted).
+3. From the Mac: `ssh agent@cloud true` (`ssh cloud true` once Phase 3 wrote `~/.ssh/config`); checks in [tailscale](tailscale.md) §5.
 4. `./install.sh cloud` (Phase 4): rsync repo → `/data/home/agent/cc-orchestrator`, symlink `bin/`, config, units
    `cc-agents` + `cc-rc@`, migrate `agent@*` → `cc-rc@*`, tmux.conf, ntfy topic, `cc-sync-settings`.
 5. `[H]` if not already on `/data`: `ssh -t cloud 'claude auth login'`; accept Remote Control once
