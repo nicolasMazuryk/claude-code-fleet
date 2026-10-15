@@ -39,5 +39,34 @@ Date: 2026-10-15 · Branch: `phase-3b-finish` (from `main` after PRs #1–#4) ·
 - The oci repo's own `docs/runbooks/secrets-rotation.md` may still describe the 90-day auth key. That fix belongs to an
   oci PR (not done here).
 
-Post-merge results (install from the main checkout, `rc` windows, repo-init) are in the PR conversation and the
-follow-up commit below.
+## Post-merge (PR #5 merged as 41a8578; `git -C ~/Documents/cc-orchestrator pull --ff-only`)
+- `~/Documents/cc-orchestrator/install.sh mac`:
+  - 1st run: `11 change(s)` (9 `bin/` relinks, config `CC_ORCH_DIR`, zshrc.snippet link)
+  - 2nd run: `install.sh mac: no changes`
+  - no symlink, config, plist or zshrc line points into `.claude/worktrees/impl` any more
+- `rc-servers` → `started rc:arbinet`, `rc:arbinet-specs`, `rc:claude-power-user`, `rc:oci`. A 2nd run prints
+  nothing. `tmux list-windows -t rc` → `idle cc-orchestrator arbinet arbinet-specs claude-power-user oci` (2c PASS).
+- `repo-init --no-trust` for `cc-orchestrator` (no-op), `claude-power-user`, `arbinet-specs` and `arbinet`:
+  - appended `.claude/worktrees/` to `.gitignore` and `.env`, `.env.local` to `.worktreeinclude`, as uncommitted
+    changes in those repos (left for the owner to commit)
+  - a re-run adds nothing
+  - `oci` is skipped (see Findings)
+- Window states:
+  - `cc-orchestrator`, `oci`, `arbinet-specs` wait at `Enable Remote Control? (y/n)`
+  - `claude-power-user` and `arbinet` wait at `Trust /Users/nicolas/Documents/<repo>? [y/N]`
+- Phase 3 re-verify:
+  - 2: `am`/`ac` aliases resolve; tmux `agents` runs `agents-loop` (bash) in `~/Documents`
+  - 2a: PASS (above)
+  - 2b, scriptable part, in scratch `/tmp/cc-p3b-wt` (since removed): `repo-init`, then `claude -w p3b -p` →
+    `.claude/worktrees/p3b/.env` copied. PASS. `.env` must also be gitignored, or `.worktreeinclude` skips it
+    (troubleshooting).
+  - 2d: `fleet` lists 4 Mac sessions and now also `cloud offers-pipeline` (old oci `agent@` unit)
+  - 2e: LaunchAgent `program = /opt/homebrew/bin/tmux`, `last exit code = 0`. The one `Operation not permitted` in
+    `/tmp/cc-orchestrator-start.log` is stale (2026-10-14 23:19, before the tmux exec fix).
+  - 2f: `{true,false,false,"mac",push 2,afplay 4}` PASS
+  - 2g: `hostname cloud`, `user agent`, topic mode `600` PASS
+  - 1j: firewall paths equal `realpath` of the current mosh binaries. PASS
+  - 2i: `cc-capture --check` showed drift. The Mac no longer has the `warp` plugin, and
+    `env.CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX` was missing from the baseline. Re-captured in this follow-up
+    (`plugins.json`, `settings.mac.json`); a 2nd capture prints `no changes` and `--check` matches.
+  - 2h and 6: BLOCKED on Remote Control acceptance and trust (human).

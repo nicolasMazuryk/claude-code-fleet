@@ -1,5 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX": "mac"
+  },
   "permissions": {
     "allow": [
       "mcp__plugin_playwright_playwright__*"
@@ -61,17 +64,10 @@
   },
   "enabledPlugins": {
     "claude-md-management@claude-plugins-official": true,
-    "warp@claude-code-warp": true,
     "claude-hud@claude-hud": true,
     "cowork-plugin-management@synced": false
   },
   "extraKnownMarketplaces": {
-    "claude-code-warp": {
-      "source": {
-        "source": "github",
-        "repo": "warpdotdev/claude-code-warp"
-      }
-    },
     "claude-hud": {
       "source": {
         "source": "github",
@@ -97,10 +93,7 @@
   "editorMode": "normal",
   "preferredNotifChannel": "notifications_disabled",
   "autoCompactEnabled": true,
-  "inputNeededNotifEnabled": false,
-  "agentPushNotifEnabled": false,
   "remoteControlAtStartup": true,
-  "env": {
-    "CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX": "mac"
-  }
+  "inputNeededNotifEnabled": false,
+  "agentPushNotifEnabled": false
 }
