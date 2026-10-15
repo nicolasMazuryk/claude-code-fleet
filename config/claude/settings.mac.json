@@ -97,6 +97,10 @@
   "editorMode": "normal",
   "preferredNotifChannel": "notifications_disabled",
   "autoCompactEnabled": true,
-  "inputNeededNotifEnabled": true,
-  "agentPushNotifEnabled": true
+  "inputNeededNotifEnabled": false,
+  "agentPushNotifEnabled": false,
+  "remoteControlAtStartup": true,
+  "env": {
+    "CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX": "mac"
+  }
 }

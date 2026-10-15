@@ -1,6 +1,6 @@
 # Rebuild the Mac
 
-Status: skeleton. Steps marked (Phase N) become runnable when that phase lands.
+Status: steps 1–8 runnable (Phase 3). Phone access (step 9) is Phase 6. `[H]` = human-only.
 
 ## Facts
 - User `nicolas`; repos in `~/Documents`; node via nvm (`~/.nvm`, default alias v24.x), pnpm via corepack.
@@ -14,15 +14,42 @@ Status: skeleton. Steps marked (Phase N) become runnable when that phase lands.
    exit node `static-ip` if needed. Details: [tailscale](tailscale.md) §4.
 3. Claude Code: `curl -fsSL https://claude.ai/install.sh | bash`; `[H]` `claude` → `/login`.
 4. `cd ~/Documents && gh repo clone nicolasMazuryk/cc-orchestrator && cd cc-orchestrator`.
-5. `./install.sh mac` (Phase 3) — symlinks `bin/*` → `~/.local/bin`, writes `~/.config/cc-orchestrator/config`,
-   `~/.tmux.conf`, `~/.claude/CLAUDE.md`, applies `config/claude/` (backup first, deep-merge), appends agent-push
-   hooks, ntfy topic (from Vault or new), LaunchAgents, zsh snippet, cmux.json, statusline fix.
-   Until Phase 3 lands, restore the captured baseline by hand: see [below](#restore-the-captured-baseline-by-hand).
-6. `[H]` Accept Remote Control once: `cd ~/Documents/<any-repo> && claude remote-control` → `y` → Ctrl+C.
+5. `./install.sh mac` (idempotent; run it from the checkout that should be live, normally
+   `~/Documents/cc-orchestrator` on `main`; re-run any time, a second run prints `install.sh mac: no changes`).
+   What it does, in order (every overwritten file is backed up first as `<file>.bak.<timestamp>`):
+   - `brew install tmux mosh` if missing;
+   - symlinks `bin/*` → `~/.local/bin/` (and drops links to scripts that no longer exist);
+   - writes `~/.config/cc-orchestrator/config` from `config/mac/config.tmpl` (`CC_ORCH_DIR` = this checkout) and
+     links `~/.config/cc-orchestrator/zshrc.snippet` → `config/mac/zshrc.snippet`;
+   - `~/.tmux.conf`, `~/.claude/CLAUDE.md`, `~/.claude/statusline-combined.sh` (node path fix),
+     `~/.claude/hooks/agent-push.sh` (copies);
+   - restores **missing** baseline files from `config/claude/` (sounds, `statusline-sys.sh`, claude-hud files,
+     ccstatusline settings, local skills); existing ones are never overwritten;
+   - `~/.claude/settings.json`: seeded from `settings.mac.json` if absent; then `settings.orchestrator.json` is
+     deep-merged and one `~/.claude/hooks/agent-push.sh` group (async) is appended to `Notification` and to `Stop`
+     after the existing groups, once. Written only if the content changes;
+   - `~/.config/agent-push/topic` (0600): kept if present, else read from Vault `core-secret-ntfy-topic` (oci CLI,
+     best effort), else a new `openssl rand -hex 16`. A new topic must be stored in Vault (`[H]`, rotate-secrets);
+   - one line in `~/.zshrc` that sources the snippet (`am`, `ac`); the existing aliases are untouched;
+   - `Host cloud` (`User agent`, ControlMaster) appended to `~/.ssh/config` unless a `Host cloud` exists;
+   - `~/.config/cmux/cmux.json` from `config/mac/cmux.json` only if absent or still cmux's all-comments template;
+   - renders `~/Library/LaunchAgents/cc-orchestrator.claude.agents.plist` and bootstraps it (re-bootstrapped only
+     when the plist changed). The `.relay` agent is installed once `bin/agent-relay` exists (Phase 5).
+   The LaunchAgent execs `/opt/homebrew/bin/tmux new-session -d -s cc-start ~/.local/bin/cc-orchestrator-start`, so
+   the scripts (in `~/Documents`, TCC-protected) run inside the tmux server. A launchd job that runs a script from
+   `~/Documents` directly fails with `Operation not permitted`.
+   Not done by `install.sh`: npm/plugin installs and `link` skills (see [below](#restore-the-captured-baseline-by-hand)).
+6. `[H]` Accept Remote Control once. The LaunchAgent already started `rc-serve` in tmux window `rc:<repo>`, which
+   waits at `Enable Remote Control? (y/n)`: `tmux attach -t rc:cc-orchestrator` → `y` → detach with `Ctrl-b d`.
+   (Equivalent: `cd ~/Documents/<any-repo> && claude remote-control` → `y` → Ctrl+C.)
 7. `[H]` Full Disk Access (System Settings → Privacy & Security → Full Disk Access → `+`, Cmd+Shift+G):
-   `/opt/homebrew/bin/tmux` (resolve with `realpath`), and for phone access `/usr/libexec/sshd-keygen-wrapper`,
-   `$(realpath /opt/homebrew/bin/mosh-server)`.
-8. `repo-init --rc <repo>` for each repo in `config/mac/repos.txt` (TTY; accept trust).
+   `$(realpath /opt/homebrew/bin/tmux)` (the tmux server started by the LaunchAgent at login runs Agent View and the RC
+   servers in `~/Documents`), and for phone access (Phase 6) `/usr/libexec/sshd-keygen-wrapper`,
+   `$(realpath /opt/homebrew/bin/mosh-server)`. Check after the next login: `tmux ls` shows `agents` and `rc`, and
+   `/tmp/cc-orchestrator-start.log` has no `Operation not permitted`.
+8. `repo-init <repo>` for each repo in `config/mac/repos.txt` (TTY; accept the trust prompt, `/exit`). It adds
+   `.claude/worktrees/` to `.gitignore` and `.env`, `.env.local` to `.worktreeinclude` (commit those once in the repo),
+   then runs `rc-servers`. New repo for the app: `repo-init --rc <repo>` (appends to `config/mac/repos.txt`).
 9. Phone access (Phase 6): `[H]` System Settings → General → Sharing → Remote Login, allow `nicolas` only;
    `sudo cp config/mac/sshd-100-keys-only.conf /etc/ssh/sshd_config.d/100-keys-only.conf`; Moshi key into
    `~/.ssh/authorized_keys`; toggle Remote Login; firewall allow mosh-server; `sudo pmset -c sleep 0 displaysleep 10`.
@@ -30,8 +57,9 @@ Status: skeleton. Steps marked (Phase N) become runnable when that phase lands.
 
 ## Restore the captured baseline by hand
 
-Use this until `./install.sh mac` exists (Phase 3). It is safe to re-run: it backs up and deep-merges settings, and
-the copies overwrite with identical content. Run it from the repo root after step 3 (`claude` logged in).
+`./install.sh mac` now restores the settings and missing files. This snippet is the manual equivalent and the
+only place for the npm + plugin installs, which `install.sh` does not do. Safe to re-run. Run it from the repo root
+after step 3 (`claude` logged in).
 
 ```bash
 ts=$(date +%Y%m%d-%H%M%S); s=~/.claude/settings.json
@@ -60,5 +88,5 @@ Then:
   the `skills` CLI, e.g. `npx skills add vercel-labs/skills`, then pick `find-skills`, global). Kind `synced` skills come back
   after `/login`.
 - `~/.zshrc`: copy the blocks from `config/mac/zshrc.captured` that are missing (back up `~/.zshrc` first).
-- Known bug carried in the baseline: `statusline-combined.sh` hardcodes node v24.13.0, so the claude-hud half of the
-  statusline is blank. Phase 3 fixes it, and the fixed copy is captured.
+- The statusline node path is fixed (Phase 3): `statusline-combined.sh` uses `node` from PATH, else nvm's
+  default-alias version.

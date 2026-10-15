@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# agents-loop — keep Claude Code's Agent View alive (restarts after Esc), launched from the repos root so @repo works.
+# shellcheck source=bin/agent-env
+. "$HOME/.local/bin/agent-env"
+cd "$AGENTS_ROOT" || exit 1
+while :; do claude agents --permission-mode "${AGENT_PERMISSION_MODE:-auto}" "$@"; sleep 2; done

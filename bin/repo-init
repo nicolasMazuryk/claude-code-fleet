@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# repo-init [--rc] [--no-trust] <name | path | git-url> — make a repo ready for isolated parallel agents (idempotent).
+#   - URL: cloned into $AGENTS_ROOT. Bare name on cloud, not cloned yet: cloned from
+#     https://github.com/nicolasMazuryk/<name>.git (gh credential helper; PAT from Vault via the oci bootstrap).
+#   - adds .claude/worktrees/ to .gitignore and $REPO_INIT_INCLUDE (default ".env .env.local") to .worktreeinclude
+#   - --rc: appends the repo to $REPOS_FILE (the RC allowlist; commit that file in cc-orchestrator afterwards)
+#   - opens `claude` once for the workspace trust prompt (needs a TTY; skipped with --no-trust or without a TTY)
+#   - runs rc-servers when the repo is in $REPOS_FILE
+set -euo pipefail
+# shellcheck source=bin/agent-env
+. "$HOME/.local/bin/agent-env"
+GH_OWNER=${GH_OWNER:-nicolasMazuryk}
+rc=0; trust=1; arg=
+for a in "$@"; do
+  case $a in
+    --rc) rc=1 ;;
+    --no-trust) trust=0 ;;
+    -h|--help) sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) echo "repo-init: unknown option $a" >&2; exit 2 ;;
+    *) [ -z "$arg" ] || { echo "repo-init: one repo at a time" >&2; exit 2; }; arg=$a ;;
+  esac
+done
+[ -n "$arg" ] || { echo "usage: repo-init [--rc] [--no-trust] <name|path|git-url>" >&2; exit 2; }
+in_list() { grep -vE '^[[:space:]]*(#|$)' "$REPOS_FILE" | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//; s/^[[:space:]]*//' | grep -qxF "$1"; }
+
+case $arg in
+  *://*|git@*) dir="$AGENTS_ROOT/$(basename "$arg" .git)"; [ -d "$dir" ] || git clone "$arg" "$dir" ;;
+  /*)          dir=${arg%/} ;;
+  *)           dir="$AGENTS_ROOT/$arg"
+               if [ ! -d "$dir" ] && [ "$AGENT_HOST" = cloud ]; then
+                 git clone "https://github.com/$GH_OWNER/$arg.git" "$dir"
+               fi ;;
+esac
+[ -d "$dir" ] || { echo "repo-init: $dir does not exist" >&2; exit 1; }
+cd "$dir"
+git rev-parse --git-dir >/dev/null
+r=$(basename "$dir")
+case $r in *[[:space:]]*) echo "repo-init: '$r' has spaces; Agent View's @ list skips it" >&2 ;; esac
+
+grep -qxF '.claude/worktrees/' .gitignore 2>/dev/null || { echo '.claude/worktrees/' >> .gitignore; echo "  .gitignore += .claude/worktrees/"; }
+for f in ${REPO_INIT_INCLUDE:-.env .env.local}; do   # gitignored files copied into every worktree
+  grep -qxF "$f" .worktreeinclude 2>/dev/null || { echo "$f" >> .worktreeinclude; echo "  .worktreeinclude += $f"; }
+done
+
+if [ "$rc" -eq 1 ]; then
+  if [ "$(dirname "$dir")" != "${AGENTS_ROOT%/}" ]; then
+    echo "repo-init: --rc needs the repo directly under $AGENTS_ROOT (rc-servers looks there)" >&2; exit 1
+  fi
+  if in_list "$r"; then
+    echo "  $r already in $REPOS_FILE"
+  else
+    echo "$r" >> "$REPOS_FILE"; echo "  $REPOS_FILE += $r (commit it in cc-orchestrator)"
+  fi
+fi
+
+if [ "$trust" -eq 1 ] && [ -t 0 ] && [ -t 1 ]; then
+  echo "→ Accept the workspace trust prompt, then type /exit"
+  claude || true
+else
+  echo "→ trust not done here: run 'claude' in $dir once at a terminal, accept the trust prompt, /exit"
+fi
+
+if in_list "$r"; then
+  "$HOME/.local/bin/rc-servers"
+  echo "✓ $r ready on $AGENT_HOST: Agent View → @$r · Claude app → $AGENT_HOST/$r"
+else
+  echo "✓ $r ready on $AGENT_HOST: Agent View → @$r (no RC server: not in $REPOS_FILE; add with --rc)"
+fi

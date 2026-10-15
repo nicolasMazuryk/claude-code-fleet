@@ -1,6 +1,6 @@
 # Remove a repo
 
-Status: Phase 3/4. Removing a *directory* deletes unpushed work — that step is always done by a human.
+Status: Mac works (Phase 3); cloud after Phase 4. Removing a *directory* deletes unpushed work — that step is always done by a human.
 
 ## Stop its Remote Control server (keep the clone)
 1. Delete the line from `config/<host>/repos.txt`, commit (branch + PR).

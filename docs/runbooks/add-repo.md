@@ -1,6 +1,6 @@
 # Add a repo (Mac or cloud)
 
-Status: scripts land in Phase 3 (Mac) and Phase 4 (cloud). **Which path applies now:** if `install.sh` and
+Status: Mac scripts exist (Phase 3); cloud units land in Phase 4. **Which path applies now:** if `install.sh` and
 `bin/repo-init` exist in this repo and `ssh cloud 'systemctl list-units "cc-rc@*"'` shows units, use the main steps;
 otherwise (cloud still runs oci `agent@<repo>`) use the [fallback](#fallback-before-phase-4-oci-managed-agentrepo).
 Phase status: [docs/progress/](../progress/).
@@ -59,11 +59,14 @@ in to claude.ai and to gh (`ssh cloud 'claude auth status; gh auth status'`); Re
 
 ```bash
 repo-init <name | path | git-url>      # clones into ~/Documents if a URL; accept trust, /exit
+                                       # (--no-trust skips the claude step, e.g. without a TTY)
 # for the Claude app:
 repo-init --rc <repo>                  # appends to config/mac/repos.txt, starts window rc:<repo>
 cd ~/Documents/cc-orchestrator && git diff config/mac/repos.txt   # commit via branch + PR
 ```
-Verify: `tmux list-windows -t rc` shows `<repo>`; the app lists `mac/<repo>`.
+Verify: `tmux list-windows -t rc` shows `<repo>`; the app lists `mac/<repo>`. A new server window first asks
+`Enable Remote Control? (y/n)` until Remote Control has been accepted once on this Mac (`tmux attach -t rc:<repo>`).
+`repo-init --rc` edits `config/mac/repos.txt` of the checkout in `~/.config/cc-orchestrator/config` (`CC_ORCH_DIR`).
 
 ## Fallback before Phase 4 (oci-managed `agent@<repo>`)
 

@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# fleet — every Claude Code session on the Mac and on cloud, waiting-for-you first. Runs on the Mac.
+#   fleet                         merged table: host, state, waiting-for, repo, name, id
+#   fleet logs    <mac|cloud> <repo>   RC server output (mac: tmux pane rc:<repo>; cloud: journalctl -u cc-rc@<repo> -f)
+#   fleet restart <mac|cloud> <repo>   restart that RC server
+#   fleet attach  <mac|cloud> <repo>   mac: tmux rc:<repo>; cloud: Agent View (units run without tmux)
+# Cloud is reached as `ssh cloud` (agent@cloud over Tailscale); cloud never connects back.
+# shellcheck source=bin/agent-env
+. "$HOME/.local/bin/agent-env"
+CLOUD=${FLEET_CLOUD_HOST:-cloud}
+CLOUD_CLAUDE=/data/home/agent/.local/bin/claude
+ssh_cloud() { ssh -o BatchMode=yes -o ConnectTimeout=5 "$@"; }
+
+table() {
+  # shellcheck disable=SC2016  # jq program, not shell
+  # rank: blocked/waiting first (needs you), then working/busy, then the rest
+  local q='.[] | [((.state // .status // "?") as $s
+                   | if ($s == "blocked" or $s == "waiting") then 0
+                     elif ($s == "working" or $s == "busy") then 1 else 2 end),
+                  $h, (.state // .status // "?"), (.waitingFor // "-"),
+                  ((.cwd // "?") | sub("/\\.claude/worktrees/.*$"; "") | split("/") | last),
+                  (.name // "-"), (.id // "interactive")] | @tsv'
+  local out
+  {
+    printf '0\tHOST\tSTATE\tWAITING-FOR\tREPO\tNAME\tID\n'
+    claude agents --json 2>/dev/null | jq -r --arg h "$AGENT_HOST" "$q"
+    if [ "$AGENT_HOST" = mac ]; then
+      if out=$(ssh_cloud "$CLOUD" "$CLOUD_CLAUDE agents --json" 2>/dev/null); then
+        jq -r --arg h cloud "$q" <<<"$out"
+      else
+        echo "fleet: cloud unreachable (ssh $CLOUD)" >&2
+      fi
+    fi
+  } | { IFS= read -r hdr; printf '%s\n' "$hdr"; sort -t$'\t' -k1,1n -k2,2 -k5,5; } | cut -f2- | column -t -s$'\t'
+}
+
+need() { [ -n "${2:-}" ] || { echo "usage: fleet $1 <mac|cloud> <repo>" >&2; exit 2; }; }
+case ${1:-} in
+  ""|ls|list) table ;;
+  logs)
+    need "$1" "${3:-}"; h=$2; r=$3
+    case $h in
+      mac)   tmux capture-pane -p -J -S -200 -t "=rc:=$r" ;;
+      cloud) ssh -t "$CLOUD" "journalctl -u cc-rc@$r -f" ;;
+      *) echo "fleet: host is mac or cloud" >&2; exit 2 ;;
+    esac ;;
+  restart)
+    need "$1" "${3:-}"; h=$2; r=$3
+    case $h in
+      mac)   tmux kill-window -t "=rc:=$r" 2>/dev/null; "$HOME/.local/bin/rc-servers" ;;
+      cloud) ssh_cloud "$CLOUD" "sudo systemctl restart cc-rc@$r && systemctl is-active cc-rc@$r" ;;
+      *) echo "fleet: host is mac or cloud" >&2; exit 2 ;;
+    esac ;;
+  attach)
+    need "$1" "${3:-}"; h=$2; r=$3
+    case $h in
+      mac)   tmux -u attach -t "=rc:=$r" ;;
+      cloud) echo "cloud RC servers run under systemd (no tmux); opening cloud Agent View instead" >&2
+             exec mosh "$CLOUD" -- tmux -u new -A -s fleet /data/home/agent/.local/bin/agents-loop ;;
+      *) echo "fleet: host is mac or cloud" >&2; exit 2 ;;
+    esac ;;
+  -h|--help) sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) echo "fleet: unknown command $1 (fleet --help)" >&2; exit 2 ;;
+esac
