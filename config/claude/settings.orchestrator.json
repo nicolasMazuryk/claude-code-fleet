@@ -1,0 +1,6 @@
+{
+  "remoteControlAtStartup": true,
+  "inputNeededNotifEnabled": false,
+  "agentPushNotifEnabled": false,
+  "env": { "CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX": "mac" }
+}

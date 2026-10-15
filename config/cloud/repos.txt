@@ -1,0 +1,2 @@
+# Repos (directory names under /data/fleet) that get a cc-rc@<repo> server on cloud (cloud/<repo>).
+# One per line; # comments allowed. Cloned from github.com/nicolasMazuryk/<repo>. See docs/decisions/0003.
