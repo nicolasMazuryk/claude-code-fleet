@@ -19,6 +19,8 @@
 | `cc-sync-settings` relays < 4 | a sound hook changed; see [sync-settings](sync-settings.md) |
 | Too many / no pushes | `agent-present; echo $?` on the Mac (0 = present). Cloud: `ls -l ~/.local/state/agent-events/mac-present` age < 90 s |
 | Repo missing in the Claude app | not in `config/<host>/repos.txt`, or server down: Mac `tmux list-windows -t rc`, cloud `systemctl status cc-rc@<repo>` |
+| `.env` missing in a new worktree | `.worktreeinclude` copies only files that are also **gitignored**: add `.env` to the repo's `.gitignore` |
+| `rc:<repo>` shows `Trust /Users/nicolas/Documents/<repo>? [y/N]` | workspace not trusted yet: answer `y` there (or `repo-init <repo>` at a TTY) |
 | "Workspace not trusted" | `repo-init <repo>` again (TTY) and accept |
 | Remote Control disabled | needs claude.ai login; `ANTHROPIC_API_KEY`, custom `ANTHROPIC_BASE_URL` or `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` turn it off |
 | Disk filling | `du -sh /data/fleet/*/.claude/worktrees`, `df -h /data`; delete finished sessions (Ctrl+X twice) |

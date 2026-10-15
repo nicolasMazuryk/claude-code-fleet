@@ -5,10 +5,6 @@
       "source": "github",
       "repo": "anthropics/claude-plugins-official"
     },
-    "claude-code-warp": {
-      "source": "github",
-      "repo": "warpdotdev/claude-code-warp"
-    },
     "claude-hud": {
       "source": "github",
       "repo": "jarrodwatts/claude-hud"
@@ -35,13 +31,6 @@
       "version": "c447c3207a42",
       "project": "~/Documents/datapipeline",
       "enabled": null
-    },
-    {
-      "id": "warp@claude-code-warp",
-      "scope": "user",
-      "version": "2.0.0",
-      "project": null,
-      "enabled": true
     }
   ]
 }
