@@ -9,8 +9,8 @@ Status: skeleton. Machine = oci repo; Claude Code = this repo ([ADR 0002](../dec
 - Free-tier block storage is full (200/200 GB): never add volumes.
 
 ## Steps
-1. `[H]` Tailnet policy from `config/tailscale/policy.hujson` applied (Phase 2). Auth key in Vault
-   `core-secret-tailscale-authkey` (reusable, tagged `tag:cloud`, unexpired). See [tailscale](tailscale.md) §1–2.
+1. `[H]` Tailnet policy from `config/tailscale/policy.hujson` applied (Phase 2). Join credential in Vault
+   `core-secret-tailscale-authkey`: a non-expiring OAuth client secret (`tag:cloud`), never rotated. See [tailscale](tailscale.md) §1–2.
    Tailscale state is on `/data`, so a restore from backup rejoins as `cloud` without the key. On a fresh `/data`
    (`BACKUP=none`), first delete the old `cloud` machine in the admin console.
 2. `[H]` VM from the oci repo: `make restore BACKUP=<ocid>|none` (after a wipe) — oci runbook `wipe-and-restore.md`.
