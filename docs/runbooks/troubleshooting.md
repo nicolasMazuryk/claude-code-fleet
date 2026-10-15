@@ -6,9 +6,11 @@
 | Cloud joined as `cloud-1` | A stale `cloud` machine exists (e.g. after `BACKUP=none`). Delete it in the admin console, rename the new one `cloud` |
 | Exit node stopped working after a policy change | The policy lost `autogroup:internet:*` for members. Re-apply `config/tailscale/policy.hujson` |
 | `mosh cloud` "Nothing received from server" | iptables rule on `tailscale0` for UDP 60000:61000 missing (oci bootstrap). `sudo iptables -S INPUT \| grep 60000` on cloud |
+| `mosh cloud` hangs / "Nothing received" only from the Mac, after a `brew upgrade` | the Application Firewall rule is on the old Cellar path: `socketfilterfw --listapps \| grep -A1 mosh` vs `realpath /opt/homebrew/bin/mosh-client`; re-add ([mac-rebuild](mac-rebuild.md) step 2a) |
+| `mosh` prints `Error: vector` (scripts, `!` shell, no TTY) | mosh-client needs a terminal size: `script -q /dev/null sh -c 'stty rows 40 cols 120; mosh cloud -- true'` |
 | launchd-started tmux/claude can't read `~/Documents` ("Operation not permitted" in `/tmp/cc-orchestrator-start.log`) | Full Disk Access for `$(realpath /opt/homebrew/bin/tmux)` (and `sshd-keygen-wrapper`, `mosh-server` for phone access). The LaunchAgent must exec tmux, not a script in `~/Documents`: re-run `./install.sh mac` |
 | No `agents`/`rc` tmux sessions after login | `launchctl print gui/$(id -u)/cc-orchestrator.claude.agents`; `cat /tmp/cc-orchestrator-start.log`; start by hand: `cc-orchestrator-start` |
-| `rc:<repo>` window shows `Enable Remote Control? (y/n)` | Remote Control not accepted yet: `tmux attach -t rc:<repo>` → `y` → `Ctrl-b d` |
+| `rc:<repo>` window shows `Enable Remote Control? (y/n)` | Not accepted yet, or the window started before the (global) acceptance: `jq .remoteDialogSeen ~/.claude.json`. `null` → `tmux attach -t rc:<repo>` → `y` → `Ctrl-b d`. `true` → `tmux kill-window -t rc:<repo> && rc-servers` |
 | `am`/`ac` not found | new shell, or `. ~/.zshrc`; check `~/.config/cc-orchestrator/zshrc.snippet` links into this repo (`./install.sh mac`) |
 | `~/.local/bin/*` point into a deleted worktree | re-run `./install.sh mac` from `~/Documents/cc-orchestrator` (relinks bin/, rewrites `CC_ORCH_DIR`) |
 | Agent can't find node/pnpm | started without `agent-env`. Dispatch via Agent View / app; on Mac check nvm default alias exists |

@@ -12,6 +12,15 @@ Status: steps 1–8 runnable (Phase 3). Phone access (step 9) is Phase 6. `[H]` 
 2. `[H]` Tailscale app, log in, rename the machine to `macbook`: admin console → machine → Edit machine name (turn
    off auto-generate); `tailscale set --hostname=macbook` only works if it was never renamed in the console. Re-select the
    exit node `static-ip` if needed. Details: [tailscale](tailscale.md) §4.
+2a. `[H]` macOS Application Firewall (on, stealth mode): allow mosh, else mosh to cloud (and later phone → Mac) gets
+   no UDP. The rule is per binary, on the Homebrew **Cellar** realpath (sudo prompts):
+   ```bash
+   fw=/usr/libexec/ApplicationFirewall/socketfilterfw
+   for b in mosh-client mosh-server; do p=$(realpath /opt/homebrew/bin/$b); sudo $fw --add "$p"; sudo $fw --unblockapp "$p"; done
+   $fw --listapps | grep -A1 mosh      # both "Allow incoming connections"
+   ```
+   `brew upgrade mosh` changes the Cellar path (e.g. `…/mosh/1.4.0_43/…`), which drops the rule: re-run the loop after
+   every mosh upgrade. `cc-doctor` (Phase 7) is to check that the listed paths match `realpath` of the current binaries.
 3. Claude Code: `curl -fsSL https://claude.ai/install.sh | bash`; `[H]` `claude` → `/login`.
 4. `cd ~/Documents && gh repo clone nicolasMazuryk/cc-orchestrator && cd cc-orchestrator`.
 5. `./install.sh mac` (idempotent; run it from the checkout that should be live, normally
@@ -39,20 +48,29 @@ Status: steps 1–8 runnable (Phase 3). Phone access (step 9) is Phase 6. `[H]` 
    the scripts (in `~/Documents`, TCC-protected) run inside the tmux server. A launchd job that runs a script from
    `~/Documents` directly fails with `Operation not permitted`.
    Not done by `install.sh`: npm/plugin installs and `link` skills (see [below](#restore-the-captured-baseline-by-hand)).
-6. `[H]` Accept Remote Control once. The LaunchAgent already started `rc-serve` in tmux window `rc:<repo>`, which
-   waits at `Enable Remote Control? (y/n)`: `tmux attach -t rc:cc-orchestrator` → `y` → detach with `Ctrl-b d`.
-   (Equivalent: `cd ~/Documents/<any-repo> && claude remote-control` → `y` → Ctrl+C.)
+6. `[H]` Accept Remote Control once. The acceptance is **global**: `y` stores `remoteDialogSeen: true` in
+   `~/.claude.json`, and later `claude remote-control` runs do not ask again. But every `rc:<repo>` window that was
+   started before the acceptance is already waiting at `Enable Remote Control? (y/n)` and does not re-read it. So
+   answer once, then restart the rest:
+   ```bash
+   tmux attach -t rc:cc-orchestrator     # y, then detach with Ctrl-b d
+   tmux kill-session -t rc && rc-servers # every window restarts without the prompt
+   ```
+   (Equivalent: type `y` in each `rc:<repo>` window.)
 7. `[H]` Full Disk Access (System Settings → Privacy & Security → Full Disk Access → `+`, Cmd+Shift+G):
    `$(realpath /opt/homebrew/bin/tmux)` (the tmux server started by the LaunchAgent at login runs Agent View and the RC
    servers in `~/Documents`), and for phone access (Phase 6) `/usr/libexec/sshd-keygen-wrapper`,
    `$(realpath /opt/homebrew/bin/mosh-server)`. Check after the next login: `tmux ls` shows `agents` and `rc`, and
    `/tmp/cc-orchestrator-start.log` has no `Operation not permitted`.
-8. `repo-init <repo>` for each repo in `config/mac/repos.txt` (TTY; accept the trust prompt, `/exit`). It adds
+8. `repo-init <repo>` for each repo in `config/mac/repos.txt` (TTY; accept the trust prompt, `/exit`). Trust is per
+   directory (`projects["<dir>"].hasTrustDialogAccepted` in `~/.claude.json`); check which are missing with
+   `jq -r '.projects|to_entries[]|select(.value.hasTrustDialogAccepted)|.key' ~/.claude.json`. A repo with no commit
+   yet cannot create worktrees: make an initial commit first. It adds
    `.claude/worktrees/` to `.gitignore` and `.env`, `.env.local` to `.worktreeinclude` (commit those once in the repo),
    then runs `rc-servers`. New repo for the app: `repo-init --rc <repo>` (appends to `config/mac/repos.txt`).
 9. Phone access (Phase 6): `[H]` System Settings → General → Sharing → Remote Login, allow `nicolas` only;
    `sudo cp config/mac/sshd-100-keys-only.conf /etc/ssh/sshd_config.d/100-keys-only.conf`; Moshi key into
-   `~/.ssh/authorized_keys`; toggle Remote Login; firewall allow mosh-server; `sudo pmset -c sleep 0 displaysleep 10`.
+   `~/.ssh/authorized_keys`; toggle Remote Login; firewall rule for mosh-server (step 2a); `sudo pmset -c sleep 0 displaysleep 10`.
 10. [verify.md](verify.md) Mac section; `make doctor`.
 
 ## Restore the captured baseline by hand

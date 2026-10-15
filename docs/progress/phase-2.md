@@ -56,12 +56,24 @@ Date: 2026-10-14 · Branch: `phase-2-network` (stacked on `phase-1-capture`) · 
 - Until Phase 3 writes `Host cloud` (`User agent`) to `~/.ssh/config`, `ssh cloud` logs in as `nicolas`, which the
   policy denies. The Phase 2 checks use `agent@cloud`.
 - `make ssh VM=app CMD='a; b'` splits on `;` locally (the Makefile does not quote `$(CMD)`). Use `scripts/ssh.sh app '…'`.
-- Auth keys expire (≤ 90 days). Because node state is on `/data`, the key is only needed for a node without state.
-  Documented in rotate-secrets and the oci secrets-rotation.
+- Auth keys expire (≤ 90 days). Superseded on 2026-10-15: Vault now holds a non-expiring OAuth client secret.
 - `static-ip` is a member device, so it can reach the Mac and cloud (as it could under allow-all). It could be tagged
   later; that is out of scope here.
 
-## Outstanding (human)
+## Verified live (2026-10-15, after oci-infra#1 merged and host-synced; recorded in Phase 3b)
+- `cloud` = 100.64.0.10, `tag:cloud` (tagged-devices) on the tailnet.
+- Row 1: `ssh agent@cloud` works over Tailscale SSH and prints `agent@app`; mosh prints `MOSH_OK` (non-interactive
+  mosh needs a terminal size, see verify row 1).
+- Row 1a: `tailscale ping --icmp cloud` → pong. Row 1b: cloud → `macbook` ICMP ping times out (ACL blocks it).
+- Row 1i: VM iptables INPUT rule #7 `-i tailscale0 -p udp --dport 60000:61000 -j ACCEPT` sits before the REJECT and is
+  persisted once. A second `host-sync` is a no-op (`tailscale up as cloud.tailnet-example.ts.net.`).
+- Row 1d: the exit node `static-ip` still works (public IP 178.104.255.141); the Mac node is `macbook`.
+- Row 1c: Bastion break-glass `make ssh VM=app CMD=true` → rc 0.
+- Row 1j: the macOS Application Firewall (on, stealth) allows `mosh-client` and `mosh-server` (Cellar realpaths).
+- The join credential is now a non-expiring OAuth client secret (no rotation); the 90-day key was revoked. See
+  [ADR 0001](../decisions/0001-tailscale-on-oci.md) and [rotate-secrets](../runbooks/rotate-secrets.md).
+
+## Outstanding (human) — all done by 2026-10-15
 In order, as in [runbooks/tailscale.md](../runbooks/tailscale.md):
 1. Merge the live policy into the file and apply it.
 2. Generate the auth key and `secret-put` it.

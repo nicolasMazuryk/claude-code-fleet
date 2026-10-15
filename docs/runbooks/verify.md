@@ -6,13 +6,14 @@ Each phase's PR records the output of its rows. `make doctor` (Phase 7) automate
 
 | # | Area | Command / action | Expected | Phase |
 |---|---|---|---|---|
-| 1 | Network | Mac: `ssh agent@cloud true; echo $?` · `mosh agent@cloud -- true` (plain `cloud` once Phase 3 writes `~/.ssh/config`) | `0`; mosh connects | 2 |
-| 1a | Network | Mac: `tailscale ping --icmp -c 2 cloud` | pong | 2 |
-| 1b | Network | Mac: `ssh agent@cloud 'sudo tailscale ping --icmp -c 2 --timeout 3s macbook'` | no pong (ACL: no `src: tag:cloud`). Plain disco `tailscale ping` may pong: it runs below the ACL | 2 |
-| 1c | Network | Mac: `cd ~/Documents/oci && make ssh VM=app CMD=true` | Bastion still works | 2 |
-| 1d | Network | Mac: `curl -s https://ifconfig.me`; `tailscale status --self --peers=false` | the `static-ip` address; self is `macbook` | 2 |
-| 1h | Network | Admin console save of `config/tailscale/policy.hujson`; `bats tests/tailscale-policy.bats` | saved (policy `tests` pass); 3/3 ok | 2 |
-| 1i | Network | `cd ~/Documents/oci && scripts/ssh.sh app 'sudo iptables -S INPUT; sudo grep -c tailscale0 /etc/iptables/rules.v4'`; run `make host-sync VM=app` twice | `tailscale0` UDP 60000:61000 ACCEPT before the REJECT; count `1` after both runs | 2 |
+| 1 | Network | Mac: `ssh agent@cloud true; echo $?` · `script -q /dev/null sh -c 'stty rows 40 cols 120; mosh agent@cloud -- sh -c "sleep 2; echo MOSH_OK"'` (no TTY → mosh needs a size, else `Error: vector`; plain `cloud` once Phase 3 writes `~/.ssh/config`) | `0`; `MOSH_OK`. **2026-10-15: PASS** (prints `agent@app`) | 2 |
+| 1a | Network | Mac: `tailscale ping --icmp -c 2 cloud` | pong. **2026-10-15: PASS** (100.64.0.10) | 2 |
+| 1b | Network | Mac: `ssh agent@cloud 'sudo tailscale ping --icmp -c 2 --timeout 3s macbook'` | no pong (ACL: no `src: tag:cloud`). Plain disco `tailscale ping` may pong: it runs below the ACL. **2026-10-15: PASS** (times out) | 2 |
+| 1c | Network | Mac: `cd ~/Documents/oci && make ssh VM=app CMD=true` | Bastion still works. **2026-10-15: PASS** (`scripts/ssh.sh app true`, rc 0) | 2 |
+| 1d | Network | Mac: `curl -s https://ifconfig.me`; `tailscale status --self --peers=false` | the `static-ip` address; self is `macbook`. **2026-10-15: PASS** (178.104.255.141, `macbook`) | 2 |
+| 1h | Network | Admin console save of `config/tailscale/policy.hujson`; `bats tests/tailscale-policy.bats` | saved (policy `tests` pass); 3/3 ok. **2026-10-15: PASS** (applied by the owner) | 2 |
+| 1i | Network | `cd ~/Documents/oci && scripts/ssh.sh app 'sudo iptables -S INPUT; sudo grep -c tailscale0 /etc/iptables/rules.v4'`; run `make host-sync VM=app` twice | `tailscale0` UDP 60000:61000 ACCEPT before the REJECT; count `1` after both runs. **2026-10-15: PASS** (INPUT rule #7, before REJECT; 2nd host-sync: `tailscale up as cloud.tailnet-example.ts.net.`, no change) | 2 |
+| 1j | Network | `/usr/libexec/ApplicationFirewall/socketfilterfw --listapps \| grep -A1 mosh` | `mosh-client`, `mosh-server` at the current `realpath /opt/homebrew/bin/mosh-*`, "Allow incoming connections" | 2 |
 | 1e | Capture | `make capture`, then `make capture` again | 2nd run: `cc-capture: no changes` | 1 |
 | 1f | Capture | `bin/cc-capture --check; echo $?` | `config/ matches the Mac`, `0` | 1 |
 | 1g | Capture | `jq '[.hooks[][].hooks[] \| select(.command \| test("afplay"))] \| length' config/claude/settings.mac.json` | `4` | 1 |

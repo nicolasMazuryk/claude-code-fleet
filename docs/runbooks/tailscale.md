@@ -9,8 +9,11 @@ The cloud side (install, join, mosh rule) is in the oci repo: `host/app/bootstra
 - Mac node `macbook` (was `nicolas-macbook-pro`), member. Exit node `static-ip` (Hetzner, member, `~/Documents/static-ip`).
 - Cloud node `cloud` = `core-vm-app`, `tag:cloud`, Tailscale SSH on (users `agent`, `ubuntu`), `--accept-dns=false`
   (the VM keeps OCI's resolver). Its state is on `/data/core/tailscale`, so a restore from backup rejoins as the same node.
-- Auth key: Vault `core-secret-tailscale-authkey` (reusable, not ephemeral, tagged `tag:cloud`). Bootstrap reads it only
-  when the node has no state, and passes it as `--auth-key=file:…` (never on argv). Auth keys expire after at most 90 days.
+- Join credential: Vault `core-secret-tailscale-authkey` holds a **Tailscale OAuth client secret** (scope
+  `Auth Keys: Write`, tag `tag:cloud`), stored as `tskey-client-…?ephemeral=false&preauthorized=true`. Unlike an auth
+  key it **does not expire**, so it is never rotated or refreshed (owner's decision, 2026-10). `tailscale up` mints a
+  non-ephemeral, pre-approved `tag:cloud` node key from it. Bootstrap reads it only when the node has no state, and
+  passes it as `--auth-key=file:…` (never on argv). The original 90-day auth key was revoked.
 - mosh: iptables `-i tailscale0 -p udp --dport 60000:61000 -j ACCEPT` before the image's REJECT, live and in
   `/etc/iptables/rules.v4`. Tailscale SSH needs no port. No NSG change, no public IP.
 
@@ -27,11 +30,13 @@ The cloud side (install, join, mosh rule) is in the oci repo: `host/app/bootstra
    `tag:cloud` could reach a member device, or members could not SSH to `tag:cloud` as `agent`/`ubuntu`.
 4. Check that the exit node still works on the Mac: `curl -s https://ifconfig.me` → the `static-ip` address.
 
-## 2. `[H]` Create the auth key and store it in Vault
+## 2. `[H]` Create the OAuth client and store its secret in Vault (one time; never rotated)
 
-1. Admin console → **Settings → Keys → Generate auth key**: Reusable **on**, Ephemeral **off**, Pre-approved **on**
-   (if device approval is enabled), Tags **`tag:cloud`**, expiry 90 days. Copy it.
-2. In `~/Documents/oci`, from a real terminal: `make secret-put NAME=core-secret-tailscale-authkey` (hidden prompt).
+1. Admin console → **Settings → Trust credentials → OAuth → Generate OAuth client**: scope **Auth Keys: Write**,
+   tag **`tag:cloud`**. Copy the client secret (`tskey-client-…`); it is shown once.
+2. Append the join options to it, so the secret value is
+   `tskey-client-…?ephemeral=false&preauthorized=true` (a non-ephemeral, pre-approved node that survives reboots).
+3. In `~/Documents/oci`, from a real terminal: `make secret-put NAME=core-secret-tailscale-authkey` (hidden prompt).
    No TTY: `f=$(mktemp) && pbpaste > "$f" && make secret-put NAME=core-secret-tailscale-authkey FILE="$f"; rm -f "$f"; printf '' | pbcopy`.
 
 ## 3. `[H]` Ship the oci bootstrap to the VM
@@ -57,11 +62,14 @@ and `curl -s https://ifconfig.me` still returns the `static-ip` address.
 Until Phase 3 installs `Host cloud` (`User agent`) in `~/.ssh/config`, give the user explicitly.
 ```bash
 ssh -o StrictHostKeyChecking=accept-new agent@cloud true; echo $?            # 0  (Tailscale SSH, no key)
-mosh agent@cloud -- true; echo $?                                            # 0  (mosh: brew install mosh)
+script -q /dev/null sh -c 'stty rows 40 cols 120; mosh agent@cloud -- sh -c "sleep 2; echo MOSH_OK"'`  # MOSH_OK
 tailscale ping --icmp -c 2 cloud                                             # pong (Mac → cloud allowed)
 ssh agent@cloud 'sudo tailscale ping --icmp -c 2 --timeout 3s macbook'       # no pong: the ACL drops cloud → Mac
 cd ~/Documents/oci && make ssh VM=app CMD=true; echo $?                      # 0  (Bastion break-glass still works)
 ```
+mosh needs a terminal size: without a TTY (scripts, Claude Code's `!` shell) plain `mosh … -- true` fails with
+`Error: vector`, hence the `script`/`stty` wrapper. In a real terminal `mosh cloud` is enough. The Mac firewall must
+allow `mosh-client` ([mac-rebuild](mac-rebuild.md) step 2a).
 Plain `tailscale ping` (disco, no `--icmp`) from cloud may still get a pong: disco runs below the packet filter and
 does not mean cloud can open a connection. The ACL is proven by `--icmp` and by the policy `tests` that Tailscale
 evaluated on save. These are rows 1–1d in [verify](verify.md).
@@ -69,5 +77,6 @@ evaluated on save. These are rows 1–1d in [verify](verify.md).
 ## Rebuild notes
 - Restore from backup: the state on `/data` comes back, so the node is the same `cloud` and needs no key.
 - `make restore BACKUP=none` or a lost `/data`: delete the old `cloud` machine in the admin console first (or the new
-  node becomes `cloud-1`), and make sure Vault holds an unexpired key (step 2).
+  node becomes `cloud-1`), and make sure Vault holds the OAuth client secret (step 2; it does not expire, but check the OAuth client still exists
+  in the admin console).
 - The Mac (fresh install): log in to the Tailscale app, then step 4.

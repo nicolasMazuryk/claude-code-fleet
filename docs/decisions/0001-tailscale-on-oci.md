@@ -11,8 +11,8 @@ take ~30 s to create.
 
 ## Decision
 Install Tailscale on `core-vm-app` (in the oci bootstrap): `tailscale up --ssh --hostname cloud
---advertise-tags=tag:cloud --authkey $(secret_get core-secret-tailscale-authkey)`. The auth key is reusable and
-tagged, stored only in OCI Vault, so a rebuilt VM rejoins under the same name. mosh is allowed by an iptables rule on
+--advertise-tags=tag:cloud --authkey $(secret_get core-secret-tailscale-authkey)`. The credential is reusable and
+tagged (since 2026-10 a non-expiring OAuth client secret, see below), stored only in OCI Vault, so a rebuilt VM rejoins under the same name. mosh is allowed by an iptables rule on
 `tailscale0` only (UDP 60000–61000), inserted before Ubuntu's REJECT and persisted. Bastion stays as break-glass.
 
 The tailnet policy (`config/tailscale/policy.hujson`) adds `tag:cloud`; members → `*:*`; **no rule with
@@ -35,3 +35,9 @@ are merged, not replaced. The Mac node is renamed `macbook`.
   and by `tests/tailscale-policy.bats` in this repo.
 - Plain `tailscale ping` (disco) from cloud can still get a pong from the Mac: disco runs below the ACL. The check is
   `tailscale ping --icmp`, which the ACL drops.
+- Join credential (2026-10, owner's decision): the 90-day auth key was replaced by a **Tailscale OAuth client
+  secret** (scope `Auth Keys: Write`, tag `tag:cloud`) stored in the same Vault secret as
+  `tskey-client-…?ephemeral=false&preauthorized=true`. It does not expire, so no rotation or refresh procedure exists;
+  it is replaced only if it leaks or the OAuth client is deleted. The old auth key was revoked.
+- Verified live 2026-10-15: `cloud` 100.64.0.10 (`tag:cloud`); Mac → cloud ICMP pong; cloud → `macbook` ICMP
+  times out; mosh works; a second `host-sync` is a no-op.
