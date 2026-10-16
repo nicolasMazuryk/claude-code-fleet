@@ -16,7 +16,7 @@
 | Tapping a push opens ntfy, not the session | expected for Agent View background sessions (not bridged, no session URL); only app-started/interactive sessions get `(with Click)` in `push.log` ([iphone-setup](iphone-setup.md) §C) |
 | No `agents`/`rc` tmux sessions after login | `launchctl print gui/$(id -u)/cc-orchestrator.claude.agents`; `cat /tmp/cc-orchestrator-start.log`; start by hand: `cc-orchestrator-start` |
 | `rc:<repo>` window shows `Enable Remote Control? (y/n)` | Not accepted yet, or the window started before the (global) acceptance: `jq .remoteDialogSeen ~/.claude.json`. `null` → `tmux attach -t rc:<repo>` → `y` → `Ctrl-b d`. `true` → `tmux kill-window -t rc:<repo> && rc-servers` |
-| `am`/`ac` not found | new shell, or `. ~/.zshrc`; check `~/.config/cc-orchestrator/zshrc.snippet` links into this repo (`./install.sh mac`) |
+| `am`/`ac` not found | new shell, or `. ~/.zshrc`; `~/.config/cc-orchestrator/zshrc.snippet` must be a regular file, not a link into `~/Documents` (phone shells get "operation not permitted"; `./install.sh mac` copies it). Over ssh, `ac` without the snippet runs macOS's `/usr/sbin/ac` (prints "total …") |
 | `~/.local/bin/*` point into a deleted worktree | re-run `./install.sh mac` from `~/Documents/cc-orchestrator` (relinks bin/, rewrites `CC_ORCH_DIR`) |
 | Agent can't find node/pnpm | started without `agent-env`. Dispatch via Agent View / app; on Mac check nvm default alias exists |
 | Statusline shows errors / claude-hud half blank | `echo '{}' \| ~/.claude/statusline-combined.sh`; it needs `node` on PATH or an nvm version matching `~/.nvm/alias/default`; `npm i -g ccstatusline` under that node |

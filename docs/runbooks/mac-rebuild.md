@@ -33,7 +33,8 @@ Status: steps 1–8 runnable (Phase 3). Phone access (step 9) is Phase 6. `[H]` 
    - `brew install tmux mosh` if missing;
    - symlinks `bin/*` → `~/.local/bin/` (and drops links to scripts that no longer exist);
    - writes `~/.config/cc-orchestrator/config` from `config/mac/config.tmpl` (`CC_ORCH_DIR` = this checkout) and
-     links `~/.config/cc-orchestrator/zshrc.snippet` → `config/mac/zshrc.snippet`;
+     copies `config/mac/zshrc.snippet` → `~/.config/cc-orchestrator/zshrc.snippet` (a copy, not a link: phone
+     ssh/mosh shells can't read `~/Documents`; re-run `./install.sh mac` after editing the snippet);
    - `~/.tmux.conf`, `~/.claude/CLAUDE.md`, `~/.claude/statusline-combined.sh` (node path fix),
      `~/.claude/hooks/agent-push.sh` (copies);
    - restores **missing** baseline files from `config/claude/` (sounds, `statusline-sys.sh`, claude-hud files,

@@ -45,6 +45,9 @@ setup() {
   [ "$(stat -f %Lp "$HOME/.config/agent-push/topic")" = 600 ]
   grep -qE '^[0-9a-f]{32}$' "$HOME/.config/agent-push/topic"
   [ "$(grep -c 'zshrc.snippet' "$HOME/.zshrc")" -eq 1 ]
+  # a regular file (phone ssh/mosh shells can't follow a link into ~/Documents)
+  [ -f "$HOME/.config/cc-orchestrator/zshrc.snippet" ] && [ ! -L "$HOME/.config/cc-orchestrator/zshrc.snippet" ]
+  cmp "$REPO/config/mac/zshrc.snippet" "$HOME/.config/cc-orchestrator/zshrc.snippet"
   grep -qx 'alias c=claude' "$HOME/.zshrc"
   grep -qx 'Host cloud' "$HOME/.ssh/config"
   grep -qx '  User agent' "$HOME/.ssh/config"

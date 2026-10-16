@@ -7,7 +7,7 @@
 # mac, in order (each step prints "ok" when already in place, "updated"/"created" when it wrote something):
 #   tools       brew install tmux mosh if missing
 #   bin         ~/.local/bin/<script> → <repo>/bin/<script> (symlinks; editing the repo changes what runs)
-#   config      ~/.config/cc-orchestrator/config (from config/mac/config.tmpl), zshrc.snippet symlink
+#   config      ~/.config/cc-orchestrator/config (from config/mac/config.tmpl), zshrc.snippet copy
 #   tmux        ~/.tmux.conf
 #   claude      ~/.claude/CLAUDE.md, statusline-combined.sh (node path fix), hooks/agent-push.sh;
 #               baseline files from config/claude/ only where missing (sounds, skills, claude-hud, ccstatusline)
@@ -132,7 +132,8 @@ step_config() {
   local tmp
   tmp=$(mktemp); sed "s#@CC_ORCH_DIR@#$REPO#g" "$REPO/config/mac/config.tmpl" > "$tmp"
   install_file config "$tmp" "$HOME/.config/cc-orchestrator/config" 644; rm -f "$tmp"
-  link config "$REPO/config/mac/zshrc.snippet" "$HOME/.config/cc-orchestrator/zshrc.snippet"
+  # a copy, not a link: ssh/mosh shells (phone) cannot read ~/Documents (no Full Disk Access)
+  install_file config "$REPO/config/mac/zshrc.snippet" "$HOME/.config/cc-orchestrator/zshrc.snippet" 644
 }
 
 step_tmux() { install_file tmux "$REPO/config/mac/tmux.conf" "$HOME/.tmux.conf" 644; }
