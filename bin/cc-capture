@@ -86,8 +86,9 @@ for item in $optional; do
     cp -RL "$CLAUDE_DIR/$item" "$STAGE/claude/$item"
   fi
 done
-# hooks/agent-push.sh is installed from the repo's hooks/ by install.sh, not user state
+# hooks/agent-push.sh is installed from the repo's hooks/ by install.sh, not user state; backups are not state either
 rm -f "$STAGE/claude/hooks/agent-push.sh"
+find "$STAGE/claude" \( -name '*.bak.*' -o -name .DS_Store \) -type f -exec rm -f {} +
 if [ -d "$STAGE/claude/hooks" ]; then rmdir "$STAGE/claude/hooks" 2>/dev/null || true; fi
 if [ -d "$CLAUDE_DIR/plugins/claude-hud" ]; then
   mkdir -p "$STAGE/claude/plugins/claude-hud"

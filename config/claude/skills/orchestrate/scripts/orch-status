@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# orch-status <run-dir> [--json] — per job: live session state, waiting-for, context tokens, job state, step, age.
+set -euo pipefail
+run=${1:?usage: orch-status <run-dir> [--json]}; mode=${2:-table}
+agents=$(claude agents --json 2>/dev/null || echo '[]')
+ctx() { # context tokens of the session's last assistant message
+  local f; f=$(find "$HOME/.claude/projects" -name "$1.jsonl" -print -quit 2>/dev/null)
+  [ -n "$f" ] || { echo null; return; }
+  tail -n 400 "$f" | jq -R -s -c '[split("\n")[] | fromjson? | select(.type == "assistant" and .message.usage)]
+    | last | if . == null then null else .message.usage
+    | ((.input_tokens // 0) + (.cache_read_input_tokens // 0) + (.cache_creation_input_tokens // 0)) end'
+}
+rows="[]"
+for s in "$run"/jobs/*/status.json; do
+  [ -e "$s" ] || continue
+  sid=$(jq -r '.session_id // empty' "$s")
+  live=$(jq -c --arg sid "$sid" '[.[] | select($sid != "" and .sessionId == $sid)] | last // {}' <<<"$agents")
+  tok=null; [ -n "$sid" ] && tok=$(ctx "$sid")
+  rows=$(jq -c --slurpfile st "$s" --argjson live "$live" --argjson tok "$tok" '. + [ $st[0] + {
+      live: ($live.state // (if $live == {} then "absent" else "?" end)),
+      status: ($live.status // null), waiting_for: ($live.waitingFor // null), pid: ($live.pid // null),
+      ctx_tokens: $tok,
+      age_min: (if $st[0].updated_at then ((now - ($st[0].updated_at | fromdateiso8601)) / 60 | floor) else null end) } ]' <<<"$rows")
+done
+if [ "$mode" = --json ]; then jq . <<<"$rows"; exit 0; fi
+{ printf 'JOB\tSTATE\tLIVE\tWAITING\tCTX\tAGE\tSTEP\n'
+  jq -r '.[] | [.job, .state, .live, (.waiting_for // "-"), (.ctx_tokens // "-" | tostring), ((.age_min // "-" | tostring) + "m"),
+     ((.step // "-") + (if .needs_input then "  ?? " + .needs_input else "" end))] | @tsv' <<<"$rows"; } | column -t -s$'\t'

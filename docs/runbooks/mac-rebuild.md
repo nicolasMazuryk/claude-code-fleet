@@ -1,6 +1,6 @@
 # Rebuild the Mac
 
-Status: steps 1–8 runnable (Phase 3). Phone access (step 9) is Phase 6. `[H]` = human-only.
+Status: all steps runnable; dry-run drill 2026-10-17 (Phase 7, see `docs/progress/phase-7.md`). `[H]` = human-only.
 
 ## Facts
 - User `nicolas`; repos in `~/Documents`; node via nvm (`~/.nvm`, default alias v24.x), pnpm via corepack.
@@ -24,9 +24,9 @@ Status: steps 1–8 runnable (Phase 3). Phone access (step 9) is Phase 6. `[H]` 
    $fw --listapps | grep -A1 mosh      # both "Allow incoming connections"
    ```
    `brew upgrade mosh` changes the Cellar path (e.g. `…/mosh/1.4.0_43/…`), which drops the rule: re-run the loop after
-   every mosh upgrade. `cc-doctor` (Phase 7) is to check that the listed paths match `realpath` of the current binaries.
+   every mosh upgrade. `cc-doctor` (`tcc` line, via `mac-remote-access status`) checks that the allowed mosh-server path is the current Cellar `realpath`.
 3. Claude Code: `curl -fsSL https://claude.ai/install.sh | bash`; `[H]` `claude` → `/login`.
-4. `cd ~/Documents && gh repo clone nicolasMazuryk/claude-code-fleet && cd cc-orchestrator`.
+4. `cd ~/Documents && gh repo clone nicolasMazuryk/claude-code-fleet && cd claude-code-fleet`.
 5. `./install.sh mac` (idempotent; run it from the checkout that should be live, normally
    `~/Documents/claude-code-fleet` on `main`; re-run any time, a second run prints `install.sh mac: no changes`).
    What it does, in order (every overwritten file is backed up first as `<file>.bak.<timestamp>`):
@@ -62,7 +62,7 @@ Status: steps 1–8 runnable (Phase 3). Phone access (step 9) is Phase 6. `[H]` 
    started before the acceptance is already waiting at `Enable Remote Control? (y/n)` and does not re-read it. So
    answer once, then restart the rest:
    ```bash
-   tmux attach -t rc:cc-orchestrator     # y, then detach with Ctrl-b d
+   tmux attach -t rc:claude-code-fleet   # y, then detach with Ctrl-b d
    tmux kill-session -t rc && rc-servers # every window restarts without the prompt
    ```
    (Equivalent: type `y` in each `rc:<repo>` window.)

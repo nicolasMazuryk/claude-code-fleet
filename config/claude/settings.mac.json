@@ -5,6 +5,11 @@
   },
   "permissions": {
     "allow": [
+      "Bash(gh repo create:*)",
+      "Bash(gh repo edit:*)",
+      "Bash(gh repo rename:*)",
+      "Bash(git -C * push:*)",
+      "Bash(git push:*)",
       "mcp__plugin_playwright_playwright__*"
     ]
   },
