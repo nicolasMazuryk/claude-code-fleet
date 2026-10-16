@@ -20,6 +20,6 @@ cloud: `cc-capture`, `cc-sync-settings`, `cc-orchestrator-start`, `agent-relay`,
 | `cc-relay-hook` | cloud: queue a relayed Mac hook event for `agent-relay` | 4 (used in 5) |
 | `agent-relay [--handle]` | Mac (LaunchAgent): one ssh to cloud; presence up, relayed hook events down; runs the Mac's own hash-checked handler | 5 |
 | `mac-remote-access [status\|add-key <pub>\|selftest\|apply [--force]]` | Mac: phone access (Remote Login check, Moshi key, keys-only sshd drop-in, AC sleep, mosh firewall; `apply` uses sudo, lockout-guarded) | 6 |
-| `cc-doctor` | health check | 7 |
+| `cc-doctor [--local]` | health check: tools, config and links, units/LaunchAgents, RC servers = `repos.txt`, relay, ntfy topic, settings drift, Full Disk Access, mosh firewall, disk. On the Mac also cloud (`--local` there) and Mac → cloud settings parity. Exit 1 on any FAIL; never prints the topic | 7 |
 
 Rules: `#!/usr/bin/env bash`, idempotent, shellcheck-clean (`make lint`), bash 3.2 compatible if it runs on the Mac.

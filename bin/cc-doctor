@@ -1,0 +1,252 @@
+#!/usr/bin/env bash
+# cc-doctor [--local] — health check of this host (Phase 7). On the Mac it also checks cloud: over `ssh cloud` it
+# runs cloud's own `cc-doctor --local`, then compares cloud's settings.json with what cc-sync-settings would write.
+# Read-only, no sudo, never prints the ntfy topic. One line per check: ok | warn | FAIL | skip. Exit 1 on any FAIL.
+#   tools     tmux jq git node claude (Mac: + mosh; cloud: + gh), with versions
+#   config    ~/.config/cc-orchestrator/config + REPOS_FILE; ~/.local/bin links into this checkout;
+#             ~/.claude/hooks/agent-push.sh = the repo's hooks/agent-push.sh
+#   runtime   Mac: LaunchAgents agents (last exit 0) and relay (running), tmux session AGENTS_SESSION
+#             cloud: cc-agents active, tmux session AGENTS_SESSION, linger on, no legacy oci agent@* units
+#   rc        Mac: tmux "rc" windows = idle + every repos.txt repo that is a git repo
+#             cloud: cc-rc@<repo> active for every listed, cloned, trusted repo; untrusted ones "skip"; nothing else
+#   relay     Mac: relay copies current, the log's last connection line is "connected"
+#             cloud: the Mac relay's `tail -F` of events.jsonl is attached (warn when not: the Mac may be asleep)
+#   ntfy      ~/.config/agent-push/topic present, non-empty, mode 600
+#   settings  Mac: orchestrator keys + 4 afplay + 2 agent-push handlers; `cc-capture --check` (Mac = config/claude);
+#             cloud = `cc-sync-settings --print` (4 relayed)
+#             cloud: 4 cc-relay-hook stand-ins, permissions.defaultMode auto, session prefix cloud
+#   tcc       Mac: the launchd tmux server can read ~/Documents (Full Disk Access); no fresh "Operation not
+#             permitted" in /tmp/cc-orchestrator-start.log; `mac-remote-access status` (Remote Login, keys-only,
+#             phone key, AC sleep, mosh firewall rule = the current mosh-server Cellar path)
+#   disk      AGENTS_ROOT filesystem use (warn ≥ 80 %, FAIL ≥ 95 %); worktrees under AGENTS_ROOT/*/.claude/worktrees
+# Test switches: CC_DOCTOR_CLOUD (ssh host, default cloud; "" skips cloud), CC_DOCTOR_START_LOG, CC_DOCTOR_RELAY_LOG,
+# CC_DOCTOR_LA_DIR (LaunchAgents dir), CC_DOCTOR_LIBEXEC (relay copies), CC_DOCTOR_MRA (mac-remote-access command).
+# shellcheck disable=SC2088  # "~/..." in messages is text for the reader
+set -uo pipefail
+# shellcheck source=bin/agent-env
+. "$HOME/.local/bin/agent-env"
+src=$0; [ -L "$src" ] && src=$(readlink "$src")
+REPO=${CC_ORCH_DIR:-$(cd "$(dirname "$src")/.." && pwd)}
+local_only=0
+case ${1:-} in
+  --local) local_only=1 ;;
+  "") ;;
+  -h|--help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  *) echo "usage: cc-doctor [--local]" >&2; exit 2 ;;
+esac
+n_ok=0; n_warn=0; n_fail=0; n_skip=0
+
+emit() { # emit <ok|warn|FAIL|skip> <area> <detail>
+  case $1 in ok) n_ok=$((n_ok + 1)) ;; warn) n_warn=$((n_warn + 1)) ;; FAIL) n_fail=$((n_fail + 1)) ;; *) n_skip=$((n_skip + 1)) ;; esac
+  printf '%-6s %-4s %-9s %s\n' "$AGENT_HOST" "$1" "$2" "$3"
+}
+mode_of() { if [ "$(uname)" = Darwin ]; then stat -f %Lp "$1"; else stat -c %a "$1"; fi; }
+mtime() { if [ "$(uname)" = Darwin ]; then stat -f %m "$1"; else stat -c %Y "$1"; fi; }
+listed_repos() { grep -vE '^[[:space:]]*(#|$)' "$REPOS_FILE" | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//; s/^[[:space:]]*//' | sort -u; }
+words() { tr '\n' ' ' | sed 's/ $//'; }
+
+check_tools() {
+  local t v missing="" have=""
+  for t in tmux jq git node claude $([ "$AGENT_HOST" = mac ] && echo mosh || echo gh); do
+    command -v "$t" >/dev/null 2>&1 || { missing="$missing $t"; continue; }
+    case $t in
+      tmux) v=$(tmux -V 2>/dev/null | awk '{print $2}') ;;
+      node) v=$(node --version 2>/dev/null) ;;
+      claude) v=$(claude --version 2>/dev/null | awk '{print $1}') ;;
+      *) v="" ;;
+    esac
+    have="$have $t${v:+ $v}"
+  done
+  if [ -n "$missing" ]; then emit FAIL tools "missing:$missing"; else emit ok tools "${have# }"; fi
+}
+
+check_config() {
+  local f n bad="" skip=""
+  emit ok config "${CC_ORCH_CONFIG:-$HOME/.config/cc-orchestrator/config} (AGENT_HOST=$AGENT_HOST, AGENTS_ROOT=$AGENTS_ROOT)"
+  if [ -f "${REPOS_FILE:-}" ]; then emit ok config "repos: $(listed_repos | words)"
+  else emit FAIL config "REPOS_FILE ${REPOS_FILE:-unset} missing"; fi
+  # cloud links everything but install.sh's Mac-only list
+  [ "$AGENT_HOST" = cloud ] && skip=$(sed -n 's/^ *BIN_SKIP="\([^"]*\)".*/\1/p' "$REPO/install.sh")
+  for f in "$REPO"/bin/*; do
+    n=${f##*/}
+    case " README.md $skip " in *" $n "*) continue ;; esac
+    [ "$HOME/.local/bin/$n" -ef "$f" ] || bad="$bad $n"
+  done
+  if [ -n "$bad" ]; then emit FAIL config "~/.local/bin not linked to $REPO/bin:$bad (./install.sh $AGENT_HOST)"
+  else emit ok config "~/.local/bin → $REPO/bin"; fi
+  if cmp -s "$HOME/.claude/hooks/agent-push.sh" "$REPO/hooks/agent-push.sh"; then emit ok config "~/.claude/hooks/agent-push.sh current"
+  else emit FAIL config "~/.claude/hooks/agent-push.sh missing or differs from hooks/agent-push.sh (./install.sh mac; make sync)"; fi
+}
+
+check_ntfy() {
+  local t="$HOME/.config/agent-push/topic" m
+  if [ ! -s "$t" ]; then emit FAIL ntfy "~/.config/agent-push/topic missing or empty (no pushes)"; return; fi
+  m=$(mode_of "$t")
+  if [ "$m" = 600 ]; then emit ok ntfy "topic present (600)"; else emit FAIL ntfy "topic mode $m, want 600 (chmod 600)"; fi
+}
+
+check_disk() {
+  local pct n=0 kb=0 d s
+  pct=$(df -P "$AGENTS_ROOT" 2>/dev/null | awk 'NR == 2 {sub("%", "", $5); print $5}')
+  if [ -z "$pct" ]; then emit FAIL disk "df $AGENTS_ROOT failed"
+  elif [ "$pct" -ge 95 ]; then emit FAIL disk "$AGENTS_ROOT filesystem $pct% used"
+  elif [ "$pct" -ge 80 ]; then emit warn disk "$AGENTS_ROOT filesystem $pct% used"
+  else emit ok disk "$AGENTS_ROOT filesystem $pct% used"; fi
+  for d in "$AGENTS_ROOT"/*/.claude/worktrees/*/; do
+    [ -d "$d" ] || continue
+    n=$((n + 1)); s=$(du -sk "$d" 2>/dev/null | awk '{print $1}'); kb=$((kb + ${s:-0}))
+  done
+  emit ok disk "$n worktree(s), $((kb / 1024)) MB under $AGENTS_ROOT/*/.claude/worktrees"
+}
+
+mac_checks() {
+  local la uid out have want r missing extra log last pl
+  uid=$(id -u); la=${CC_DOCTOR_LA_DIR:-$HOME/Library/LaunchAgents}
+  # runtime
+  out=$(launchctl print "gui/$uid/cc-orchestrator.claude.agents" 2>/dev/null)
+  if [ -z "$out" ]; then emit FAIL runtime "LaunchAgent cc-orchestrator.claude.agents not loaded (./install.sh mac)"
+  elif grep -q 'last exit code = 0' <<<"$out"; then emit ok runtime "LaunchAgent cc-orchestrator.claude.agents loaded, last exit 0"
+  else emit FAIL runtime "LaunchAgent cc-orchestrator.claude.agents: $(grep -m1 'last exit' <<<"$out" | sed 's/^[[:space:]]*//')"; fi
+  out=$(launchctl print "gui/$uid/cc-orchestrator.claude.relay" 2>/dev/null)
+  if grep -q 'state = running' <<<"$out"; then emit ok runtime "LaunchAgent cc-orchestrator.claude.relay running"
+  else emit FAIL runtime "LaunchAgent cc-orchestrator.claude.relay not running (launchctl kickstart -k gui/$uid/cc-orchestrator.claude.relay)"; fi
+  if tmux has-session -t "=$AGENTS_SESSION" 2>/dev/null; then emit ok runtime "tmux session $AGENTS_SESSION (Agent View)"
+  else emit FAIL runtime "tmux session $AGENTS_SESSION missing (am)"; fi
+
+  # rc: same rule as rc-servers (listed and a git repo)
+  want=$(for r in $(listed_repos); do [ -e "$AGENTS_ROOT/$r/.git" ] && echo "$r"; done | sort)
+  have=$(tmux list-windows -t '=rc' -F '#W' 2>/dev/null | grep -vx idle | sort)
+  missing=$(comm -23 <(printf '%s\n' "$want") <(printf '%s\n' "$have") | grep . | words)
+  extra=$(comm -13 <(printf '%s\n' "$want") <(printf '%s\n' "$have") | grep . | words)
+  if [ -n "$missing$extra" ]; then emit FAIL rc "tmux rc${missing:+ missing: $missing}${extra:+ unlisted: $extra} (rc-servers)"
+  else emit ok rc "tmux rc windows = repos.txt: $(words <<<"$want")"; fi
+
+  # relay
+  local lib=${CC_DOCTOR_LIBEXEC:-$HOME/.local/libexec/cc-orchestrator} stale=""
+  for r in agent-relay agent-present; do cmp -s "$REPO/bin/$r" "$lib/$r" || stale="$stale $r"; done
+  if [ -n "$stale" ]; then emit FAIL relay "stale copies in $lib:$stale (./install.sh mac)"
+  else emit ok relay "copies in $lib current"; fi
+  log=${CC_DOCTOR_RELAY_LOG:-/tmp/agent-relay.log}
+  last=$(grep -E 'connected to |connection to .* ended' "$log" 2>/dev/null | tail -1)
+  case $last in
+    *"connected to "*) emit ok relay "${last#*agent-relay: } (since ${last:0:19})" ;;
+    "") emit FAIL relay "no connection in $log yet" ;;
+    *) emit FAIL relay "${last#*agent-relay: }" ;;
+  esac
+
+  check_ntfy
+
+  # settings
+  local s="$HOME/.claude/settings.json" q
+  # shellcheck disable=SC2016  # jq program
+  q='[.remoteControlAtStartup, .inputNeededNotifEnabled, .agentPushNotifEnabled, .env.CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX,
+      ([.hooks[]?[]?.hooks[]? | select((.command // "") | test("agent-push"))] | length),
+      ([.hooks[]?[]?.hooks[]? | select((.command // "") | test("afplay"))] | length)] | map(tostring) | join(" ")'
+  out=$(jq -r "$q" "$s" 2>/dev/null)
+  if [ "$out" = "true false false mac 2 4" ]; then emit ok settings "orchestrator keys, prefix mac, 2 agent-push + 4 afplay handlers"
+  else emit FAIL settings "~/.claude/settings.json: got '$out', want 'true false false mac 2 4' (remoteControlAtStartup inputNeeded agentPush prefix push afplay; ./install.sh mac)"; fi
+  if out=$(cc-capture --check 2>&1); then emit ok settings "config/claude matches the Mac (cc-capture --check)"
+  else emit warn settings "Mac differs from config/: $(grep -c 'differs:' <<<"$out") file(s) (make capture, review, commit)"; fi
+
+  # tcc: the default tmux server is the launchd-started one; run-shell runs in its TCC context
+  out=$(tmux run-shell "ls '$AGENTS_ROOT' >/dev/null 2>&1 && echo readable || echo denied" 2>/dev/null)
+  case $out in
+    readable) emit ok tcc "tmux server reads $AGENTS_ROOT (Full Disk Access)" ;;
+    denied) emit FAIL tcc "tmux server cannot read $AGENTS_ROOT: Full Disk Access for $(realpath "$(command -v tmux)")" ;;
+    *) emit warn tcc "no tmux server to ask about $AGENTS_ROOT access" ;;
+  esac
+  log=${CC_DOCTOR_START_LOG:-/tmp/cc-orchestrator-start.log}; pl="$la/cc-orchestrator.claude.agents.plist"
+  if [ -f "$log" ] && [ -f "$pl" ] && [ "$(mtime "$log")" -ge "$(mtime "$pl")" ] && grep -q 'Operation not permitted' "$log"; then
+    emit FAIL tcc "$log: Operation not permitted since the LaunchAgent changed (Full Disk Access for tmux)"
+  else emit ok tcc "no Operation not permitted from the agents LaunchAgent"; fi
+  if out=$(${CC_DOCTOR_MRA:-mac-remote-access} status 2>&1); then
+    emit ok tcc "mac-remote-access: $(awk '$1 == "firewall" {sub(/^firewall +(ok )?/, ""); print}' <<<"$out")"
+  else
+    emit FAIL tcc "mac-remote-access status: $(grep -vE '^[a-z-]+ +(on|ok|[1-9][0-9]* key)' <<<"$out" | grep -E '^[a-z]' | words)"
+  fi
+
+  check_disk
+}
+
+cloud_checks() {
+  local out r d listed active want_active=""
+  if systemctl is-active --quiet cc-agents; then emit ok runtime "cc-agents.service active"
+  else emit FAIL runtime "cc-agents.service not active (sudo systemctl restart cc-agents; journalctl -u cc-agents)"; fi
+  if tmux has-session -t "=$AGENTS_SESSION" 2>/dev/null; then emit ok runtime "tmux session $AGENTS_SESSION (Agent View)"
+  else emit FAIL runtime "tmux session $AGENTS_SESSION missing"; fi
+  if [ "$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null)" = yes ]; then emit ok runtime "linger on"
+  else emit FAIL runtime "linger off (./install.sh cloud)"; fi
+  out=$(systemctl list-units 'agent@*' --all --plain --no-legend 2>/dev/null | awk '{print $1}' | words)
+  if [ -n "$out" ]; then emit FAIL runtime "legacy oci units still present: $out (./install.sh cloud)"
+  else emit ok runtime "no legacy agent@* units"; fi
+
+  # rc: same rules as rc-servers
+  for r in $(listed_repos); do
+    d="$AGENTS_ROOT/$r"
+    if [ ! -d "$d/.git" ]; then emit FAIL rc "$r: not cloned (./install.sh cloud or repo-init $r)"; continue; fi
+    if ! jq -e --arg d "$d" '.projects[$d].hasTrustDialogAccepted == true' "$HOME/.claude.json" >/dev/null 2>&1; then
+      emit skip rc "$r: workspace not trusted, no server (ssh -t cloud 'cd $d && claude' to serve it)"; continue
+    fi
+    want_active="$want_active $r"
+    if systemctl is-active --quiet "cc-rc@$r"; then emit ok rc "cc-rc@$r active"
+    else emit FAIL rc "cc-rc@$r not active (rc-servers; journalctl -u cc-rc@$r)"; fi
+  done
+  active=$(systemctl list-units 'cc-rc@*' --all --plain --no-legend 2>/dev/null | awk '$3 == "active" {print $1}')
+  listed=""
+  for r in $active; do
+    r=${r#cc-rc@}; r=${r%.service}
+    case " $want_active " in *" $r "*) ;; *) listed="$listed $r" ;; esac
+  done
+  [ -n "$listed" ] && emit FAIL rc "cc-rc@ running for unlisted or untrusted:$listed (rc-servers)"
+
+  # relay: the Mac's agent-relay holds `tail -n0 -F events.jsonl` open over ssh
+  out=$(pgrep -f "tail -n0 -F $HOME/.local/state/agent-events/events.jsonl" 2>/dev/null | wc -l | tr -d ' ')
+  case $out in
+    1) emit ok relay "the Mac's agent-relay is attached" ;;
+    0) emit warn relay "no Mac agent-relay attached (Mac asleep or offline: no sounds, pushes still work)" ;;
+    *) emit warn relay "$out Mac agent-relay tails attached (stale ssh sessions?)" ;;
+  esac
+
+  check_ntfy
+
+  # shellcheck disable=SC2016  # jq program
+  out=$(jq -r '[([.hooks[]?[]?.hooks[]? | select((.command // "") | test("cc-relay-hook"))] | length),
+                .permissions.defaultMode, .env.CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX] | map(tostring) | join(" ")' \
+          "$HOME/.claude/settings.json" 2>/dev/null)
+  if [ "$out" = "4 auto cloud" ]; then emit ok settings "4 cc-relay-hook stand-ins, defaultMode auto, prefix cloud"
+  else emit FAIL settings "~/.claude/settings.json: got '$out', want '4 auto cloud' (relays defaultMode prefix; make sync on the Mac)"; fi
+
+  check_disk
+}
+
+check_tools
+check_config
+if [ "$AGENT_HOST" = mac ]; then mac_checks; else cloud_checks; fi
+
+CLOUD=${CC_DOCTOR_CLOUD-cloud}
+if [ "$AGENT_HOST" = mac ] && [ "$local_only" = 0 ] && [ -n "$CLOUD" ]; then
+  # shellcheck disable=SC2088  # ~ expands on cloud
+  if out=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$CLOUD" '~/.local/bin/cc-doctor --local' 2>&1) || [ -n "$out" ]; then
+    while IFS= read -r line; do
+      case $line in
+        "cc-doctor:"*) continue ;;
+        cloud\ *) printf '%s\n' "$line"
+          case $(awk '{print $2}' <<<"$line") in ok) n_ok=$((n_ok + 1)) ;; warn) n_warn=$((n_warn + 1)) ;;
+                                                  FAIL) n_fail=$((n_fail + 1)) ;; skip) n_skip=$((n_skip + 1)) ;; esac ;;
+        *) AGENT_HOST=cloud emit FAIL doctor "$line" ;;
+      esac
+    done <<<"$out"
+    # cloud's settings.json = what cc-sync-settings would write now
+    want=$(cc-sync-settings --print 2>"${TMPDIR:-/tmp}/cc-doctor.$$") ; relayed=$(grep -o '^[0-9]*' "${TMPDIR:-/tmp}/cc-doctor.$$")
+    rm -f "${TMPDIR:-/tmp}/cc-doctor.$$"
+    have=$(ssh -o BatchMode=yes -o ConnectTimeout=10 "$CLOUD" 'cat ~/.claude/settings.json' 2>/dev/null | jq -S . 2>/dev/null)
+    if [ "$relayed" != 4 ]; then AGENT_HOST=cloud emit FAIL settings "cc-sync-settings relays ${relayed:-?} handler(s), want 4"
+    elif [ -n "$want" ] && [ "$want" = "$have" ]; then AGENT_HOST=cloud emit ok settings "settings.json = cc-sync-settings output (in sync with the Mac)"
+    else AGENT_HOST=cloud emit FAIL settings "settings.json differs from the Mac's (make sync)"; fi
+  else
+    AGENT_HOST=cloud emit FAIL doctor "cloud unreachable over ssh $CLOUD"
+  fi
+fi
+
+printf 'cc-doctor: %d ok, %d warn, %d FAIL, %d skip\n' "$n_ok" "$n_warn" "$n_fail" "$n_skip"
+[ "$n_fail" -eq 0 ]

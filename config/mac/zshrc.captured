@@ -1,7 +1,7 @@
 # Captured from ~/.zshrc by cc-capture (blocks: # Claude Code, # Tailscale…). Reference, not sourced.
 
 # Tailscale static IP (Hetzner exit node)
-alias staticipup="tailscale set --exit-node=100.64.0.20 --exit-node-allow-lan-access"
+alias staticipup="tailscale set --exit-node=100.102.221.87 --exit-node-allow-lan-access"
 alias staticipdown="tailscale set --exit-node="
 
 # Claude Code

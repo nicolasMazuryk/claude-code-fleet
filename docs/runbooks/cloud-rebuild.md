@@ -54,7 +54,7 @@ Both steps are idempotent and can be re-run in any order afterwards: oci's boots
    - workspace trust for Agent View's root: `ac` → "Yes, I trust this folder" (for `/data/fleet`);
    - workspace trust per allowlisted repo: `ssh -t cloud 'repo-init <repo>'` → accept → `/exit`. `rc-servers` only
      starts `cc-rc@<repo>` for trusted repos (an untrusted one would crash-loop), so it starts here.
-6. Checks: [verify.md](verify.md) rows 3–3h and 6; `make doctor` (Phase 7).
+6. Checks: [verify.md](verify.md) rows 3–3h and 6; `make doctor` from the Mac (cloud lines all `ok` or `skip`).
 7. Reboot test (`[H]`, approval): `ssh cloud 'sudo reboot'`, wait ~1 min, then
    `ssh cloud 'systemctl is-active cc-agents; systemctl list-units "cc-rc@*" --no-legend; tmux ls'`.
 

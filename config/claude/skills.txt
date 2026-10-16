@@ -13,6 +13,7 @@ find-skills	link	→ ../../.agents/skills/find-skills (source: https://github.co
 google-workspace	synced	claude.ai
 import-memory	synced	claude.ai
 morning	synced	claude.ai
+orchestrate	local	config/claude/skills/orchestrate/
 pdf	synced	claude.ai
 pptx	synced	claude.ai
 skill-creator	synced	claude.ai

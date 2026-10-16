@@ -11,7 +11,7 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
      If anything still matches a secret pattern, it aborts and writes nothing. Remove the secret on the Mac (move it
      to Vault or a local file) and re-run.
    - Idempotent: an unchanged Mac prints `cc-capture: no changes`.
-   - `bin/cc-capture --check` writes nothing and exits 1 on drift (used by `cc-doctor` in Phase 7).
+   - `bin/cc-capture --check` writes nothing and exits 1 on drift (`cc-doctor` reports it as a `settings` warning).
 3. `make sync` (= `cc-sync-settings`) — mirrors to cloud. Must print **`4 macOS-only hook handler(s) relayed`**.
    - Fewer than 4: a sound hook changed or uses a tool outside `CC_MAC_ONLY`; fix before relying on cloud sounds.
    - It lists plugins enabled on the Mac but missing on cloud with the `claude plugin install` command to run;

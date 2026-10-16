@@ -120,3 +120,13 @@ cap() { run "$ROOT/bin/cc-capture" "$@"; }
   [ -f "$R/config/claude/skills/other/SKILL.md" ]
   [ "$(cat "$R/config/claude/CLAUDE.md")" = "repo rules" ]
 }
+
+@test "backups and agent-push.sh in ~/.claude/hooks are not captured" {
+  mkdir -p "$H/.claude/hooks"
+  printf '#!/bin/sh\n' > "$H/.claude/hooks/agent-push.sh"
+  printf '#!/bin/sh\n' > "$H/.claude/hooks/agent-push.sh.bak.20261016-190926"
+  printf '#!/bin/sh\necho mine\n' > "$H/.claude/hooks/mine.sh"
+  cap
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(ls "$R/config/claude/hooks")" = mine.sh ]
+}
