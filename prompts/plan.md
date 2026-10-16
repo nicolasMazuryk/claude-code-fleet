@@ -11,7 +11,7 @@
 | Mac repos root | `~/Projects` | `~/Documents` (32 git repos, no spaces; `FIO`, `fio.contracts`) |
 | Mac node | fnm | nvm (`~/.nvm`, node v24.21.0), pnpm via corepack |
 | Mac tools | tmux, mosh | **missing**; jq is `/usr/bin/jq`; cmux and Ghostty installed; gh, rsync in `/opt/homebrew` |
-| Mac Tailscale node | `macbook` | currently `nicolas-macbook-pro` (tailnet `tailnet-example`) → **rename to `macbook`**; exit node `static-ip` must stay working |
+| Mac Tailscale node | `macbook` | currently `nicolas-macbook` (tailnet `tailnet-example`) → **rename to `macbook`**; exit node `static-ip` must stay working |
 | Mac Remote Login | on | **off** |
 | Mac sound hooks | 1 Choo Choo hook | **4** `afplay ~/.claude/sounds/choo-choo.mp3` hooks: Stop (jq-guarded), Notification `permission_prompt\|elicitation_dialog`, PreToolUse `AskUserQuestion\|ExitPlanMode`, StopFailure |
 | Mac settings | — | `agentPushNotifEnabled`/`inputNeededNotifEnabled` = true, no `remoteControlAtStartup`, no `~/.claude/CLAUDE.md`, statusline script hardcodes missing node v24.13.0 (bug), plugins `warp`, `claude-hud`, `claude-md-management` |
