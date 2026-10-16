@@ -365,7 +365,7 @@ Remote Login on, for user `nicolas` only; `config/mac/sshd-100-keys-only.conf` â
 
 ```bash
 alias am='tmux -u new -A -s agents ~/.local/bin/agents-loop'
-alias ac='mosh cloud -- tmux -u new -A -s fleet ~/.local/bin/agents-loop'
+alias ac="mosh cloud -- tmux -u new -A -s fleet '\$HOME/.local/bin/agents-loop'"   # quoted: a bare ~ expands on the Mac
 # fleet is ~/.local/bin/fleet (on PATH)
 ```
 

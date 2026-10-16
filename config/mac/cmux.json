@@ -8,7 +8,7 @@
   "browser": { "defaultSearchEngine": "google", "openTerminalLinksInCmuxBrowser": true },
   "commands": [
     { "name": "Agents: Mac",   "keywords": ["agents", "mac"],   "command": "tmux -u new -A -s agents ~/.local/bin/agents-loop" },
-    { "name": "Agents: cloud", "keywords": ["agents", "cloud"], "command": "mosh cloud -- tmux -u new -A -s fleet ~/.local/bin/agents-loop" },
+    { "name": "Agents: cloud", "keywords": ["agents", "cloud"], "command": "mosh cloud -- tmux -u new -A -s fleet '$HOME/.local/bin/agents-loop'" },
     { "name": "Agents: fleet", "keywords": ["agents", "all"],   "command": "watch -n 15 ~/.local/bin/fleet" }
   ]
 }

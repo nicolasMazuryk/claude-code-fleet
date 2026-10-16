@@ -106,7 +106,8 @@ apply() {
   local force=0; [ "${1:-}" = --force ] && force=1
   if [ $force = 0 ]; then
     [ "$(phone_keys)" -gt 0 ] || { echo "apply: no phone key in $AK yet (add-key first) — refusing to go keys-only; --force overrides" >&2; return 1; }
-    ${MRA_SELFTEST:-"$0" selftest} | grep -qx 'KEY_LOGIN=ok' || { echo "apply: key login to this Mac does not work (mac-remote-access selftest) — refusing; --force overrides" >&2; return 1; }
+    local st; st=$(${MRA_SELFTEST:-"$0" selftest})   # read it all: `| grep -q` would SIGPIPE it (pipefail = fail)
+    grep -qx 'KEY_LOGIN=ok' <<<"$st" || { echo "apply: key login to this Mac does not work (mac-remote-access selftest) — refusing; --force overrides" >&2; return 1; }
   fi
   local changed=0
   if cmp -s "$CONF_SRC" "$CONF_DST"; then say keys-only "ok"

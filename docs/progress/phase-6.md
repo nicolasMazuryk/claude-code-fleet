@@ -66,3 +66,22 @@ blocked on the human (Remote Login)**.
 1. Remote Login on (System Settings → General → Sharing; only `nicolas`; "full disk access for remote users" off).
 2. Then resume the agent: `mac-remote-access selftest` → FDA decision with data → Moshi key → `add-key` → Moshi `mac`
    with the key → `mac-remote-access apply` in a real terminal → phone verify (row 7, 7d).
+
+## Continued by the supervisor with the human (2026-10-16 evening)
+- Remote Login turned on by the human (only `nicolas`; "Allow full disk access for remote users" off).
+- `mac-remote-access selftest`: `KEY_LOGIN=ok`, `SSH_DOCUMENTS=denied`, `MOSH_DOCUMENTS=denied`, `TMUX_SESSIONS=agents rc`,
+  `TMUX_SERVER_DOCUMENTS=readable`, `CLAUDE_LOGGED_IN=false`, `CLAUDE_KEYCHAIN=fails` (a bare `claude` over ssh cannot
+  reach the login Keychain; Agent View inside the login-started tmux server works). Temporary key removed afterwards.
+- **Decision (human): Full Disk Access for remote logins stays OFF.** The phone path is Agent View (`am` / `fleet`).
+- Moshi: "Bring your own SSH"; Ed25519 key generated on the iPhone, public half installed with `add-key`
+  (`SHA256:H5jCpZby2J/haM8+/P9CDGxCjoW6PRvHi/D1fuDwwvk moshi`, backup `authorized_keys.bak.20261016-213956`).
+  moshi-hook not installed (overlaps ntfy pushes; would add hooks outside the captured settings).
+- The iPhone was not on the tailnet at first ("DNS resolution failed" in Moshi); after signing in to Tailscale it
+  shows as `iphone` (100.64.0.30, direct). Both Moshi hosts connect over **mosh**; Moshi attached to tmux
+  `agents` on the Mac and `fleet` on cloud.
+- Bug fixed: `apply` piped `selftest` into `grep -q`; under `pipefail` the SIGPIPE made a working key login look
+  failed ("key login … does not work"). Now it reads the whole output first; the bats stub prints more after
+  `KEY_LOGIN=ok` to cover it.
+- Bug fixed: `ac` (and the cmux "Agents: cloud" command) passed `~/.local/bin/agents-loop` unquoted, so the Mac
+  expanded it to `/Users/nicolas/...`, a path that does not exist on cloud. It only worked because `cc-agents` keeps
+  `fleet` alive (tmux `-A` attaches). Now `'$HOME/...'` expands on cloud (checked: `/data/home/agent rc=0`).

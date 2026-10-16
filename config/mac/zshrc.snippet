@@ -1,5 +1,5 @@
 # cc-orchestrator shell shortcuts — sourced from ~/.zshrc via ~/.config/cc-orchestrator/zshrc.snippet
 # (a symlink to config/mac/zshrc.snippet). Existing aliases c, cc, ca, cw, cbg stay in ~/.zshrc as they are.
 alias am='tmux -u new -A -s agents ~/.local/bin/agents-loop'                 # Agent View on the Mac
-alias ac='mosh cloud -- tmux -u new -A -s fleet ~/.local/bin/agents-loop'    # Agent View on cloud
+alias ac="mosh cloud -- tmux -u new -A -s fleet '\$HOME/.local/bin/agents-loop'"   # Agent View on cloud ($HOME expands on cloud)
 # fleet: ~/.local/bin/fleet (on PATH) — every session on both hosts
