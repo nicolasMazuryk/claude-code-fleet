@@ -90,20 +90,20 @@ Access. If the tmux server isn't running (e.g. right after a crash), start it fr
 
 ## C. What a push tap opens
 
-`hooks/agent-push.sh` adds `Click: https://claude.ai/code/$CLAUDE_CODE_BRIDGE_SESSION_ID` when that variable is set
-in the hook's environment. Claude Code 2.1.301 sets it in its own process (hooks inherit it) **only while that session
-is bridged to Remote Control**. The value is the same compat id (`session_…`) the CLI uses to build its own session
-URL (`<base>/code/<id>`). So:
+Every push carries a `Click` URL. `hooks/agent-push.sh` uses
+`https://claude.ai/code/$CLAUDE_CODE_BRIDGE_SESSION_ID` when that variable is set in the hook's environment, else
+`https://claude.ai/code` (the Code tab). Claude Code sets the variable in its own process (hooks inherit it) only while
+that session is bridged to Remote Control. The value is the compat id (`session_…`) the CLI uses for its own session
+URL. In practice it was **unset** in every push tested in Phase 6, including the `Stop` of a session started from the
+Claude app on cloud (`push.log`: `Stop:- job=unset pushed "done"`, no link). So:
 
-| Push from | Click URL? | Tap opens |
+| Push from | Click URL | Tap opens |
 |---|---|---|
-| A session started from the Claude app (RC server `--spawn worktree`), or an interactive terminal `claude` with `remoteControlAtStartup` (its own `Stop` / `permission_prompt` hook) | yes | `claude.ai/code/session_…`: the Claude app if iOS hands the universal link to it, else Safari on claude.ai (same session, logged in) |
-| An Agent View background session (pushed by Agent View's `agent_needs_input` / `agent_completed`, from the `claude agents` process) | no | the ntfy app (message shows host + repo text); open Moshi → `am` / `fleet` host |
+| A session whose hook sees `CLAUDE_CODE_BRIDGE_SESSION_ID` | `claude.ai/code/session_…` | that session: the Claude app if iOS hands it the universal link, else Safari on claude.ai |
+| Everything else: app-started sessions (observed), Agent View pushes (`agent_needs_input` / `agent_completed` from the `claude agents` process), terminal sessions | `claude.ai/code` | the Claude app's Code tab (or claude.ai in Safari); pick `mac/<repo>` / `cloud/<repo>` from there. The push text names host + kind |
 
-Background sessions are not bridged: the variable is unset in this agent's own `--bg` session even with
-`remoteControlAtStartup: true`. There is no per-session URL to link, so the "tap opens the session in the Claude app"
-goal is reachable only for app-started or interactive sessions. `push.log` shows `pushed "…" (with Click)` when a
-link was attached.
+A per-session deep link is not possible while Claude Code doesn't expose the session id to hooks. `push.log` shows
+`pushed "…" (with Click)` for a session link and `pushed "…" (Click: Code tab)` for the fallback.
 
 ## D. Verify ([verify.md](verify.md) row 7)
 
@@ -112,5 +112,5 @@ From the phone, on **both** `cloud` and `mac`:
 - **peek-reply**: select the row, peek (Space), type a reply, Enter → the session continues;
 - **attach-approve**: `→` to attach to a session waiting on a permission prompt (ask it for something that needs
   one, e.g. a command outside the allowlist on the Mac), approve, `←` to detach;
-- **push tap**: lock the Mac, start a session from the Claude app, let it finish → the push has a Click URL
-  (`push.log` `(with Click)`), and the tap opens that session.
+- **push tap**: lock the Mac, start a session from the Claude app, let it finish → the tap opens that session
+  (`push.log` `(with Click)`) or the Claude app's Code tab (`(Click: Code tab)`), never the ntfy app.

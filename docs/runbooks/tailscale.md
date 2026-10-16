@@ -36,14 +36,14 @@ The cloud side (install, join, mosh rule) is in the oci repo: `host/cloud/bootst
    tag **`tag:cloud`**. Copy the client secret (`tskey-client-…`); it is shown once.
 2. Append the join options to it, so the secret value is
    `tskey-client-…?ephemeral=false&preauthorized=true` (a non-ephemeral, pre-approved node that survives reboots).
-3. In `~/Documents/oci`, from a real terminal: `make secret-put NAME=core-secret-tailscale-authkey` (hidden prompt).
+3. In `~/Documents/oci-free-tier-platform`, from a real terminal: `make secret-put NAME=core-secret-tailscale-authkey` (hidden prompt).
    No TTY: `f=$(mktemp) && pbpaste > "$f" && make secret-put NAME=core-secret-tailscale-authkey FILE="$f"; rm -f "$f"; printf '' | pbcopy`.
 
 ## 3. `[H]` Ship the oci bootstrap to the VM
 
-The oci change must be on the checkout you sync from (merge its PR, then `git -C ~/Documents/oci pull`).
+The oci change must be on the checkout you sync from (merge its PR, then `git -C ~/Documents/oci-free-tier-platform pull`).
 ```bash
-cd ~/Documents/oci && make host-sync VM=cloud
+cd ~/Documents/oci-free-tier-platform && make host-sync VM=cloud
 scripts/ssh.sh cloud 'grep -iE "tailscale|tailnet" /var/log/core-bootstrap.log | tail -5; tailscale status; sudo iptables -S INPUT | grep 60000'
 ```
 Expected: `tailscale joined as cloud.tailnet-example.ts.net.`; `tailscale status` lists `cloud` and `macbook`; the
@@ -65,7 +65,7 @@ ssh -o StrictHostKeyChecking=accept-new agent@cloud true; echo $?            # 0
 script -q /dev/null sh -c 'stty rows 40 cols 120; mosh agent@cloud -- sh -c "sleep 2; echo MOSH_OK"'`  # MOSH_OK
 tailscale ping --icmp -c 2 cloud                                             # pong (Mac → cloud allowed)
 ssh agent@cloud 'sudo tailscale ping --icmp -c 2 --timeout 3s macbook'       # no pong: the ACL drops cloud → Mac
-cd ~/Documents/oci && make ssh VM=cloud CMD=true; echo $?                      # 0  (Bastion break-glass still works)
+cd ~/Documents/oci-free-tier-platform && make ssh VM=cloud CMD=true; echo $?                      # 0  (Bastion break-glass still works)
 ```
 mosh needs a terminal size: without a TTY (scripts, Claude Code's `!` shell) plain `mosh … -- true` fails with
 `Error: vector`, hence the `script`/`stty` wrapper. In a real terminal `mosh cloud` is enough. The Mac firewall must

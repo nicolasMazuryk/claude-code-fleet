@@ -26,9 +26,9 @@ Status: steps 1–8 runnable (Phase 3). Phone access (step 9) is Phase 6. `[H]` 
    `brew upgrade mosh` changes the Cellar path (e.g. `…/mosh/1.4.0_43/…`), which drops the rule: re-run the loop after
    every mosh upgrade. `cc-doctor` (Phase 7) is to check that the listed paths match `realpath` of the current binaries.
 3. Claude Code: `curl -fsSL https://claude.ai/install.sh | bash`; `[H]` `claude` → `/login`.
-4. `cd ~/Documents && gh repo clone nicolasMazuryk/cc-orchestrator && cd cc-orchestrator`.
+4. `cd ~/Documents && gh repo clone nicolasMazuryk/claude-code-fleet && cd cc-orchestrator`.
 5. `./install.sh mac` (idempotent; run it from the checkout that should be live, normally
-   `~/Documents/cc-orchestrator` on `main`; re-run any time, a second run prints `install.sh mac: no changes`).
+   `~/Documents/claude-code-fleet` on `main`; re-run any time, a second run prints `install.sh mac: no changes`).
    What it does, in order (every overwritten file is backed up first as `<file>.bak.<timestamp>`):
    - `brew install tmux mosh` if missing;
    - symlinks `bin/*` → `~/.local/bin/` (and drops links to scripts that no longer exist);

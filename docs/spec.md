@@ -43,7 +43,7 @@ AGENT_HOST=mac
 AGENTS_ROOT="$HOME/Documents"
 AGENTS_SESSION=agents
 AGENT_PERMISSION_MODE=auto
-CC_ORCH_DIR="$HOME/Documents/cc-orchestrator"
+CC_ORCH_DIR="$HOME/Documents/claude-code-fleet"
 REPOS_FILE="$CC_ORCH_DIR/config/mac/repos.txt"
 ```
 
@@ -53,7 +53,7 @@ AGENT_HOST=cloud
 AGENTS_ROOT=/data/fleet
 AGENTS_SESSION=fleet
 AGENT_PERMISSION_MODE=auto
-CC_ORCH_DIR=/data/home/agent/cc-orchestrator      # rsynced by install.sh cloud
+CC_ORCH_DIR=/data/home/agent/claude-code-fleet      # rsynced by install.sh cloud
 REPOS_FILE="$CC_ORCH_DIR/config/cloud/repos.txt"
 ```
 
@@ -260,7 +260,7 @@ As the original §2.8 with `ssh cloud` = `agent@cloud` and the remote command
 
 ## 3. Cloud (`core-vm-cloud`, Ubuntu 24.04 arm64)
 
-### 3.1 Bootstrap — owned by `~/Documents/oci` (Phase 2/4, via oci PRs)
+### 3.1 Bootstrap — owned by `~/Documents/oci-free-tier-platform` (Phase 2/4, via oci PRs)
 
 The machine part of the original §3.1 is done by oci `host/cloud/bootstrap.sh` and `make host-sync VM=cloud`:
 packages (git, tmux, mosh, jq, rsync, gh, build-essential, …), Node 24 + corepack, `agent` user + linger,
@@ -282,7 +282,7 @@ Human, once: `sudo -iu agent claude auth login` (persists on `/data`).
 
 ### 3.2 Install from the Mac: `./install.sh cloud` (Phase 4)
 
-Replaces the original's `scp` list: rsync this repo to `/data/home/agent/cc-orchestrator`, install the Claude Code
+Replaces the original's `scp` list: rsync this repo to `/data/home/agent/claude-code-fleet`, install the Claude Code
 binary if missing (this repo owns it since Phase 4b), symlink `bin/*` into `/data/home/agent/.local/bin`, write the
 cloud config (`config/cloud/config.tmpl`), install tmux.conf, the ntfy topic, the systemd units and rsyslog rule,
 migrate `agent@*` → `cc-rc@*` (legacy kept for `--rollback`), clone `config/cloud/repos.txt`, then run

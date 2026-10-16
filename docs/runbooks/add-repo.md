@@ -22,7 +22,7 @@ in to claude.ai and to gh (`ssh cloud 'claude auth status; gh auth status'`); Re
    (equivalent: `repo-init --rc <repo>` run on the Mac's checkout edits the same file; on cloud `--rc` would edit the
    rsynced copy, which the next `install.sh cloud` overwrites, so always edit the list on the Mac):
    ```bash
-   cd ~/Documents/cc-orchestrator
+   cd ~/Documents/claude-code-fleet
    echo '<repo>' >> config/cloud/repos.txt
    git switch -c feat/add-<repo>-cloud && git commit -am "cloud: add <repo> to RC allowlist"   # PR as usual
    ```
@@ -62,7 +62,7 @@ repo-init <name | path | git-url>      # clones into ~/Documents if a URL; accep
                                        # (--no-trust skips the claude step, e.g. without a TTY)
 # for the Claude app:
 repo-init --rc <repo>                  # appends to config/mac/repos.txt, starts window rc:<repo>
-cd ~/Documents/cc-orchestrator && git diff config/mac/repos.txt   # commit via branch + PR
+cd ~/Documents/claude-code-fleet && git diff config/mac/repos.txt   # commit via branch + PR
 ```
 Verify: `tmux list-windows -t rc` shows `<repo>`; the app lists `mac/<repo>`. A new server window first asks
 `Enable Remote Control? (y/n)` until Remote Control has been accepted once on this Mac (`tmux attach -t rc:<repo>`).

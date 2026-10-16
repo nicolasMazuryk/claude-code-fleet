@@ -85,3 +85,27 @@ blocked on the human (Remote Login)**.
 - Bug fixed: `ac` (and the cmux "Agents: cloud" command) passed `~/.local/bin/agents-loop` unquoted, so the Mac
   expanded it to `/Users/nicolas/...`, a path that does not exist on cloud. It only worked because `cc-agents` keeps
   `fleet` alive (tmux `-A` attaches). Now `'$HOME/...'` expands on cloud (checked: `/data/home/agent rc=0`).
+- Correction: Moshi's mosh transport is a Pro feature. On the free tier both hosts connect over **SSH** even with
+  "Mosh" selected. **Decision (human): option A, stay on free SSH** (mosh keeps working from other clients).
+- Phone verify (human, 2026-10-16): `am` on `mac` and `ac` on `cloud` open Agent View; dispatch, peek-reply and
+  attach-approve work on **both hosts** (row 7: PASS). Cloud `ac`/`am` shortcuts added in `~/.bashrc` (PR #15).
+- Push tap (row 7d): Mac locked, session started from the Claude app on cloud → sound on the Mac and an ntfy push on
+  the iPhone, but the tap opened the ntfy app: the hook saw no `CLAUDE_CODE_BRIDGE_SESSION_ID`
+  (`Stop:- job=unset pushed "done"`). **Decision (human): every push now opens the Claude app's Code tab**
+  (`Click: https://claude.ai/code`) unless a session id is available. Re-check pending.
+
+## Repo renames (2026-10-16, with the human)
+Another agent (github-portfolio) renamed and republished the GitHub repos. Final names, the same on GitHub, the Mac
+(`~/Documents/<name>`), cloud (`/data/fleet/<name>`, `cc-rc@<name>`) and the Claude app (`<host>/<name>`):
+- `cc-orchestrator` → **`claude-code-fleet`** (public; full history). Cloud rsync copy `~/cc-orchestrator` →
+  `~/claude-code-fleet` (`install.sh cloud`).
+- `oci` / `oci-infra` → **`oci-free-tier-platform`** (public).
+- `job-hunt` → **`job-search-pipeline`** (private, same history). Mac: the stale `job-hunt` checkout moved to
+  `~/repo-backups/folders/job-hunt-2026-10-16` (bundle with `backup/pre-email-rewrite`:
+  `~/repo-backups/job-hunt-2026-10-16-prerename.bundle`). Cloud: folder renamed, remote re-pointed.
+- `wick-sweep-reclaim` → **`wick-sweep-reclaim-backtester`** (public, rewritten history). Cloud: the old clone moved
+  to `~/repo-backups/wick-sweep-reclaim-2026-10-16` (+ `wick-sweep-reclaim-cloud-2026-10-16.bundle`), a fresh clone
+  of the new repo took its place.
+- The `*-old` GitHub repos were deleted by that agent after bundling every branch and PR ref into
+  `~/repo-backups/` on the Mac (checked: wick 7550190 + 3 branches, oci a018e33 + PR heads, cc-orchestrator full).
+- Workspace trust is per path: the two new cloud folders need one trust prompt each before `cc-rc@` starts.

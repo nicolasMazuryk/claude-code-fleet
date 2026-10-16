@@ -1,7 +1,7 @@
 # bin/
 
 Scripts symlinked into `~/.local/bin` on both hosts by `install.sh` (editing them here changes what runs; on cloud
-the links point into the rsync copy `~/cc-orchestrator`, refreshed by `./install.sh cloud`). Mac-only, not linked on
+the links point into the rsync copy `~/claude-code-fleet`, refreshed by `./install.sh cloud`). Mac-only, not linked on
 cloud: `cc-capture`, `cc-sync-settings`, `cc-orchestrator-start`, `agent-relay`, `mac-remote-access`. The relay LaunchAgent runs copies of
 `agent-relay` and `agent-present` in `~/.local/libexec/cc-orchestrator/` (launchd can't read `~/Documents`);
 `./install.sh mac` refreshes them.

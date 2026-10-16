@@ -35,7 +35,7 @@ Adapted from `prompts/prompt.md` §1 for the real machines. Details and code: [s
 
 | Component | Where | Owner |
 |---|---|---|
-| VM, `/data` volume, `agent` user, apt packages, Node, Tailscale daemon + `tailscale up`, mosh iptables rule, Vault secrets | cloud | `~/Documents/oci` (`host/cloud/bootstrap.sh`, `make host-sync VM=cloud`) |
+| VM, `/data` volume, `agent` user, apt packages, Node, Tailscale daemon + `tailscale up`, mosh iptables rule, Vault secrets | cloud | `~/Documents/oci-free-tier-platform` (`host/cloud/bootstrap.sh`, `make host-sync VM=cloud`) |
 | Claude Code binary, Agent View, RC servers (`cc-rc@`, `cc-agents`), hooks, settings, scripts in `bin/` | both | this repo (`install.sh`) |
 | Tailnet policy | Tailscale admin console | this repo (`config/tailscale/policy.hujson`, applied by a human) |
 | Mac Remote Login, Full Disk Access, firewall | Mac | this repo's runbooks (manual, human) |

@@ -4,7 +4,7 @@
 - Plan: Phases 2 and 4
 
 ## Context
-`~/Documents/oci` (`host/cloud/bootstrap.sh`) currently installs Claude Code, an `agent@<repo>.service` (tmux +
+`~/Documents/oci-free-tier-platform` (`host/cloud/bootstrap.sh`) currently installs Claude Code, an `agent@<repo>.service` (tmux +
 `claude remote-control --spawn worktree`), a `/usr/local/bin/fleet` CLI, and writes `~agent/.claude/settings.json`.
 Two repos configuring Claude Code would drift.
 

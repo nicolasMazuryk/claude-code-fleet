@@ -50,6 +50,13 @@ pushed() { [ -s "$LOG" ]; }
 @test "bridge session id adds a Click header" {
   CLAUDE_CODE_BRIDGE_SESSION_ID=abc push '{"hook_event_name":"Stop"}'
   grep -q 'Click: https://claude.ai/code/abc' "$LOG"
+  grep -q 'pushed "done" (with Click)' "$HOME/.local/state/agent-push/push.log"
+}
+
+@test "no bridge session id: Click opens the Claude app's Code tab" {
+  push '{"hook_event_name":"Stop"}'
+  grep -qx 'Click: https://claude.ai/code' "$LOG"
+  grep -q 'pushed "done" (Click: Code tab)' "$HOME/.local/state/agent-push/push.log"
 }
 
 @test "no topic file: no push, exit 0" {

@@ -1,6 +1,6 @@
 # Rotate secrets
 
-No secret is ever in git. Vault writes use the oci repo (`cd ~/Documents/oci`); they are **human** steps.
+No secret is ever in git. Vault writes use the oci repo (`cd ~/Documents/oci-free-tier-platform`); they are **human** steps.
 
 | Secret | Where it lives | Rotate |
 |---|---|---|
