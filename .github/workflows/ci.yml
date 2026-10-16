@@ -5,10 +5,10 @@ on:
   pull_request:
 jobs:
   lint-test:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install tools
-        run: sudo apt-get update && sudo apt-get install -y shellcheck bats jq
+        run: brew install shellcheck bats-core jq
       - run: make lint
       - run: make test
