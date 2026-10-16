@@ -50,6 +50,15 @@ windows() { tmux list-windows -t '=rc' -F '#W' | sort | tr '\n' ' '; }
   [[ "$(windows)" == *"c"* ]]
 }
 
+@test "repo-init keeps the last line of a .gitignore without a trailing newline" {
+  printf 'archive/\nbacklog/' > "$HOME/root/c/.gitignore"
+  printf 'a' > "$BATS_TEST_TMPDIR/repos.txt"
+  run "$HOME/.local/bin/repo-init" --rc --no-trust c
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(cat "$HOME/root/c/.gitignore")" = "$(printf 'archive/\nbacklog/\n.claude/worktrees/')" ]
+  [ "$(cat "$BATS_TEST_TMPDIR/repos.txt")" = "$(printf 'a\nc')" ]
+}
+
 @test "repo-init without --rc does not start a server" {
   run "$HOME/.local/bin/repo-init" --no-trust c
   [ "$status" -eq 0 ]
