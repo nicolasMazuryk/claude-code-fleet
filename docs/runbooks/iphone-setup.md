@@ -75,8 +75,10 @@ Access. If the tmux server isn't running (e.g. right after a crash), start it fr
      identity), mosh on, default mosh-server.
    - `mac`: host `macbook`, user `nicolas`, key = the Moshi key from A.3, mosh on, mosh-server
      `/opt/homebrew/bin/mosh-server` (a non-login ssh command doesn't have Homebrew on PATH).
-   - Startup command, if Moshi offers it (else type it after connecting; on the Mac `am` also works, it's in
-     `~/.zshrc`): see the table.
+   - Startup command, if Moshi offers it, else type a shortcut after connecting: **`am` on the Mac, `ac` on cloud**
+     (both open that host's Agent View; on cloud `am` only prints a hint, since cloud never connects to the Mac).
+   - Connection type: set **Mosh** explicitly (with the mosh-server path on `mac`). With *Auto*, Moshi falls back to
+     SSH without saying why; an explicit Mosh shows the error instead.
 3. `[H]` **ntfy** (App Store "ntfy", Philipp Heckel): already subscribed in Phase 5. If you re-add it, the topic is
    the content of `~/.config/agent-push/topic` on the Mac. Read it yourself, e.g. `pbcopy <
    ~/.config/agent-push/topic` and paste on the phone with Universal Clipboard. Never paste it into git, chat logs or

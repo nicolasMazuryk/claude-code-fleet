@@ -86,6 +86,11 @@ local_setup() {
   head -n1 "$HOME/.bashrc" | grep -q 'cc-orchestrator: ~/.local/bin on PATH'
   grep -q 'Ubuntu .bashrc' "$HOME/.bashrc"
   ls "$HOME"/.bashrc.bak.* >/dev/null
+  # ac/am shortcuts: sourced at the end (interactive shells only); ac attaches the local fleet session
+  tail -n1 "$HOME/.bashrc" | grep -q 'bashrc.snippet'
+  [ -L "$HOME/.config/cc-orchestrator/bashrc.snippet" ]
+  run bash -c $'shopt -s expand_aliases\n. "$HOME/.config/cc-orchestrator/bashrc.snippet"\nalias ac\nam'
+  [[ "$output" == *"tmux -u new -A -s fleet ~/.local/bin/agents-loop"* ]] && [[ "$output" == *"never connects to the Mac"* ]] && [ "$status" -ne 0 ]
 }
 
 @test "cloud-local: second run changes nothing" {
