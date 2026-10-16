@@ -5,7 +5,7 @@ Status: steps 1–8 runnable (Phase 3). Phone access (step 9) is Phase 6. `[H]` 
 ## Facts
 - User `nicolas`; repos in `~/Documents`; node via nvm (`~/.nvm`, default alias v24.x), pnpm via corepack.
 - `jq` is `/usr/bin/jq`; gh, rsync in `/opt/homebrew/bin`; cmux and Ghostty installed.
-- Tailscale node name **`macbook`** (tailnet `tailnet-example`; was `nicolas-macbook-pro`). Exit node `static-ip` must keep working.
+- Tailscale node name **`macbook`** (tailnet `tailnet-example`; was `nicolas-macbook`). Exit node `static-ip` must keep working.
 - macOS hostname **`nicolas-macbook`**: ComputerName, LocalHostName and HostName, so it is also the Remote Control
   device name. `[H]` on a new Mac (sudo prompts):
   `for k in ComputerName LocalHostName HostName; do sudo scutil --set $k nicolas-macbook; done`.

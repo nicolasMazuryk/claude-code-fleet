@@ -49,7 +49,7 @@ Prepare the exact commands, make them resumable, and list them for the human.
 
 | Thing | Mac | Cloud |
 |---|---|---|
-| Host / Tailscale name | `macbook` (tailnet `tailnet-example`; was `nicolas-macbook-pro`) | `cloud` = `core-vm-cloud`, `tag:cloud` |
+| Host / Tailscale name | `macbook` (tailnet `tailnet-example`; was `nicolas-macbook`) | `cloud` = `core-vm-cloud`, `tag:cloud` |
 | OS hostname (= Remote Control device name) | `nicolas-macbook` (ComputerName/LocalHostName/HostName) | `cloud` (pinned by the oci bootstrap; was `app`) |
 | User / home | `nicolas`, `/Users/nicolas` | `agent`, `/data/home/agent` (on persistent `/data`) |
 | `AGENTS_ROOT` | `~/Documents` | `/data/fleet` |

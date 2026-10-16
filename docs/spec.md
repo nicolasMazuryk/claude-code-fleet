@@ -14,7 +14,7 @@ Code here is the design reference for the phase that implements it; the phase nu
 | `~/src` (cloud `AGENTS_ROOT`) | `/data/fleet` | persistent 100 GB `/data` volume |
 | cloud user `ubuntu`, home `/home/ubuntu` | user **`agent`**, home `/data/home/agent` | oci bootstrap creates `agent`; survives restore |
 | host `cloud` on port 22 | `core-vm-cloud`, Tailscale node `cloud` (`tag:cloud`), no public IP | [ADR 0001](decisions/0001-tailscale-on-oci.md) |
-| Mac Tailscale name `macbook` | rename `nicolas-macbook-pro` → `macbook` (tailnet `tailnet-example`) | Phase 2 |
+| Mac Tailscale name `macbook` | rename `nicolas-macbook` → `macbook` (tailnet `tailnet-example`) | Phase 2 |
 | fnm | Mac: nvm (`~/.nvm`, Node 24); cloud: system Node 24 (NodeSource) | real setup |
 | `@reboot` cron on cloud | systemd `cc-agents.service` + `cc-rc@<repo>.service`, `loginctl enable-linger agent` | systemd is already used by oci |
 | cloud tmux session `rc` | one systemd unit per repo (`cc-rc@<repo>`) | successor of oci `agent@<repo>` |

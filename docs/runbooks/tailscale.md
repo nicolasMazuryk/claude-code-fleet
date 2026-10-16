@@ -6,7 +6,7 @@ The cloud side (install, join, mosh rule) is in the oci repo: `host/cloud/bootst
 
 ## Facts
 - Tailnet `example.github`, MagicDNS suffix `tailnet-example.ts.net`, login `user@github`.
-- Mac node `macbook` (was `nicolas-macbook-pro`), member. Exit node `static-ip` (Hetzner, member, `~/Documents/static-ip`).
+- Mac node `macbook` (was `nicolas-macbook`), member. Exit node `static-ip` (Hetzner, member, `~/Documents/static-ip`).
 - Cloud node `cloud` = `core-vm-cloud` (OS hostname `cloud` too; was `app` until 2026-10-16), `tag:cloud`, Tailscale SSH on (users `agent`, `ubuntu`), `--accept-dns=false`
   (the VM keeps OCI's resolver). Its state is on `/data/core/tailscale`, so a restore from backup rejoins as the same node.
 - Join credential: Vault `core-secret-tailscale-authkey` holds a **Tailscale OAuth client secret** (scope
@@ -52,7 +52,7 @@ Expected: `tailscale joined as cloud.tailnet-example.ts.net.`; `tailscale status
 
 ## 4. `[H]` Rename the Mac node to `macbook`
 
-Admin console → Machines → `nicolas-macbook-pro` → **Edit machine name** → `macbook` (turn off auto-generate). The
+Admin console → Machines → `nicolas-macbook` → **Edit machine name** → `macbook` (turn off auto-generate). The
 CLI alternative (`tailscale set --hostname=macbook`) only applies if the name was never edited in the console.
 The exit node is selected by node ID, so it keeps working. Check: `tailscale status --self --peers=false` shows `macbook`,
 and `curl -s https://ifconfig.me` still returns the `static-ip` address.

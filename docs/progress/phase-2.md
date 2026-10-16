@@ -42,7 +42,7 @@ Date: 2026-10-14 · Branch: `phase-2-network` (stacked on `phase-1-capture`) · 
   - no tailscale or mosh yet
   - exactly one `agent@offers-pipeline` active
 - Facts re-checked on the Mac:
-  - Tailscale 1.102.3, node `nicolas-macbook-pro`, untagged, login `user@github`
+  - Tailscale 1.102.3, node `nicolas-macbook`, untagged, login `user@github`
   - tailnet `example.github`, MagicDNS on
   - exit node `static-ip` (member, untagged) in use
   - no other peers

@@ -39,7 +39,7 @@ node stays `macbook`.
   - verify rows 1k–1m
   - plan.md note
   - Historical progress logs are unchanged.
-  - The Mac's old hostnames (`nicolass-MacBook-Pro`) appeared nowhere in the repo. `nicolas-macbook-pro` remains only
+  - The Mac's old hostnames (`nicolass-MacBook-Pro`) appeared nowhere in the repo. `nicolas-macbook` remains only
     as the *former Tailscale node name* ("was …"), which is still accurate.
 
 ## Verified (before merge)

@@ -3,7 +3,7 @@
 // → Save. Procedure, merge rules and checks: docs/runbooks/tailscale.md. ADR: docs/decisions/0001-tailscale-on-oci.md.
 //
 // Nodes (2026-10):
-//   macbook    the Mac, user-owned (member). Renamed from `nicolas-macbook-pro` (admin console → machine → Edit
+//   macbook    the Mac, user-owned (member). Renamed from `nicolas-macbook` (admin console → machine → Edit
 //              name, or `tailscale set --hostname=macbook`). Uses exit node static-ip.
 //   static-ip  Hetzner VPS, user-owned (member), exit node (approved by hand in the admin console;
 //              repo ~/Documents/static-ip). Must keep working.
