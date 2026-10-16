@@ -47,7 +47,11 @@ Status: steps 1–8 runnable (Phase 3). Phone access (step 9) is Phase 6. `[H]` 
    - `Host cloud` (`User agent`, ControlMaster) appended to `~/.ssh/config` unless a `Host cloud` exists;
    - `~/.config/cmux/cmux.json` from `config/mac/cmux.json` only if absent or still cmux's all-comments template;
    - renders `~/Library/LaunchAgents/cc-orchestrator.claude.agents.plist` and bootstraps it (re-bootstrapped only
-     when the plist changed). The `.relay` agent is installed once `bin/agent-relay` exists (Phase 5).
+     when the plist changed). It also copies `bin/agent-relay` + `bin/agent-present` to
+     `~/.local/libexec/cc-orchestrator/` (launchd can't read `~/Documents`) and bootstraps
+     `cc-orchestrator.claude.relay` (cloud sounds + presence), re-bootstrapping it when the copies change. After
+     editing either script, re-run `./install.sh mac`. Check: `tail /tmp/agent-relay.log` →
+     `connected to cloud, waiting for events`.
    The LaunchAgent execs `/opt/homebrew/bin/tmux new-session -d -s cc-start ~/.local/bin/cc-orchestrator-start`, so
    the scripts (in `~/Documents`, TCC-protected) run inside the tmux server. A launchd job that runs a script from
    `~/Documents` directly fails with `Operation not permitted`.
