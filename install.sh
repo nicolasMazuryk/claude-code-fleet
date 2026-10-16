@@ -20,7 +20,8 @@
 #   launchd     cc-orchestrator.claude.agents (+ .relay once bin/agent-relay exists, Phase 5), bootstrapped
 #
 # cloud, from the Mac (--dry-run: show what would change, write nothing on cloud except a staging copy in ~/.cache):
-#   sync        rsync this checkout (tracked + new files, not gitignored) → cloud:~/cc-orchestrator (--delete)
+#   sync        rsync this checkout (tracked + new files, not gitignored; not tests/ prompts/) → cloud:~/cc-orchestrator
+#               (--delete)
 #   ntfy        ~/.config/agent-push/topic copied to cloud (0600) when missing or different
 #   cloud-local ~/cc-orchestrator/install.sh cloud-local on cloud (below)
 #   settings    cc-sync-settings (expect "4 macOS-only hook handler(s) relayed")
@@ -475,7 +476,7 @@ install_cloud() {
   fi
   dest=cc-orchestrator; [ "$dry" = 1 ] && dest=.cache/cc-orchestrator-dryrun
   echo "install.sh cloud: $REPO → $h:~/$dest$([ "$dry" = 1 ] && echo ' (dry run)')"
-  out=$(rsync -rlpt --delete -i --exclude=/.git --exclude=/.claude/ --exclude='*.bak.*' --exclude=.DS_Store \
+  out=$(rsync -rlpt --delete -i --exclude=/.git --exclude=/.claude/ --exclude=/tests/ --exclude=/prompts/ --exclude='*.bak.*' --exclude=.DS_Store \
           --filter=':- .gitignore' -e 'ssh -o BatchMode=yes' "$REPO/" "$h:$dest/")
   if [ -n "$out" ]; then
     if [ "$dry" = 1 ]; then say sync "would update ~/cc-orchestrator with:"
@@ -486,7 +487,7 @@ install_cloud() {
   topic="$HOME/.config/agent-push/topic"
   if [ -s "$topic" ]; then
     lhash=$(shasum -a 256 < "$topic" | cut -c1-64)
-    rhash=$(ssh -o BatchMode=yes "$h" 'sha256sum < ~/.config/agent-push/topic 2>/dev/null | cut -c1-64' || true)
+    rhash=$(ssh -o BatchMode=yes "$h" 'f=~/.config/agent-push/topic; [ -f "$f" ] && sha256sum < "$f" | cut -c1-64' || true)
     if [ "$lhash" = "$rhash" ]; then say ntfy "ok $h:~/.config/agent-push/topic"
     elif [ "$dry" = 1 ]; then did ntfy "would copy the ntfy topic to $h"
     else
