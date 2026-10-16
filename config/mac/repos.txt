@@ -1,6 +1,6 @@
 # Repos (directory names under ~/Documents) that get a Remote Control server on the Mac (mac/<repo>).
 # One per line; # comments allowed. Agent View @-dispatch sees every repo regardless. See docs/decisions/0003.
-cc-orchestrator
+claude-code-fleet
 oci
 claude-power-user
 arbinet-specs
