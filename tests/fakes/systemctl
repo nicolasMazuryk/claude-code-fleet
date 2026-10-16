@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# Fake systemctl for bats: unit state lives in $FAKE_SYSTEMD/{active,enabled}/<unit>; every call is logged.
+d=${FAKE_SYSTEMD:?}; mkdir -p "$d/active" "$d/enabled"
+echo "systemctl $*" >> "$d/calls"
+args=()
+for a in "$@"; do case $a in --quiet|-q|--all|--plain|--no-legend|--no-pager) ;; --state=*) ;; *) args+=("$a") ;; esac; done
+unit() { case $1 in *.service) echo "$1" ;; *) echo "$1.service" ;; esac; }
+case ${args[0]} in
+  is-active)  [ -e "$d/active/$(unit "${args[1]}")" ] ;;
+  is-enabled) [ -e "$d/enabled/$(unit "${args[1]}")" ] ;;
+  enable)     for u in "${args[@]:1}"; do [ "$u" = --now ] && continue; touch "$d/enabled/$(unit "$u")"
+                [[ " $* " == *" --now "* ]] && touch "$d/active/$(unit "$u")"; done; : ;;
+  disable)    for u in "${args[@]:1}"; do [ "$u" = --now ] && continue; rm -f "$d/enabled/$(unit "$u")"
+                [[ " $* " == *" --now "* ]] && rm -f "$d/active/$(unit "$u")"; done; : ;;
+  start|restart) touch "$d/active/$(unit "${args[1]}")" ;;
+  stop)       rm -f "$d/active/$(unit "${args[1]}")" ;;
+  list-units) pat=${args[1]:-*}; for f in "$d"/active/*; do [ -e "$f" ] || continue; n=${f##*/}
+                # shellcheck disable=SC2053
+                [[ $n == $pat ]] && echo "$n loaded active running x"; done; : ;;
+  list-unit-files) pat=${args[1]:-*}; for f in "$d"/enabled/*; do [ -e "$f" ] || continue; n=${f##*/}
+                # shellcheck disable=SC2053
+                [[ $n == $pat ]] && echo "$n enabled enabled"; done; : ;;
+  daemon-reload) ;;
+  *) echo "fake systemctl: unsupported ${args[*]}" >&2; exit 1 ;;
+esac
+exit $?

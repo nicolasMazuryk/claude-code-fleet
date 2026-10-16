@@ -1,0 +1,22 @@
+# cc-agents — Claude Code Agent View in tmux session "fleet" as agent (cc-orchestrator). Attach with `ac` from the Mac
+# (mosh cloud -- tmux -u new -A -s fleet ~/.local/bin/agents-loop) or the same command from the iPhone.
+# Installed and enabled by ./install.sh cloud.
+[Unit]
+Description=Claude Code Agent View in tmux "fleet" (cc-orchestrator)
+After=network-online.target data.mount
+Wants=network-online.target
+RequiresMountsFor=/data
+
+[Service]
+Type=forking
+User=agent
+Group=agent
+WorkingDirectory=/data/fleet
+Environment=HOME=/data/home/agent
+ExecStart=/usr/bin/tmux -u new-session -d -s fleet /data/home/agent/.local/bin/agents-loop
+ExecStop=/usr/bin/tmux kill-session -t fleet
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

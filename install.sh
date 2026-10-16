@@ -2,7 +2,7 @@
 # install.sh mac | cloud — install cc-orchestrator on this host. Idempotent: a second run changes nothing.
 #
 #   ./install.sh mac     (run on the Mac, from the checkout that should be live; usually ~/Documents/cc-orchestrator)
-#   ./install.sh cloud   Phase 4
+#   ./install.sh cloud [--dry-run | --rollback]   (run on the Mac; installs on cloud over `ssh cloud` as agent, sudo where needed)
 #
 # mac, in order (each step prints "ok" when already in place, "updated"/"created" when it wrote something):
 #   tools       brew install tmux mosh if missing
@@ -19,19 +19,44 @@
 #   cmux        ~/.config/cmux/cmux.json if absent or still cmux's all-comments template
 #   launchd     cc-orchestrator.claude.agents (+ .relay once bin/agent-relay exists, Phase 5), bootstrapped
 #
+# cloud, from the Mac (--dry-run: show what would change, write nothing on cloud except a staging copy in ~/.cache):
+#   sync        rsync this checkout (tracked + new files, not gitignored) → cloud:~/cc-orchestrator (--delete)
+#   ntfy        ~/.config/agent-push/topic copied to cloud (0600) when missing or different
+#   cloud-local ~/cc-orchestrator/install.sh cloud-local on cloud (below)
+#   settings    cc-sync-settings (expect "4 macOS-only hook handler(s) relayed")
+# cloud-local (on cloud as agent; sudo is passwordless there):
+#   claude      Claude Code binary for agent (~/.local/bin/claude, native installer) if missing — this repo owns it
+#   bin, path   ~/.local/bin → ~/cc-orchestrator/bin (not the Mac-only cc-capture, cc-sync-settings,
+#               cc-orchestrator-start); PATH line at the top of ~/.bashrc (non-interactive ssh)
+#   config      ~/.config/cc-orchestrator/config (config/cloud/config.tmpl), ~/.tmux.conf
+#   legacy      oci's agent@<repo> units stopped + disabled, agent@.service, /usr/local/bin/fleet and the
+#               tmux -L agent-<repo> servers removed (one RC server per folder; ADR 0002)
+#   units       cc-rc@.service, cc-agents.service → /etc/systemd/system; rsyslog rule → /var/log/core/agent.log
+#   linger      loginctl enable-linger agent
+#   repos       clone missing config/cloud/repos.txt repos into /data/fleet (gh auth), repo-init --no-trust each
+#   agents      cc-agents.service enabled + started (Agent View, tmux session "fleet")
+#   rc          rc-servers: cc-rc@<repo> for each listed repo that is cloned and trusted
+# cloud --rollback: stop/remove cc-rc@*, cc-agents and the rsyslog rule; restore agent@.service, fleet and the
+#   agent@<repo> instances from the copy step "legacy" kept in ~/.local/state/cc-orchestrator/legacy.
+#
 # Every overwritten user file is backed up first as <file>.bak.<timestamp>.
-# Test/CI switches: CC_INSTALL_NO_BREW=1, CC_INSTALL_NO_LAUNCHD=1, CC_INSTALL_NO_VAULT=1 (HOME may be a scratch dir).
+# Test/CI switches: CC_INSTALL_NO_BREW=1, CC_INSTALL_NO_LAUNCHD=1, CC_INSTALL_NO_VAULT=1 (HOME may be a scratch dir);
+# cloud-local: CC_SUDO (default sudo; "" in tests), CC_UNIT_DIR, CC_RSYSLOG_DIR, CC_LOG_DIR, CC_LEGACY_BIN,
+# CC_INSTALL_NO_CLAUDE=1, CC_INSTALL_NO_CLONE=1, CC_DRY_RUN=1, CC_CLOUD_REPO (path written into links/config),
+# CC_AGENTS_ROOT, CC_TMUX_DIR, CC_INSTALL_ANY_OS=1.
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$0")" && pwd)
 TS=$(date +%Y%m%d-%H%M%S)
 changes=0
+DRY=${CC_DRY_RUN:-0}
 
 say() { printf '  %-9s %s\n' "$1" "$2"; }
 did() { changes=$((changes + 1)); say "$1" "$2"; }
 die() { echo "install.sh: $*" >&2; exit 1; }
 
 backup() { # backup <file>: copy to <file>.bak.<ts> if it exists (regular file or symlink)
+  [ "$DRY" = 1 ] && return 0
   if [ -e "$1" ] || [ -L "$1" ]; then cp -pP "$1" "$1.bak.$TS"; fi
 }
 
@@ -40,6 +65,7 @@ install_file() { # install_file <tag> <src> <dst> <mode>: copy if different, bac
   if [ -f "$dst" ] && [ ! -L "$dst" ] && cmp -s "$src" "$dst"; then
     say "$tag" "ok $dst"; return 0
   fi
+  if [ "$DRY" = 1 ]; then did "$tag" "would write $dst"; return 0; fi
   mkdir -p "$(dirname "$dst")"
   if [ -e "$dst" ] || [ -L "$dst" ]; then backup "$dst"; rm -f "$dst"; did "$tag" "updated $dst (backup .bak.$TS)"
   else did "$tag" "created $dst"; fi
@@ -57,6 +83,7 @@ install_missing() { # install_missing <tag> <src> <dst>: copy only when dst does
 link() { # link <tag> <target> <linkpath>
   local tag=$1 target=$2 path=$3
   if [ -L "$path" ] && [ "$(readlink "$path")" = "$target" ]; then return 0; fi
+  if [ "$DRY" = 1 ]; then did "$tag" "would link $path → $target"; return 0; fi
   mkdir -p "$(dirname "$path")"
   if [ -e "$path" ] && [ ! -L "$path" ]; then backup "$path"; rm -f "$path"; fi
   ln -sfn "$target" "$path"; did "$tag" "$path → $target"
@@ -77,21 +104,24 @@ step_tools() {
   brew install "${missing[@]}"; did tools "brew installed ${missing[*]}"
 }
 
-step_bin() {
-  local f n before=$changes
+step_bin() { # links point into $LIVE (the checkout that runs; differs from $REPO only in a cloud dry run)
+  local f n before=$changes live=${LIVE:-$REPO}
   for f in "$REPO"/bin/*; do
     n=$(basename "$f")
     [ -x "$f" ] && [ -f "$f" ] || continue
-    link bin "$f" "$HOME/.local/bin/$n"
+    case " ${BIN_SKIP:-} " in *" $n "*) continue ;; esac
+    link bin "$live/bin/$n" "$HOME/.local/bin/$n"
   done
   # drop links into a cc-orchestrator bin/ whose script no longer exists here
   for f in "$HOME"/.local/bin/*; do
     [ -L "$f" ] || continue
     case $(readlink "$f") in
-      */cc-orchestrator*/bin/*) [ -e "$REPO/bin/$(basename "$f")" ] || { rm -f "$f"; did bin "removed stale $f"; } ;;
+      */cc-orchestrator*/bin/*) n=$(basename "$f")
+        { [ -e "$REPO/bin/$n" ] && case " ${BIN_SKIP:-} " in *" $n "*) false ;; *) true ;; esac; } || {
+          [ "$DRY" = 1 ] || rm -f "$f"; did bin "removed stale $f"; } ;;
     esac
   done
-  [ "$changes" -ne "$before" ] || say bin "ok ~/.local/bin → $REPO/bin"
+  [ "$changes" -ne "$before" ] || say bin "ok ~/.local/bin → $live/bin"
 }
 
 step_config() {
@@ -252,9 +282,235 @@ install_mac() {
   if [ "$changes" -eq 0 ]; then echo "install.sh mac: no changes"; else echo "install.sh mac: $changes change(s)"; fi
 }
 
+# --- cloud-local steps (run on cloud as agent) -------------------------------------------------------
+SUDO=${CC_SUDO-sudo}
+UNIT_DIR=${CC_UNIT_DIR:-/etc/systemd/system}
+RSYSLOG_DIR=${CC_RSYSLOG_DIR:-/etc/rsyslog.d}
+LOG_DIR=${CC_LOG_DIR:-/var/log/core}
+LEGACY_BIN=${CC_LEGACY_BIN:-/usr/local/bin/fleet}
+sudo_() { if [ -n "$SUDO" ]; then "$SUDO" "$@"; else "$@"; fi; }
+
+act() { # act <tag> <description> <cmd…>: run a mutating command, or only report it in a dry run
+  local tag=$1 desc=$2; shift 2
+  if [ "$DRY" = 1 ]; then did "$tag" "would $desc"; return 0; fi
+  "$@"; did "$tag" "$desc"
+}
+
+repos_listed() { grep -vE '^[[:space:]]*(#|$)' "$REPO/config/cloud/repos.txt" | sed 's/[[:space:]]*#.*//; s/[[:space:]]*$//; s/^[[:space:]]*//' | sort -u; }
+
+step_claude_bin() {
+  local c="$HOME/.local/bin/claude"
+  if [ -x "$c" ]; then say claude "ok $("$c" --version 2>/dev/null | head -n1)"; return 0; fi
+  if [ "${CC_INSTALL_NO_CLAUDE:-0}" = 1 ]; then say claude "missing (CC_INSTALL_NO_CLAUDE set)"; return 0; fi
+  # shellcheck disable=SC2016
+  act claude "install Claude Code (curl -fsSL https://claude.ai/install.sh | bash)" \
+    bash -c 'curl -fsSL https://claude.ai/install.sh | bash'
+}
+
+BASHRC_MARK='# cc-orchestrator: ~/.local/bin on PATH, also for non-interactive ssh (managed by install.sh cloud)'
+step_path() {
+  local b="$HOME/.bashrc" tmp
+  if [ -f "$b" ] && grep -qxF "$BASHRC_MARK" "$b"; then say path "ok $b"; return 0; fi
+  if [ "$DRY" = 1 ]; then did path "would prepend the PATH line to $b"; return 0; fi
+  backup "$b"; tmp=$(mktemp)
+  # shellcheck disable=SC2016
+  { printf '%s\n%s\n\n' "$BASHRC_MARK" 'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) PATH="$HOME/.local/bin:$PATH" ;; esac'
+    [ -f "$b" ] && cat "$b"; } > "$tmp"
+  cat "$tmp" > "$b"; rm -f "$tmp"   # keep the inode and mode
+  did path "prepended the PATH line to $b (backup .bak.$TS)"
+}
+
+step_config_cloud() {
+  local tmp
+  tmp=$(mktemp); sed "s#@CC_ORCH_DIR@#${LIVE:-$REPO}#g" "$REPO/config/cloud/config.tmpl" > "$tmp"
+  install_file config "$tmp" "$HOME/.config/cc-orchestrator/config" 644; rm -f "$tmp"
+}
+
+root_file() { # root_file <tag> <src> <dst>: install a root-owned 0644 file via sudo when different; returns 0 if written
+  local tag=$1 src=$2 dst=$3
+  if [ -f "$dst" ] && cmp -s "$src" "$dst"; then say "$tag" "ok $dst"; return 1; fi
+  act "$tag" "install $dst" sudo_ install -m 0644 "$src" "$dst"
+}
+
+LEGACY_BAK=${CC_LEGACY_BAK:-$HOME/.local/state/cc-orchestrator/legacy}
+step_legacy() { # oci's pre-Phase-4b Claude Code setup (ADR 0002): stop it before any cc-rc@ starts.
+  # What is removed is first kept in $LEGACY_BAK, so `./install.sh cloud --rollback` can bring it back.
+  local u s before=$changes units
+  units=$( { systemctl list-units 'agent@*' --all --plain --no-legend 2>/dev/null
+             systemctl list-unit-files 'agent@*' --no-legend 2>/dev/null; } | awk '$1 ~ /^agent@.+\.service$/ {print $1}' | sort -u)
+  if [ "$DRY" != 1 ] && { [ -n "$units" ] || [ -e "$UNIT_DIR/agent@.service" ] || [ -e "$LEGACY_BIN" ]; }; then
+    mkdir -p "$LEGACY_BAK"
+    [ -e "$UNIT_DIR/agent@.service" ] && cp "$UNIT_DIR/agent@.service" "$LEGACY_BAK/"
+    [ -e "$LEGACY_BIN" ] && cp "$LEGACY_BIN" "$LEGACY_BAK/fleet"
+    for u in $units; do grep -qxF "$u" "$LEGACY_BAK/units" 2>/dev/null || echo "$u" >> "$LEGACY_BAK/units"; done
+    say legacy "kept a copy in $LEGACY_BAK (for --rollback)"
+  fi
+  for u in $units; do
+    act legacy "stop + disable $u" sudo_ systemctl disable --now "$u"
+  done
+  for s in "${CC_TMUX_DIR:-/tmp/tmux-$(id -u)}"/agent-*; do
+    [ -S "$s" ] || continue
+    act legacy "kill tmux server $s" sh -c "tmux -S '$s' kill-server 2>/dev/null; rm -f '$s'"
+  done
+  [ -e "$UNIT_DIR/agent@.service" ] && act legacy "remove $UNIT_DIR/agent@.service" sudo_ rm -f "$UNIT_DIR/agent@.service"
+  [ -e "$LEGACY_BIN" ] && act legacy "remove $LEGACY_BIN (oci fleet CLI; use fleet on the Mac)" sudo_ rm -f "$LEGACY_BIN"
+  [ "$changes" -ne "$before" ] || say legacy "ok no agent@ units, agent@.service or $LEGACY_BIN"
+}
+
+step_units() {
+  local reload=0 f
+  for f in cc-rc@.service cc-agents.service; do
+    root_file units "$REPO/config/cloud/systemd/$f" "$UNIT_DIR/$f" && reload=1
+  done
+  if [ "$reload" = 1 ] || [ "$changes" -gt 0 ]; then act units "systemctl daemon-reload" sudo_ systemctl daemon-reload; fi
+  if [ -d "$RSYSLOG_DIR" ]; then
+    if [ ! -e "$LOG_DIR/agent.log" ]; then
+      act units "create $LOG_DIR/agent.log" sh -c "$SUDO install -d -m 0755 '$LOG_DIR' && $SUDO install -m 0640 /dev/null '$LOG_DIR/agent.log' && { $SUDO chown syslog:adm '$LOG_DIR/agent.log' 2>/dev/null || true; }"
+    fi
+    if root_file units "$REPO/config/cloud/rsyslog-cc-orchestrator.conf" "$RSYSLOG_DIR/30-cc-orchestrator.conf"; then
+      act units "restart rsyslog" sudo_ systemctl restart rsyslog
+    fi
+  fi
+  return 0
+}
+
+step_linger() {
+  local u
+  u=$(id -un)
+  if [ "$(loginctl show-user "$u" -p Linger --value 2>/dev/null)" = yes ]; then say linger "ok $u"; return 0; fi
+  act linger "loginctl enable-linger $u" sudo_ loginctl enable-linger "$u"
+}
+
+step_repos() {
+  local root r
+  # shellcheck disable=SC1091
+  root=${CC_AGENTS_ROOT:-$(. "$HOME/.config/cc-orchestrator/config" 2>/dev/null; echo "${AGENTS_ROOT:-/data/fleet}")}
+  for r in $(repos_listed); do
+    if [ ! -d "$root/$r/.git" ]; then
+      if [ "${CC_INSTALL_NO_CLONE:-0}" = 1 ]; then say repos "missing $root/$r (CC_INSTALL_NO_CLONE set)"; continue; fi
+      act repos "clone github.com/${GH_OWNER:-nicolasMazuryk}/$r → $root/$r" \
+        git clone -q "https://github.com/${GH_OWNER:-nicolasMazuryk}/$r.git" "$root/$r"
+    fi
+    [ "$DRY" = 1 ] && continue
+    REPO_INIT_NO_RC=1 "$HOME/.local/bin/repo-init" --no-trust "$root/$r" | grep -E '^  ' | sed "s/^ */  repos     $r: /" || true
+  done
+  say repos "listed: $(repos_listed | tr '\n' ' ')"
+}
+
+step_agents() {
+  if systemctl is-enabled --quiet cc-agents 2>/dev/null && systemctl is-active --quiet cc-agents 2>/dev/null; then
+    say agents "ok cc-agents (tmux session fleet)"; return 0
+  fi
+  act agents "enable + start cc-agents" sudo_ systemctl enable --now cc-agents
+}
+
+step_rc() {
+  local out
+  if [ "$DRY" = 1 ]; then
+    local r d
+    for r in $(repos_listed); do
+      d=${CC_AGENTS_ROOT:-/data/fleet}/$r
+      if [ ! -d "$d/.git" ]; then say rc "would skip $r (not cloned yet)"
+      elif ! jq -e --arg d "$d" '.projects[$d].hasTrustDialogAccepted == true' "$HOME/.claude.json" >/dev/null 2>&1; then
+        say rc "would skip $r (workspace not trusted)"
+      elif systemctl is-active --quiet "cc-rc@$r"; then say rc "ok cc-rc@$r"
+      else did rc "would start cc-rc@$r"; fi
+    done
+    return 0
+  fi
+  out=$(CC_SUDO="$SUDO" "$HOME/.local/bin/rc-servers" 2>&1) || true
+  if [ -n "$out" ]; then
+    printf '%s\n' "$out" | sed 's/^/  rc        /'
+    grep -qE '^(started|stopped)' <<<"$out" && changes=$((changes + 1))
+  fi
+  say rc "cc-rc@: $(systemctl list-units 'cc-rc@*' --plain --no-legend 2>/dev/null | awk '{printf "%s=%s ", $1, $4}')"
+}
+
+install_cloud_local() {
+  [ "$(uname)" = Linux ] || [ "${CC_INSTALL_ANY_OS:-0}" = 1 ] || die "install.sh cloud-local runs on cloud (Linux)"
+  LIVE=${CC_CLOUD_REPO:-$REPO}
+  BIN_SKIP="cc-capture cc-sync-settings cc-orchestrator-start"   # Mac-only (they read the Mac's ~/.claude / launchd)
+  echo "install.sh cloud-local: $LIVE → $HOME$([ "$DRY" = 1 ] && echo ' (dry run)')"
+  step_claude_bin; step_bin; step_path; step_config_cloud; step_tmux
+  step_legacy; step_units; step_linger; step_repos; step_agents; step_rc
+  if [ "$changes" -eq 0 ]; then echo "install.sh cloud-local: no changes"
+  else echo "install.sh cloud-local: $changes change(s)$([ "$DRY" = 1 ] && echo ' would be made')"; fi
+}
+
+install_cloud_rollback() { # cloud-local-rollback: back to the legacy oci setup kept by step_legacy (tested in bats)
+  local u
+  [ -f "$LEGACY_BAK/agent@.service" ] || die "no legacy backup in $LEGACY_BAK: nothing to roll back to"
+  echo "install.sh cloud-rollback: cc-rc@/cc-agents → legacy agent@ (from $LEGACY_BAK)"
+  for u in $({ systemctl list-units 'cc-rc@*' --all --plain --no-legend; systemctl list-unit-files 'cc-rc@*' --state=enabled --no-legend; } |
+             awk '$1 ~ /^cc-rc@.+\.service$/ {print $1}' | sort -u) cc-agents.service; do
+    if systemctl is-active --quiet "$u" || systemctl is-enabled --quiet "$u" 2>/dev/null; then
+      act rollback "stop + disable $u" sudo_ systemctl disable --now "$u"
+    fi
+  done
+  for u in cc-rc@.service cc-agents.service; do
+    [ -e "$UNIT_DIR/$u" ] && act rollback "remove $UNIT_DIR/$u" sudo_ rm -f "$UNIT_DIR/$u"
+  done
+  if [ -e "$RSYSLOG_DIR/30-cc-orchestrator.conf" ]; then
+    act rollback "remove $RSYSLOG_DIR/30-cc-orchestrator.conf" sudo_ rm -f "$RSYSLOG_DIR/30-cc-orchestrator.conf"
+    act rollback "restart rsyslog" sudo_ systemctl restart rsyslog
+  fi
+  act rollback "restore $UNIT_DIR/agent@.service" sudo_ install -m 0644 "$LEGACY_BAK/agent@.service" "$UNIT_DIR/agent@.service"
+  [ -f "$LEGACY_BAK/fleet" ] && act rollback "restore $LEGACY_BIN" sudo_ install -m 0755 "$LEGACY_BAK/fleet" "$LEGACY_BIN"
+  act rollback "systemctl daemon-reload" sudo_ systemctl daemon-reload
+  while IFS= read -r u; do
+    [ -n "$u" ] && act rollback "enable + start $u" sudo_ systemctl enable --now "$u"
+  done < "$LEGACY_BAK/units"
+  echo "install.sh cloud-rollback: $changes change(s). An oci host-sync with the new bootstrap removes agent@ again:"
+  echo "  revert the oci PR first if the legacy setup must stay. Re-migrate with ./install.sh cloud."
+}
+
+# --- cloud, from the Mac ------------------------------------------------------------------------------
+install_cloud() {
+  [ "$(uname)" = Darwin ] || die "install.sh cloud runs on the Mac (it installs on cloud over ssh)"
+  local h=${CC_CLOUD_HOST:-cloud} dest out topic rhash lhash dry=0
+  [ "${1:-}" = --dry-run ] && dry=1
+  ssh -o BatchMode=yes -o ConnectTimeout=10 "$h" true || die "ssh $h failed (Tailscale up? see docs/runbooks/tailscale.md)"
+  if [ "${1:-}" = --rollback ]; then
+    ssh -o BatchMode=yes "$h" "bash ~/cc-orchestrator/install.sh cloud-local-rollback"; return
+  fi
+  dest=cc-orchestrator; [ "$dry" = 1 ] && dest=.cache/cc-orchestrator-dryrun
+  echo "install.sh cloud: $REPO → $h:~/$dest$([ "$dry" = 1 ] && echo ' (dry run)')"
+  out=$(rsync -rlpt --delete -i --exclude=/.git --exclude=/.claude/ --exclude='*.bak.*' --exclude=.DS_Store \
+          --filter=':- .gitignore' -e 'ssh -o BatchMode=yes' "$REPO/" "$h:$dest/")
+  if [ -n "$out" ]; then
+    if [ "$dry" = 1 ]; then say sync "would update ~/cc-orchestrator with:"
+    else did sync "updated ~/$dest ($(printf '%s\n' "$out" | wc -l | tr -d ' ') item(s))"; fi
+    printf '%s\n' "$out" | sed 's/^/            /'
+  else say sync "ok ~/$dest"; fi
+
+  topic="$HOME/.config/agent-push/topic"
+  if [ -s "$topic" ]; then
+    lhash=$(shasum -a 256 < "$topic" | cut -c1-64)
+    rhash=$(ssh -o BatchMode=yes "$h" 'sha256sum < ~/.config/agent-push/topic 2>/dev/null | cut -c1-64' || true)
+    if [ "$lhash" = "$rhash" ]; then say ntfy "ok $h:~/.config/agent-push/topic"
+    elif [ "$dry" = 1 ]; then did ntfy "would copy the ntfy topic to $h"
+    else
+      # shellcheck disable=SC2016
+      ssh -o BatchMode=yes "$h" 'umask 077; mkdir -p ~/.config/agent-push; cat > ~/.config/agent-push/topic.tmp && mv ~/.config/agent-push/topic.tmp ~/.config/agent-push/topic' < "$topic"
+      did ntfy "copied the ntfy topic to $h (0600)"
+    fi
+  else say ntfy "WARNING: no $topic on the Mac (run ./install.sh mac first); cloud pushes stay off"; fi
+
+  if [ "$dry" = 1 ]; then
+    ssh -o BatchMode=yes "$h" "CC_DRY_RUN=1 CC_CLOUD_REPO=\$HOME/cc-orchestrator bash ~/$dest/install.sh cloud-local"
+    "$REPO/bin/cc-sync-settings" --dry-run
+  else
+    ssh -o BatchMode=yes "$h" "bash ~/$dest/install.sh cloud-local"
+    "$REPO/bin/cc-sync-settings"
+  fi
+  echo "install.sh cloud: done (Mac side: $changes change(s)). Checks: docs/runbooks/verify.md §4"
+}
+
 case ${1:-} in
   mac) install_mac ;;
-  cloud) echo "install.sh cloud: not implemented yet (Phase 4); see prompts/plan.md" >&2; exit 2 ;;
+  cloud) install_cloud "${2:-}" ;;
+  cloud-local) install_cloud_local ;;
+  cloud-local-rollback) install_cloud_rollback ;;
   -h|--help) sed -n '2,/^set -e/p' "$0" | sed '$d; s/^# \{0,1\}//' ;;
-  *) echo "usage: ./install.sh mac | cloud" >&2; exit 2 ;;
+  *) echo "usage: ./install.sh mac | cloud [--dry-run | --rollback]" >&2; exit 2 ;;
 esac

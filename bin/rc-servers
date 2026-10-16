@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # rc-servers — reconcile Remote Control servers against $REPOS_FILE (idempotent).
 #   Mac:   tmux session "rc", one window per listed repo (plus "idle"); windows for unlisted repos are closed.
-#   cloud: systemd cc-rc@<repo> enabled for listed repos, disabled for the rest.
+#   cloud: systemd cc-rc@<repo> enabled for listed repos that are cloned and trusted, disabled for the rest
+#          (a still-running legacy oci agent@<repo> is stopped first: one server per folder).
 # shellcheck source=bin/agent-env
 . "$HOME/.local/bin/agent-env"
 : "${REPOS_FILE:?set REPOS_FILE in ~/.config/cc-orchestrator/config}"
@@ -9,15 +10,27 @@ want=$(grep -vE '^[[:space:]]*(#|$)' "$REPOS_FILE" | sed 's/[[:space:]]*#.*//; s
 listed() { [ -n "$want" ] && grep -qxF "$1" <<<"$want"; }
 
 if [ "$AGENT_HOST" = cloud ]; then
+  SUDO=${CC_SUDO-sudo}
+  trusted() { # workspace trust is per directory in ~/.claude.json; an untrusted repo would crash-loop its unit
+    jq -e --arg d "$1" '.projects[$d].hasTrustDialogAccepted == true' "$HOME/.claude.json" >/dev/null 2>&1
+  }
   for r in $want; do
-    [ -d "$AGENTS_ROOT/$r/.git" ] || { echo "skip $r: not cloned (repo-init $r)" >&2; continue; }
+    d="$AGENTS_ROOT/$r"
+    [ -d "$d/.git" ] || { echo "skip $r: not cloned (repo-init $r)" >&2; continue; }
+    trusted "$d" || { echo "skip $r: workspace not trusted (ssh -t cloud 'cd $d && claude', accept, /exit)" >&2; continue; }
+    # one server per folder: the legacy oci unit must be gone first (ADR 0002)
+    if systemctl is-active --quiet "agent@$r" || systemctl is-enabled --quiet "agent@$r" 2>/dev/null; then
+      $SUDO systemctl disable --now "agent@$r" && echo "stopped legacy agent@$r"
+    fi
     if ! { systemctl is-enabled --quiet "cc-rc@$r" && systemctl is-active --quiet "cc-rc@$r"; }; then
-      sudo systemctl enable --now "cc-rc@$r" && echo "started cc-rc@$r"
+      $SUDO systemctl enable --now "cc-rc@$r" && echo "started cc-rc@$r"
     fi
   done
-  for u in $(systemctl list-units 'cc-rc@*' --all --plain --no-legend | awk '{print $1}'); do
+  for u in $({ systemctl list-units 'cc-rc@*' --all --plain --no-legend
+               systemctl list-unit-files 'cc-rc@*' --state=enabled --no-legend; } | awk '{print $1}' | sort -u); do
     r=${u#cc-rc@}; r=${r%.service}
-    listed "$r" || { sudo systemctl disable --now "$u" && echo "stopped $u"; }
+    [ -n "$r" ] || continue
+    listed "$r" || { $SUDO systemctl disable --now "cc-rc@$r" && echo "stopped cc-rc@$r"; }
   done
 else
   tmux -u has-session -t '=rc' 2>/dev/null || tmux -u new-session -d -s rc -n idle 'tail -f /dev/null'

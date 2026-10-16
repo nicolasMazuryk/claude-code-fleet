@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # rc-serve <repo-dir> — Remote Control server for one repo ($AGENT_HOST/<repo> in the Claude app).
-# Sessions started from the app each get their own worktree. Loops so a crash or network drop restarts it
-# (Mac: tmux window rc:<repo>; cloud: systemd cc-rc@<repo>, where the loop is redundant but harmless).
+# Sessions started from the app each get their own worktree.
+#   Mac (tmux window rc:<repo>): loops, so a crash or network drop restarts it.
+#   cloud (systemd cc-rc@<repo>, $INVOCATION_ID set): execs claude once; systemd restarts it (Restart=always) and its
+#   SIGTERM reaches claude directly, which deregisters the environment cleanly. No pty needed (Phase 4b).
 # shellcheck source=bin/agent-env
 . "$HOME/.local/bin/agent-env"
 cd "${1:?usage: rc-serve <repo-dir>}" || exit 1
-while :; do
-  claude remote-control --name "$AGENT_HOST/$(basename "$PWD")" --spawn worktree \
-    --permission-mode "${AGENT_PERMISSION_MODE:-auto}" --no-create-session-in-dir \
-    --remote-control-session-name-prefix "$AGENT_HOST"
-  sleep 10
-done
+args=(remote-control --name "$AGENT_HOST/$(basename "$PWD")" --spawn worktree
+  --permission-mode "${AGENT_PERMISSION_MODE:-auto}" --no-create-session-in-dir
+  --remote-control-session-name-prefix "$AGENT_HOST")
+[ -n "${INVOCATION_ID:-}" ] && exec claude "${args[@]}"
+while :; do claude "${args[@]}"; sleep 10; done

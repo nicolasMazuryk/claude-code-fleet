@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# cc-relay-hook <event> <group> <handler> <hash> — cloud stand-in for a Mac-only hook handler (the Choo Choo sound).
+# Written into cloud's settings by cc-sync-settings, never by hand. It only queues the event: the Mac's agent-relay
+# (Phase 5) tails the queue over its own ssh connection, checks the hash against the Mac's own settings and runs the
+# Mac's handler there. Cloud names a handler; it never supplies a command.
+p=; [ -t 0 ] || p=$(cat)
+dir="$HOME/.local/state/agent-events"; mkdir -p "$dir"; f="$dir/events.jsonl"
+[ "$(stat -c %s "$f" 2>/dev/null || stat -f %z "$f" 2>/dev/null || echo 0)" -gt 1048576 ] && : > "$f"   # keep it small
+jq -nc --arg e "$1" --argjson g "${2:-0}" --argjson h "${3:-0}" --arg s "${4:-}" --arg p "$p" \
+  '{event:$e, group:$g, handler:$h, sum:$s, ts:(now|floor),
+    payload:(try ($p | fromjson | if (.last_assistant_message | type) == "string"
+                                  then .last_assistant_message |= .[0:500] else . end) catch {})}' >> "$f"
+exit 0

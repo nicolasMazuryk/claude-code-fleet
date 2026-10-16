@@ -5,7 +5,7 @@
 #   - adds .claude/worktrees/ to .gitignore and $REPO_INIT_INCLUDE (default ".env .env.local") to .worktreeinclude
 #   - --rc: appends the repo to $REPOS_FILE (the RC allowlist; commit that file in cc-orchestrator afterwards)
 #   - opens `claude` once for the workspace trust prompt (needs a TTY; skipped with --no-trust or without a TTY)
-#   - runs rc-servers when the repo is in $REPOS_FILE
+#   - runs rc-servers when the repo is in $REPOS_FILE (not with REPO_INIT_NO_RC=1: install.sh cloud runs it once)
 set -euo pipefail
 # shellcheck source=bin/agent-env
 . "$HOME/.local/bin/agent-env"
@@ -60,7 +60,9 @@ else
   echo "→ trust not done here: run 'claude' in $dir once at a terminal, accept the trust prompt, /exit"
 fi
 
-if in_list "$r"; then
+if [ "${REPO_INIT_NO_RC:-0}" = 1 ]; then
+  echo "✓ $r set up on $AGENT_HOST (rc-servers not run: REPO_INIT_NO_RC)"
+elif in_list "$r"; then
   "$HOME/.local/bin/rc-servers"
   echo "✓ $r ready on $AGENT_HOST: Agent View → @$r · Claude app → $AGENT_HOST/$r"
 else
