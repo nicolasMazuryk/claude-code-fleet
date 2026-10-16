@@ -39,8 +39,8 @@ node stays `macbook`.
   - verify rows 1k–1m
   - plan.md note
   - Historical progress logs are unchanged.
-  - The Mac's old hostnames (`nicolass-MacBook-Pro`) appeared nowhere in the repo. `nicolas-macbook` remains only
-    as the *former Tailscale node name* ("was …"), which is still accurate.
+  - The Mac's OS hostname is `nicolas-macbook`; no other hostname variants of the Mac appeared in the repo. The name
+    remains in docs as the *former Tailscale node name* ("was …"), which is still accurate.
 
 ## Verified (before merge)
 - `make plan-core` (oci branch): **`Plan: 0 to add, 10 to change, 0 to destroy.`**
