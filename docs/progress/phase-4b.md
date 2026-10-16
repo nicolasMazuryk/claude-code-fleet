@@ -88,5 +88,10 @@ and connected at 16:08:39 after the 16:05:38 cutover.
 7. `repo-init` left `.gitignore`/`.worktreeinclude` edits uncommitted in the 5 cloud clones (by design): commit them
    in each repo via a PR when convenient.
 
-## Post-merge
-_Filled by the session that merges/verifies._
+## Post-merge (2026-10-16 16:18 UTC)
+- Merged oci-infra-old#3 and cc-orchestrator#8; `git -C ~/Documents/{oci,cc-orchestrator} pull --ff-only`.
+- From `~/Documents/cc-orchestrator` (main): `./install.sh mac` → 2 changes (links `cc-relay-hook`, `cc-sync-settings`);
+  `./install.sh cloud` → `install.sh cloud-local: no changes` (rsync only refreshed mtimes); `make sync` →
+  `settings ok`, `files ok`, `4 macOS-only hook handler(s) relayed`; `make test` 46/46;
+  `cc-agents`, `cc-rc@offers-pipeline` active.
+- The human items under "Outstanding" remain open.
