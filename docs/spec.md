@@ -239,8 +239,10 @@ Mac hooks today (reference; keep positions):
   groups, idempotently (match on the command string). The hook path in settings is
   `~/.claude/hooks/agent-push.sh`, installed as a **copy** of `hooks/agent-push.sh` (a symlink would reach cloud as a
   dangling Mac path through `cc-sync-settings`' rsync of `~/.claude/hooks`). `cc-capture` does not capture it.
-- `bin/agent-present`, `bin/cc-relay-hook`, `hooks/agent-push.sh`: as the original §2.7. On cloud `stat -c` is GNU,
-  fine. The ntfy topic is `~/.config/agent-push/topic` (0600), recovered from Vault `core-secret-ntfy-topic`.
+- `bin/agent-present`, `bin/cc-relay-hook`, `hooks/agent-push.sh`: as the original §2.7. `agent-present` reads the
+  marker age with `stat -c %Y` or BSD `stat -f %m`. `agent-push.sh` additionally logs each decision to
+  `~/.local/state/agent-push/push.log` (no topic, no message) and hands curl the URL via `-K <(…)`, so the topic is
+  never in argv. The ntfy topic is `~/.config/agent-push/topic` (0600), recovered from Vault `core-secret-ntfy-topic`.
 - Relayed `PreToolUse`/`Stop` handlers run on the Mac via `sh -c` with the cloud payload on stdin; the Stop handler's
   jq guard then evaluates the cloud payload, which is the intended behaviour.
 
@@ -320,7 +322,16 @@ Tailscale SSH authenticates by tailnet identity; the policy allows users `agent`
 
 ### 4.3 `bin/agent-relay`
 
-As the original §4.3 (hash-checked; runs the Mac's own handler). Log: `/tmp/agent-relay.log`.
+Hash-checked and runs the Mac's own handler, as the original §4.3. Adapted (Phase 5):
+- **One ssh connection** instead of a tail plus a 30 s beacon connection each: presence goes up on the ssh stdin
+  (`present`/`away` every 30 s; cloud's end touches/removes `mac-present`), events come down on stdout. When the link
+  dies, cloud's `tail` dies with it (stdin EOF / HUP trap). `-o ControlMaster=no -o ControlPath=none`, so it never
+  becomes (or depends on) the user's multiplexed `ssh cloud` master.
+- Events need a numeric `ts`; older than 120 s (`AGENT_RELAY_MAX_AGE`) are not replayed (Mac asleep, stalled link).
+  Event/group/handler/sum are validated (`^[A-Za-z]+$`, digits, 16 hex) before any lookup; `args` is not supported
+  (the hash covers `command` only).
+- Runs from copies in `~/.local/libexec/cc-orchestrator/` (TCC, §4.4). `agent-relay --handle` reads event lines on
+  stdin without ssh (tests). Log: `/tmp/agent-relay.log` (connect, presence transitions, ran/skipped per event).
 
 ### 4.4 LaunchAgents (`config/mac/launchd/*.plist.tmpl`, rendered with real paths by `install.sh mac`)
 
@@ -328,8 +339,10 @@ As the original §4.3 (hash-checked; runs the Mac's own handler). Log: `/tmp/age
 `/opt/homebrew/bin/tmux -u new-session -d -s cc-start ~/.local/bin/cc-orchestrator-start`. The script then runs inside
 the tmux server. A launchd job that runs a script from `~/Documents` directly gets `Operation not permitted` (found in
 Phase 3), and this way only tmux needs Full Disk Access. Log: `/tmp/cc-orchestrator-start.log`.
-`cc-orchestrator.claude.relay` (KeepAlive, ThrottleInterval 30, stderr `/tmp/agent-relay.log`) is rendered and
-loaded only once `bin/agent-relay` exists (Phase 5); before that it would crash-loop.
+`cc-orchestrator.claude.relay` (KeepAlive, ThrottleInterval 30, stderr `/tmp/agent-relay.log`) runs
+`~/.local/libexec/cc-orchestrator/agent-relay`: a **copy** (with `agent-present` beside it), because launchd can't
+read `~/Documents` even through the `~/.local/bin` symlink (re-checked 2026-10-16: `Operation not permitted`). It
+needs no Full Disk Access. `install.sh mac` refreshes the copies and re-bootstraps the relay when they change.
 Loaded with `launchctl bootstrap gui/$(id -u) …`; `install.sh` re-bootstraps (`bootout` first) only when the
 rendered plist changed.
 

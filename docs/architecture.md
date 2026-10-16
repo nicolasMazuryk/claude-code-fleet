@@ -21,9 +21,9 @@ Adapted from `prompts/prompt.md` §1 for the real machines. Details and code: [s
 │ hooks: 4× afplay choo-choo      │  │ hooks: same events/matchers; afplay → │
 │        agent-push → ntfy ───────┼──┼──►    cc-relay-hook → events.jsonl   │
 │                                 │  │        agent-push  → ntfy             │
-│ agent-relay ══ ssh ═════════════┼═►│ events → Mac runs its own handler     │
+│ agent-relay ══ one ssh ═════════┼═►│ events → Mac runs its own handler     │
 │   (LaunchAgent …claude.relay)   │  │                                       │
-│   presence beacon (30 s) ═══════┼═►│ mac-present marker → push gating      │
+│   presence up stdin (30 s) ═════┼═►│ mac-present marker → push gating      │
 │ cc-sync-settings ═══════════════┼═►│ settings, CLAUDE.md, skills, hooks…   │
 │ cmux · fleet ═══════════════════┼═►│ claude agents --json, systemctl       │
 └─────────────────────────────────┘  └───────────────────────────────────────┘
@@ -56,15 +56,22 @@ See [ADR 0002](decisions/0002-ownership-split.md).
 1. `cc-sync-settings` replaces each of the 4 macOS-only `afplay` handlers in cloud's settings with
    `cc-relay-hook <event> <group> <handler> <sha256[:16]>`.
 2. On cloud the hook appends `{event, group, handler, sum, payload}` to `~/.local/state/agent-events/events.jsonl`.
-3. The Mac's `agent-relay` tails that file over its own ssh connection, looks the handler up in the **Mac's**
-   `~/.claude/settings.json`, checks the hash, and runs the Mac's own command with the payload on stdin. A mismatch is
-   skipped and logged (`/tmp/agent-relay.log`). Cloud can only name a handler, never supply a command.
+3. The Mac's `agent-relay` (LaunchAgent) holds **one** ssh connection to cloud, opened by the Mac. Down it comes
+   `tail -F` of that file; for each event the relay looks the handler up in the **Mac's** `~/.claude/settings.json`,
+   checks the hash, and runs the Mac's own command with the payload on stdin. A mismatch ("Mac hook changed, run
+   cc-sync-settings"), a malformed line or an event older than 120 s is skipped and logged (`/tmp/agent-relay.log`).
+   Cloud can only name a handler, never supply a command. Reconnects with backoff (5 → 60 s).
+4. launchd can't read `~/Documents` (TCC), so the LaunchAgent runs copies of `agent-relay`/`agent-present` that
+   `install.sh mac` keeps in `~/.local/libexec/cc-orchestrator/`.
 
 ### Presence and pushes
 - `agent-present` on the Mac: screen unlocked **and** HID idle < 120 s (`ioreg`).
-- `agent-relay` touches/removes `~/.local/state/agent-events/mac-present` on cloud every 30 s; cloud treats a marker
-  younger than 90 s as "present".
-- `hooks/agent-push.sh` (both hosts) posts to `https://ntfy.sh/<topic>` only when not present. Topic: local file
+- `agent-relay` writes `present`/`away` up the same ssh connection every 30 s; cloud's end touches/removes
+  `~/.local/state/agent-events/mac-present`, and cloud treats a marker younger than 90 s as "present". A stopped relay,
+  a sleeping Mac or a broken link therefore means "away" (extra pushes, never missed ones).
+- `hooks/agent-push.sh` (both hosts) posts to `https://ntfy.sh/<topic>` only when not present (the URL goes to curl
+  as a config on a file descriptor, so the topic never shows in `ps`). Each decision is one line in
+  `~/.local/state/agent-push/push.log` (event, type, `job=set|unset`, result; never the topic or message). Topic: local file
   `~/.config/agent-push/topic`, backed up in Vault as `core-secret-ntfy-topic` ([ADR 0004](decisions/0004-ntfy-public-topic.md)).
 - Native Claude app pushes are off (`agentPushNotifEnabled`/`inputNeededNotifEnabled: false`) so ntfy is the only channel.
 

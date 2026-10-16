@@ -17,7 +17,9 @@
 #   zshrc       one sourcing line for the snippet (am, ac); existing aliases untouched
 #   ssh         Host cloud appended to ~/.ssh/config if no Host cloud exists
 #   cmux        ~/.config/cmux/cmux.json if absent or still cmux's all-comments template
-#   launchd     cc-orchestrator.claude.agents (+ .relay once bin/agent-relay exists, Phase 5), bootstrapped
+#   relay       copies of bin/agent-relay + bin/agent-present in ~/.local/libexec/cc-orchestrator/ (launchd can't
+#               read ~/Documents, TCC); the relay LaunchAgent is restarted when they change
+#   launchd     cc-orchestrator.claude.agents and .relay (sound relay + presence beacon), bootstrapped
 #
 # cloud, from the Mac (--dry-run: show what would change, write nothing on cloud except a staging copy in ~/.cache):
 #   sync        rsync this checkout (tracked + new files, not gitignored; not tests/ prompts/) → cloud:~/cc-orchestrator
@@ -28,7 +30,7 @@
 # cloud-local (on cloud as agent; sudo is passwordless there):
 #   claude      Claude Code binary for agent (~/.local/bin/claude, native installer) if missing — this repo owns it
 #   bin, path   ~/.local/bin → ~/cc-orchestrator/bin (not the Mac-only cc-capture, cc-sync-settings,
-#               cc-orchestrator-start); PATH line at the top of ~/.bashrc (non-interactive ssh)
+#               cc-orchestrator-start, agent-relay); PATH line at the top of ~/.bashrc (non-interactive ssh)
 #   config      ~/.config/cc-orchestrator/config (config/cloud/config.tmpl), ~/.tmux.conf
 #   legacy      oci's agent@<repo> units stopped + disabled, agent@.service, /usr/local/bin/fleet and the
 #               tmux -L agent-<repo> servers removed (one RC server per folder; ADR 0002)
@@ -258,18 +260,27 @@ launchd_load() { # launchd_load <label> <plist> <changed 0|1>
   die "launchctl bootstrap $dom $plist failed"
 }
 
+RELAY_CHANGED=0
+step_relay() { # launchd jobs can't read ~/Documents (TCC: "Operation not permitted"), so the relay runs from copies
+  local d="$HOME/.local/libexec/cc-orchestrator" f before=$changes
+  for f in agent-relay agent-present; do
+    if [ -f "$d/$f" ] && cmp -s "$REPO/bin/$f" "$d/$f"; then continue; fi
+    mkdir -p "$d"; cp "$REPO/bin/$f" "$d/$f.tmp"; chmod 755 "$d/$f.tmp"; mv "$d/$f.tmp" "$d/$f"
+    did relay "copied bin/$f → $d/$f"
+  done
+  if [ "$changes" -ne "$before" ]; then RELAY_CHANGED=1; else say relay "ok $d (agent-relay, agent-present)"; fi
+}
+
 step_launchd() {
   local la="$HOME/Library/LaunchAgents" label tmp dst changed tmux_bin
   tmux_bin=$(command -v tmux || echo /opt/homebrew/bin/tmux)
   for label in cc-orchestrator.claude.agents cc-orchestrator.claude.relay; do
-    if [ "$label" = cc-orchestrator.claude.relay ] && [ ! -x "$REPO/bin/agent-relay" ]; then
-      say launchd "skip $label (bin/agent-relay arrives in Phase 5)"; continue
-    fi
     dst="$la/$label.plist"; tmp=$(mktemp)
     sed "s#@HOME@#$HOME#g; s#@TMUX@#$tmux_bin#g" "$REPO/config/mac/launchd/$label.plist.tmpl" > "$tmp"
     plutil -lint "$tmp" >/dev/null || die "rendered $label plist is invalid"
     changed=0
     cmp -s "$tmp" "$dst" 2>/dev/null || { changed=1; install_file launchd "$tmp" "$dst" 644; }
+    [ "$label" = cc-orchestrator.claude.relay ] && [ "$RELAY_CHANGED" = 1 ] && changed=1
     rm -f "$tmp"
     if [ "${CC_INSTALL_NO_LAUNCHD:-0}" = 1 ]; then say launchd "not loading $label (CC_INSTALL_NO_LAUNCHD)"; continue; fi
     launchd_load "$label" "$dst" "$changed"
@@ -280,7 +291,7 @@ install_mac() {
   [ "$(uname)" = Darwin ] || die "install.sh mac runs on macOS"
   echo "install.sh mac: $REPO → $HOME"
   step_tools; step_bin; step_config; step_tmux; step_claude; step_settings
-  step_ntfy; step_zshrc; step_ssh; step_cmux; step_launchd
+  step_ntfy; step_zshrc; step_ssh; step_cmux; step_relay; step_launchd
   if [ "$changes" -eq 0 ]; then echo "install.sh mac: no changes"; else echo "install.sh mac: $changes change(s)"; fi
 }
 
@@ -431,7 +442,7 @@ step_rc() {
 install_cloud_local() {
   [ "$(uname)" = Linux ] || [ "${CC_INSTALL_ANY_OS:-0}" = 1 ] || die "install.sh cloud-local runs on cloud (Linux)"
   LIVE=${CC_CLOUD_REPO:-$REPO}
-  BIN_SKIP="cc-capture cc-sync-settings cc-orchestrator-start"   # Mac-only (they read the Mac's ~/.claude / launchd)
+  BIN_SKIP="cc-capture cc-sync-settings cc-orchestrator-start agent-relay"   # Mac-only (they read the Mac's ~/.claude / launchd)
   echo "install.sh cloud-local: $LIVE → $HOME$([ "$DRY" = 1 ] && echo ' (dry run)')"
   step_claude_bin; step_bin; step_path; step_config_cloud; step_tmux
   step_legacy; step_units; step_linger; step_repos; step_agents; step_rc
