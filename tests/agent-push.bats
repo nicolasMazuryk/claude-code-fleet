@@ -57,3 +57,44 @@ pushed() { [ -s "$LOG" ]; }
   run push '{"hook_event_name":"Stop"}'
   [ "$status" -eq 0 ]; ! pushed
 }
+
+@test "every decision is logged with CLAUDE_JOB_DIR status; the topic never is" {
+  AGENT_PRESENT=true push '{"hook_event_name":"Stop"}'
+  CLAUDE_JOB_DIR=/x push '{"hook_event_name":"Stop"}'
+  push '{"hook_event_name":"Notification","notification_type":"permission_prompt","message":"Allow?"}'
+  L="$HOME/.local/state/agent-push/push.log"
+  grep -q 'Stop:- job=unset present: no push' "$L"
+  grep -q 'Stop:- job=set background session: no push' "$L"
+  grep -q 'Notification:permission_prompt job=unset pushed "needs input"' "$L"
+  ! grep -q 0123456789abcdef "$L"; ! grep -q 'Allow?' "$L"
+}
+
+@test "the topic is passed in a curl config, never in argv" {
+  push '{"hook_event_name":"Stop"}'
+  pushed; ! grep -q 0123456789abcdef "$LOG"
+}
+
+@test "real curl reads the URL from the config fd (local ntfy stand-in)" {
+  command -v python3 >/dev/null || skip "no python3"
+  port=$((20000 + RANDOM % 20000)); got="$BATS_TEST_TMPDIR/got"
+  python3 -c '
+import http.server,sys
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(s):
+        n=int(s.headers["Content-Length"]); b=s.rfile.read(n)
+        open(sys.argv[2],"w").write(s.path+" "+s.headers["Title"]+" "+b.decode())
+        s.send_response(200); s.end_headers()
+    def log_message(s,*a): pass
+http.server.HTTPServer(("127.0.0.1",int(sys.argv[1])),H).handle_request()' "$port" "$got" 3>&- &
+  sleep 0.5
+  AGENT_PUSH_CURL=curl NTFY_SERVER="http://127.0.0.1:$port" push '{"hook_event_name":"Stop","last_assistant_message":"ok"}'
+  wait
+  [ "$(cut -d' ' -f1 "$got")" = /0123456789abcdef0123456789abcdef ]   # URL path = topic, read from the config
+  grep -q ' done ok' "$got"
+}
+
+@test "curl failure is logged, still exit 0" {
+  AGENT_PUSH_CURL=false run push '{"hook_event_name":"Stop"}'
+  [ "$status" -eq 0 ]
+  grep -q 'push "done" FAILED' "$HOME/.local/state/agent-push/push.log"
+}

@@ -50,7 +50,12 @@ setup() {
   grep -qx '  User agent' "$HOME/.ssh/config"
   cmp "$REPO/config/mac/cmux.json" "$HOME/.config/cmux/cmux.json"
   [ -f "$HOME/Library/LaunchAgents/cc-orchestrator.claude.agents.plist" ]
-  [ ! -e "$HOME/Library/LaunchAgents/cc-orchestrator.claude.relay.plist" ] || [ -x "$REPO/bin/agent-relay" ]
+  # relay: runs copies outside ~/Documents (TCC), plist points at them
+  cmp "$REPO/bin/agent-relay" "$HOME/.local/libexec/cc-orchestrator/agent-relay"
+  cmp "$REPO/bin/agent-present" "$HOME/.local/libexec/cc-orchestrator/agent-present"
+  [ -x "$HOME/.local/libexec/cc-orchestrator/agent-relay" ]
+  grep -q "<string>$HOME/.local/libexec/cc-orchestrator/agent-relay</string>" \
+    "$HOME/Library/LaunchAgents/cc-orchestrator.claude.relay.plist"
   grep -q "$HOME/.local/bin/cc-orchestrator-start" "$HOME/Library/LaunchAgents/cc-orchestrator.claude.agents.plist"
 }
 

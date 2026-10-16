@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# agent-relay — Mac only (LaunchAgent cc-orchestrator.claude.relay). One ssh connection, opened by the Mac:
+#   up   (stdin)  every AGENT_RELAY_BEACON_SECS (30) "present"/"away" from agent-present; cloud touches/removes
+#                 ~/.local/state/agent-events/mac-present. cloud's agent-present = marker < 90 s old, so a dead
+#                 relay, a sleeping Mac or a broken link all count as away (extra pushes, never missed ones).
+#   down (stdout) new lines of cloud's ~/.local/state/agent-events/events.jsonl (queued by cc-relay-hook). For each,
+#                 the Mac's OWN handler at .hooks[event][group].hooks[handler] of ~/.claude/settings.json runs here,
+#                 only if sha256(command)[:16] equals the hash cc-sync-settings gave cloud. Cloud names a handler,
+#                 never a command; the payload reaches the handler on stdin, as for a local session.
+#                 Changed Mac hook → "skipped …: run cc-sync-settings". Events older than 120 s are not replayed.
+# Cloud never connects to the Mac. Log: stderr (/tmp/agent-relay.log under launchd); reconnects with backoff.
+# launchd can't read ~/Documents (TCC), so install.sh mac runs a copy from ~/.local/libexec/cc-orchestrator/
+# (with agent-present next to it); re-run ./install.sh mac after editing this file.
+#   agent-relay                run (launchd)
+#   agent-relay --handle       read event lines on stdin and run the matching handlers (no ssh)
+# Test switches: AGENT_RELAY_SETTINGS, AGENT_RELAY_HOST (cloud), AGENT_RELAY_SSH (ssh), AGENT_PRESENT (command),
+# AGENT_RELAY_BEACON_SECS, AGENT_RELAY_MAX_AGE (120), AGENT_RELAY_RETRY_MAX (60).
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH:/usr/bin:/bin"
+SETTINGS=${AGENT_RELAY_SETTINGS:-$HOME/.claude/settings.json}
+H=${AGENT_RELAY_HOST:-cloud}
+PRESENT=${AGENT_PRESENT:-$(dirname "$0")/agent-present}
+BEACON=${AGENT_RELAY_BEACON_SECS:-30}
+MAX_AGE=${AGENT_RELAY_MAX_AGE:-120}
+
+log() { echo "$(date '+%F %T') agent-relay: $*" >&2; }
+sha16() { printf %s "$1" | shasum -a 256 | cut -c1-16; }
+
+handle() { # stdin: event lines from cloud
+  local line ev g h sum ts cmd payload sid now
+  while IFS= read -r line; do
+    case $line in *'"relay":"hello"'*) log "connected to $H, waiting for events"; continue ;; esac
+    ev=; g=; h=; sum=; ts=
+    IFS=$'\t' read -r ev g h sum ts < <(jq -r '[.event, .group, .handler, .sum, .ts] | map(tostring) | @tsv' \
+                                          <<<"$line" 2>/dev/null)
+    if ! [[ $ev =~ ^[A-Za-z]+$ && $g =~ ^[0-9]+$ && $h =~ ^[0-9]+$ && $sum =~ ^[0-9a-f]{16}$ && $ts =~ ^[0-9]+$ ]]; then
+      log "ignored malformed event: $(printf %s "$line" | tr -cd '[:print:]' | cut -c1-120)"; continue
+    fi
+    now=$(date +%s)
+    if [ $((now - ts)) -gt "$MAX_AGE" ]; then log "skipped $ev/$g/$h: $((now - ts)) s old"; continue; fi
+    cmd=$(jq -r --arg ev "$ev" --argjson g "$g" --argjson h "$h" \
+            '.hooks[$ev][$g].hooks[$h] | select(.type == "command") | .command // empty' "$SETTINGS" 2>/dev/null)
+    if [ -z "$cmd" ] || [ "$(sha16 "$cmd")" != "$sum" ]; then
+      log "skipped $ev/$g/$h: the Mac's hook changed since the last sync, run cc-sync-settings"; continue
+    fi
+    payload=$(jq -c '.payload // {}' <<<"$line")
+    sid=$(jq -r '.session_id // "-"' <<<"$payload" | cut -c1-8)
+    (cd "$HOME" && printf %s "$payload" | sh -c "$cmd" >/dev/null 2>&1 &)
+    log "ran $ev/$g/$h (cloud session $sid)"
+  done
+}
+
+beacon() { # stdout: presence lines for cloud
+  local s last=
+  while :; do
+    if "$PRESENT"; then s=present; else s=away; fi
+    [ "$s" = "$last" ] || log "presence: $s"
+    last=$s
+    echo "$s" || exit 0
+    sleep "$BEACON"
+  done
+}
+
+# runs on cloud: marker from stdin, events to stdout; tail dies with the connection (stdin EOF)
+# shellcheck disable=SC2016
+REMOTE='d=~/.local/state/agent-events; mkdir -p "$d" && touch "$d/events.jsonl" || exit 1
+echo "{\"relay\":\"hello\"}"
+tail -n0 -F "$d/events.jsonl" 2>/dev/null & t=$!
+trap "kill $t 2>/dev/null; exit 0" HUP TERM INT
+while read -r s; do case $s in present) touch "$d/mac-present" ;; away) rm -f "$d/mac-present" ;; esac; done
+kill $t 2>/dev/null'
+
+case ${1:-} in
+  --handle) handle; exit 0 ;;
+  -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  "") ;;
+  *) echo "agent-relay: unknown option $1" >&2; exit 2 ;;
+esac
+
+trap 'pkill -P $$ 2>/dev/null; exit 0' TERM INT
+log "starting (host $H, settings $SETTINGS, beacon ${BEACON}s)"
+delay=5
+while :; do
+  start=$SECONDS
+  beacon | ${AGENT_RELAY_SSH:-ssh} -o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 \
+             -o ServerAliveCountMax=2 -o ControlMaster=no -o ControlPath=none "$H" "$REMOTE" | handle &
+  wait $!
+  pkill -P $$ 2>/dev/null   # the beacon would otherwise linger until its next write
+  [ $((SECONDS - start)) -gt 60 ] && delay=5
+  log "connection to $H ended; retrying in ${delay}s"
+  sleep "$delay" & wait $!
+  delay=$((delay * 2)); [ "$delay" -gt "${AGENT_RELAY_RETRY_MAX:-60}" ] && delay=${AGENT_RELAY_RETRY_MAX:-60}
+done
