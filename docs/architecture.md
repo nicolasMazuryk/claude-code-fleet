@@ -23,7 +23,7 @@ Adapted from `prompts/prompt.md` §1 for the real machines. Details and code: [s
 │                                 │  │        agent-push  → ntfy             │
 │ agent-relay ══ one ssh ═════════┼═►│ events → Mac runs its own handler     │
 │   (LaunchAgent …claude.relay)   │  │                                       │
-│   presence up stdin (30 s) ═════┼═►│ mac-present marker → push gating      │
+│   presence up stdin (15 s) ═════┼═►│ mac-present marker → push gating      │
 │ cc-sync-settings ═══════════════┼═►│ settings, CLAUDE.md, skills, hooks…   │
 │ cmux · fleet ═══════════════════┼═►│ claude agents --json, systemctl       │
 └─────────────────────────────────┘  └───────────────────────────────────────┘
@@ -66,9 +66,12 @@ See [ADR 0002](decisions/0002-ownership-split.md).
 
 ### Presence and pushes
 - `agent-present` on the Mac: screen unlocked **and** HID idle < 120 s (`ioreg`).
-- `agent-relay` writes `present`/`away` up the same ssh connection every 30 s; cloud's end touches/removes
-  `~/.local/state/agent-events/mac-present`, and cloud treats a marker younger than 90 s as "present". A stopped relay,
+- `agent-relay` writes `present`/`away` up the same ssh connection every 15 s; cloud's end touches/removes
+  `~/.local/state/agent-events/mac-present`, and cloud treats a marker younger than 45 s as "present". A stopped relay,
   a sleeping Mac or a broken link therefore means "away" (extra pushes, never missed ones).
+- How soon cloud sees "away" (the Mac's own pushes use `agent-present` directly, so only the idle threshold applies):
+  locked screen → at the next update, ≤ 15 s; unlocked but idle → 120 s idle + ≤ 15 s; Mac asleep, relay stopped
+  or link down → marker goes stale, ≤ 45 s.
 - `hooks/agent-push.sh` (both hosts) posts to `https://ntfy.sh/<topic>` only when not present (the URL goes to curl
   as a config on a file descriptor, so the topic never shows in `ps`). Each decision is one line in
   `~/.local/state/agent-push/push.log` (event, type, `job=set|unset`, result; never the topic or message). Topic: local file

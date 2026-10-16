@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # agent-present — exit 0 when you're at the MacBook.
 #   Mac: screen unlocked + any keyboard/mouse/trackpad input within AGENT_AWAY_SECS (120).
-#   cloud: the Mac's agent-relay refreshed ~/.local/state/agent-events/mac-present less than 90 s ago (it writes
-#          every 30 s; a stopped relay, a sleeping Mac or a broken link all mean away).
-# Test switches: AGENT_PRESENT_OS (default uname), AGENT_PRESENT_MAX_AGE (90).
+#   cloud: the Mac's agent-relay refreshed ~/.local/state/agent-events/mac-present less than 45 s ago (it writes
+#          every 15 s; a stopped relay, a sleeping Mac or a broken link all mean away).
+# Test switches: AGENT_PRESENT_OS (default uname), AGENT_PRESENT_MAX_AGE (45).
 if [ "${AGENT_PRESENT_OS:-$(uname)}" = Darwin ]; then
   ioreg -n Root -d1 2>/dev/null | grep -q '"CGSSessionScreenIsLocked"=Yes' && exit 1
   idle=$(ioreg -c IOHIDSystem | awk '/HIDIdleTime/ {print int($NF/1000000000); exit}')   # resets on any HID input
@@ -11,5 +11,5 @@ if [ "${AGENT_PRESENT_OS:-$(uname)}" = Darwin ]; then
 else
   f="$HOME/.local/state/agent-events/mac-present"
   m=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null) || exit 1
-  [ $(( $(date +%s) - m )) -lt "${AGENT_PRESENT_MAX_AGE:-90}" ]
+  [ $(( $(date +%s) - m )) -lt "${AGENT_PRESENT_MAX_AGE:-45}" ]
 fi

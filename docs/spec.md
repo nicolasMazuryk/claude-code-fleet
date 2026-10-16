@@ -324,7 +324,7 @@ Tailscale SSH authenticates by tailnet identity; the policy allows users `agent`
 
 Hash-checked and runs the Mac's own handler, as the original §4.3. Adapted (Phase 5):
 - **One ssh connection** instead of a tail plus a 30 s beacon connection each: presence goes up on the ssh stdin
-  (`present`/`away` every 30 s; cloud's end touches/removes `mac-present`), events come down on stdout. When the link
+  (`present`/`away` every 15 s; cloud's end touches/removes `mac-present`), events come down on stdout. When the link
   dies, cloud's `tail` dies with it (stdin EOF / HUP trap). `-o ControlMaster=no -o ControlPath=none`, so it never
   becomes (or depends on) the user's multiplexed `ssh cloud` master.
 - Events need a numeric `ts`; older than 120 s (`AGENT_RELAY_MAX_AGE`) are not replayed (Mac asleep, stalled link).

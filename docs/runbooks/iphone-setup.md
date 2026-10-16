@@ -14,7 +14,7 @@ Status: skeleton; completed in Phase 6. Host table: `config/iphone/hosts.md`.
 4. ntfy app (App Store "ntfy", by Philipp Heckel) → allow notifications → **+** → topic name = the content of
    `~/.config/agent-push/topic` on the Mac (read it yourself, e.g. `pbcopy < ~/.config/agent-push/topic` and paste via
    Universal Clipboard; never paste it into git, chat logs or an agent session) → server: default `ntfy.sh` →
-   Subscribe. Test: lock the Mac, wait, a cloud or Mac session that finishes or asks for input pushes within ~30 s
+   Subscribe. Test: lock the Mac, wait, a cloud or Mac session that finishes or asks for input pushes within ~15 s
    (`~/.local/state/agent-push/push.log` on either host shows `pushed …`).
 5. Claude app → same claude.ai account; Code tab lists `mac/<repo>` and `cloud/<repo>`; app notifications off.
 6. Terminal extra-keys row on (arrows, Ctrl, Esc).
