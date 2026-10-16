@@ -63,5 +63,22 @@ node stays `macbook`.
 - cc-orchestrator: `make lint` → `lint: ok (14 files)`; `make test` → 34/34 ok.
 - Sites before: `https://mazuryktech.com` → `HTTP/2 200`; `status.mazuryktech.com/status/core` → `200`.
 
+## Outstanding (human; the auto-mode classifier denied the PR merge, so nothing was merged or applied)
+1. Merge oci-infra-old#2 and this PR (#7), then
+   `git -C ~/Documents/oci pull --ff-only && git -C ~/Documents/cc-orchestrator pull --ff-only`.
+2. `cd ~/Documents/oci && make plan-core`: confirm `0 to add, 10 to change, 0 to destroy`, then `make apply-core`.
+3. Run `make host-sync VM=cloud` twice.
+   - The 1st run logs `core.env: renamed …`, `cloud-init hostname drop-in written`, `/etc/hosts: …` and
+     `OS hostname set to cloud`.
+   - The 2nd run logs none of these.
+4. Run `make host-sync VM=ops`, needed for three changes:
+   - the Kuma monitor rename (expect `[kuma] renamed monitor: core-vm-app origin … -> core-vm-cloud origin …`)
+   - `CLOUD_IP`
+   - `core-nsg-cloud` in the weekly drift cron
+5. Verify: verify.md rows 1k–1m.
+6. Optional, on the owner's approval only: `ssh agent@cloud 'sudo reboot'`, then `ssh agent@cloud hostname` → `cloud`.
+- `agent@offers-pipeline` is untouched. Its Remote Control device name stays `app` until it restarts (Phase 4b
+  replaces it).
+
 ## Post-merge
-_See below (filled after apply / host-sync)._
+_To be filled by the session that verifies after the steps above._
