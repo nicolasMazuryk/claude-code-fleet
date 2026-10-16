@@ -1,13 +1,13 @@
 # Tailscale: tailnet policy, cloud node, Mac rename
 
 Phase 2. Design: [ADR 0001](../decisions/0001-tailscale-on-oci.md). Policy: `config/tailscale/policy.hujson`.
-The cloud side (install, join, mosh rule) is in the oci repo: `host/app/bootstrap.sh` → `setup_tailscale` and
+The cloud side (install, join, mosh rule) is in the oci repo: `host/cloud/bootstrap.sh` → `setup_tailscale` and
 `allow_udp_on_iface` (oci runbook `access-ssh.md`). `[H]` = human-only step. Every step is safe to re-run.
 
 ## Facts
 - Tailnet `example.github`, MagicDNS suffix `tailnet-example.ts.net`, login `user@github`.
 - Mac node `macbook` (was `nicolas-macbook-pro`), member. Exit node `static-ip` (Hetzner, member, `~/Documents/static-ip`).
-- Cloud node `cloud` = `core-vm-app`, `tag:cloud`, Tailscale SSH on (users `agent`, `ubuntu`), `--accept-dns=false`
+- Cloud node `cloud` = `core-vm-cloud` (OS hostname `cloud` too; was `app` until 2026-10-16), `tag:cloud`, Tailscale SSH on (users `agent`, `ubuntu`), `--accept-dns=false`
   (the VM keeps OCI's resolver). Its state is on `/data/core/tailscale`, so a restore from backup rejoins as the same node.
 - Join credential: Vault `core-secret-tailscale-authkey` holds a **Tailscale OAuth client secret** (scope
   `Auth Keys: Write`, tag `tag:cloud`), stored as `tskey-client-…?ephemeral=false&preauthorized=true`. Unlike an auth
@@ -43,12 +43,12 @@ The cloud side (install, join, mosh rule) is in the oci repo: `host/app/bootstra
 
 The oci change must be on the checkout you sync from (merge its PR, then `git -C ~/Documents/oci pull`).
 ```bash
-cd ~/Documents/oci && make host-sync VM=app
-scripts/ssh.sh app 'grep -iE "tailscale|tailnet" /var/log/core-bootstrap.log | tail -5; tailscale status; sudo iptables -S INPUT | grep 60000'
+cd ~/Documents/oci && make host-sync VM=cloud
+scripts/ssh.sh cloud 'grep -iE "tailscale|tailnet" /var/log/core-bootstrap.log | tail -5; tailscale status; sudo iptables -S INPUT | grep 60000'
 ```
 Expected: `tailscale joined as cloud.tailnet-example.ts.net.`; `tailscale status` lists `cloud` and `macbook`; the
 `tailscale0` rule is present. Re-running `host-sync` logs `tailscale up as …` and changes nothing.
-(`make ssh VM=app CMD=…` splits on `;` locally: use `scripts/ssh.sh app '…'` for compound commands.)
+(Since oci-infra PR #2, `make ssh VM=cloud CMD='a; b'` runs both commands on the VM. Before it, the part after `;` ran on the Mac.)
 
 ## 4. `[H]` Rename the Mac node to `macbook`
 
@@ -65,7 +65,7 @@ ssh -o StrictHostKeyChecking=accept-new agent@cloud true; echo $?            # 0
 script -q /dev/null sh -c 'stty rows 40 cols 120; mosh agent@cloud -- sh -c "sleep 2; echo MOSH_OK"'`  # MOSH_OK
 tailscale ping --icmp -c 2 cloud                                             # pong (Mac → cloud allowed)
 ssh agent@cloud 'sudo tailscale ping --icmp -c 2 --timeout 3s macbook'       # no pong: the ACL drops cloud → Mac
-cd ~/Documents/oci && make ssh VM=app CMD=true; echo $?                      # 0  (Bastion break-glass still works)
+cd ~/Documents/oci && make ssh VM=cloud CMD=true; echo $?                      # 0  (Bastion break-glass still works)
 ```
 mosh needs a terminal size: without a TTY (scripts, Claude Code's `!` shell) plain `mosh … -- true` fails with
 `Error: vector`, hence the `script`/`stty` wrapper. In a real terminal `mosh cloud` is enough. The Mac firewall must

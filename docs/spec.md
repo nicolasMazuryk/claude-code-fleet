@@ -13,7 +13,7 @@ Code here is the design reference for the phase that implements it; the phase nu
 | `~/Projects` (Mac `AGENTS_ROOT`) | `~/Documents` | 32 repos live there |
 | `~/src` (cloud `AGENTS_ROOT`) | `/data/fleet` | persistent 100 GB `/data` volume |
 | cloud user `ubuntu`, home `/home/ubuntu` | user **`agent`**, home `/data/home/agent` | oci bootstrap creates `agent`; survives restore |
-| host `cloud` on port 22 | `core-vm-app`, Tailscale node `cloud` (`tag:cloud`), no public IP | [ADR 0001](decisions/0001-tailscale-on-oci.md) |
+| host `cloud` on port 22 | `core-vm-cloud`, Tailscale node `cloud` (`tag:cloud`), no public IP | [ADR 0001](decisions/0001-tailscale-on-oci.md) |
 | Mac Tailscale name `macbook` | rename `nicolas-macbook-pro` → `macbook` (tailnet `tailnet-example`) | Phase 2 |
 | fnm | Mac: nvm (`~/.nvm`, Node 24); cloud: system Node 24 (NodeSource) | real setup |
 | `@reboot` cron on cloud | systemd `cc-agents.service` + `cc-rc@<repo>.service`, `loginctl enable-linger agent` | systemd is already used by oci |
@@ -245,11 +245,11 @@ As the original §2.8 with `ssh cloud` = `agent@cloud` and the remote command
 | `fleet restart <host> <repo>` | cloud: `sudo systemctl restart cc-rc@<repo>`; mac: kill + recreate the `rc:<repo>` window |
 | `fleet attach <host> <repo>` | mac: `tmux attach -t rc:<repo>`; cloud: Agent View (`ac`), since units run without tmux |
 
-## 3. Cloud (`core-vm-app`, Ubuntu 24.04 arm64)
+## 3. Cloud (`core-vm-cloud`, Ubuntu 24.04 arm64)
 
 ### 3.1 Bootstrap — owned by `~/Documents/oci` (Phase 2/4, via oci PRs)
 
-The machine part of the original §3.1 is done by oci `host/app/bootstrap.sh` and `make host-sync VM=app`:
+The machine part of the original §3.1 is done by oci `host/cloud/bootstrap.sh` and `make host-sync VM=cloud`:
 packages (git, tmux, mosh, jq, rsync, gh, build-essential, …), Node 24 + corepack, `agent` user + linger,
 gh auth from `core-secret-github-pat`, Tailscale, and the mosh rule (as implemented in Phase 2, oci `setup_tailscale`):
 

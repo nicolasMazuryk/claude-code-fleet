@@ -7,7 +7,7 @@
 //              name, or `tailscale set --hostname=macbook`). Uses exit node static-ip.
 //   static-ip  Hetzner VPS, user-owned (member), exit node (approved by hand in the admin console;
 //              repo ~/Documents/static-ip). Must keep working.
-//   cloud      core-vm-app, tagged tag:cloud, joined by the oci bootstrap with a reusable tagged auth key.
+//   cloud      core-vm-cloud, tagged tag:cloud, joined by the oci bootstrap with a reusable tagged auth key.
 //   iPhone     member (Phase 6).
 //
 // Invariant (CLAUDE.md #4): NO rule, grant or ssh entry may have src tag:cloud. The VM must never open a connection

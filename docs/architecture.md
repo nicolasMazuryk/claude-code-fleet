@@ -10,7 +10,7 @@ Adapted from `prompts/prompt.md` §1 for the real machines. Details and code: [s
      (sshd + mosh-server)│           │(TS SSH)   │ (away only)  │ (outbound-only via Anthropic)
             ┌────────────┘           │           │              │
             ▼                        ▼           │              │
-┌──── MacBook (macbook, nicolas) ─┐  ┌──── cloud = core-vm-app (agent) ──────┐
+┌──── MacBook (macbook, nicolas) ─┐  ┌──── cloud = core-vm-cloud (agent) ────┐
 │ AGENTS_ROOT ~/Documents         │  │ AGENTS_ROOT /data/fleet               │
 │ tmux "agents" → Agent View      │  │ tmux "fleet" → Agent View             │
 │   (LaunchAgent …claude.agents)  │  │   (cc-agents.service)                 │
@@ -28,14 +28,14 @@ Adapted from `prompts/prompt.md` §1 for the real machines. Details and code: [s
 │ cmux · fleet ═══════════════════┼═►│ claude agents --json, systemctl       │
 └─────────────────────────────────┘  └───────────────────────────────────────┘
   Tailscale (tailnet-example): members → *:* (+ internet via exit node static-ip) ; no rule with src tag:cloud → cloud can't reach Mac/iPhone.
-  Existing exit node static-ip keeps working. Break-glass into cloud: OCI Bastion (oci repo, `make ssh VM=app`).
+  Existing exit node static-ip keeps working. Break-glass into cloud: OCI Bastion (oci repo, `make ssh VM=cloud`).
 ```
 
 ## Components and owners
 
 | Component | Where | Owner |
 |---|---|---|
-| VM, `/data` volume, `agent` user, apt packages, Node, Tailscale daemon + `tailscale up`, mosh iptables rule, Vault secrets | cloud | `~/Documents/oci` (`host/app/bootstrap.sh`, `make host-sync VM=app`) |
+| VM, `/data` volume, `agent` user, apt packages, Node, Tailscale daemon + `tailscale up`, mosh iptables rule, Vault secrets | cloud | `~/Documents/oci` (`host/cloud/bootstrap.sh`, `make host-sync VM=cloud`) |
 | Claude Code binary, Agent View, RC servers (`cc-rc@`, `cc-agents`), hooks, settings, scripts in `bin/` | both | this repo (`install.sh`) |
 | Tailnet policy | Tailscale admin console | this repo (`config/tailscale/policy.hujson`, applied by a human) |
 | Mac Remote Login, Full Disk Access, firewall | Mac | this repo's runbooks (manual, human) |
