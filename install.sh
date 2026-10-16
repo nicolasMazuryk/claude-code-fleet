@@ -338,7 +338,7 @@ step_legacy() { # oci's pre-Phase-4b Claude Code setup (ADR 0002): stop it befor
   # What is removed is first kept in $LEGACY_BAK, so `./install.sh cloud --rollback` can bring it back.
   local u s before=$changes units
   units=$( { systemctl list-units 'agent@*' --all --plain --no-legend 2>/dev/null
-             systemctl list-unit-files 'agent@*' --no-legend 2>/dev/null; } | awk '$1 ~ /^agent@.+\.service$/ {print $1}' | sort -u)
+             systemctl list-unit-files 'agent@*' --no-legend 2>/dev/null || true; } | awk '$1 ~ /^agent@.+\.service$/ {print $1}' | sort -u)
   if [ "$DRY" != 1 ] && { [ -n "$units" ] || [ -e "$UNIT_DIR/agent@.service" ] || [ -e "$LEGACY_BIN" ]; }; then
     mkdir -p "$LEGACY_BAK"
     [ -e "$UNIT_DIR/agent@.service" ] && cp "$UNIT_DIR/agent@.service" "$LEGACY_BAK/"
@@ -442,7 +442,7 @@ install_cloud_rollback() { # cloud-local-rollback: back to the legacy oci setup 
   local u
   [ -f "$LEGACY_BAK/agent@.service" ] || die "no legacy backup in $LEGACY_BAK: nothing to roll back to"
   echo "install.sh cloud-rollback: cc-rc@/cc-agents → legacy agent@ (from $LEGACY_BAK)"
-  for u in $({ systemctl list-units 'cc-rc@*' --all --plain --no-legend; systemctl list-unit-files 'cc-rc@*' --state=enabled --no-legend; } |
+  for u in $({ systemctl list-units 'cc-rc@*' --all --plain --no-legend; systemctl list-unit-files 'cc-rc@*' --state=enabled --no-legend || true; } |
              awk '$1 ~ /^cc-rc@.+\.service$/ {print $1}' | sort -u) cc-agents.service; do
     if systemctl is-active --quiet "$u" || systemctl is-enabled --quiet "$u" 2>/dev/null; then
       act rollback "stop + disable $u" sudo_ systemctl disable --now "$u"

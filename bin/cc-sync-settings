@@ -11,7 +11,7 @@
 #   mirrored       CLAUDE.md keybindings.json skills agents commands output-styles hooks (rsync --delete; symlinks
 #                  copied as files; skills/synced is claude.ai's own and left alone)
 #   plugins        enabled on the Mac but not installed on cloud: listed with the install command
-#                  (--install-plugins runs them)
+#                  (--install-plugins runs them, adding the Mac's GitHub marketplace on cloud first)
 #   --dry-run      show what would change, write nothing      --print   print the cloud settings.json and exit
 # Must report "4 macOS-only hook handler(s) relayed" (docs/runbooks/sync-settings.md).
 # Test switches: CC_SYNC_SRC, CC_SYNC_OVERRIDES, CC_SYNC_CLOUD_HOME (skips the ssh lookup), CC_SYNC_HOST.
@@ -108,6 +108,14 @@ have=$(rsh 'jq -r ".plugins | keys[]" ~/.claude/plugins/installed_plugins.json 2
 for p in $want; do
   grep -qxF "$p" <<<"$have" && continue
   if [ "$plugins" = install ] && [ "$mode" = sync ]; then
+    # the marketplace first, from the Mac's own source (cloud only knows the default directory)
+    m=${p#*@}
+    src_repo=$(jq -r --arg m "$m" '.[$m].source | select(.source == "github") | .repo // empty' \
+                 "$HOME/.claude/plugins/known_marketplaces.json" 2>/dev/null || true)
+    if [ -n "$src_repo" ] && ! rsh "jq -e --arg m '$m' 'has(\$m)' ~/.claude/plugins/known_marketplaces.json" >/dev/null 2>&1; then
+      # shellcheck disable=SC2088
+      rsh "~/.local/bin/claude plugin marketplace add '$src_repo'" >/dev/null && echo "  plugins   added marketplace $m ($src_repo) on $H"
+    fi
     # shellcheck disable=SC2088
     rsh "~/.local/bin/claude plugin install '$p'" && echo "  plugins   installed $p on $H"
   else

@@ -17,9 +17,10 @@ case ${args[0]} in
   list-units) pat=${args[1]:-*}; for f in "$d"/active/*; do [ -e "$f" ] || continue; n=${f##*/}
                 # shellcheck disable=SC2053
                 [[ $n == $pat ]] && echo "$n loaded active running x"; done; : ;;
-  list-unit-files) pat=${args[1]:-*}; for f in "$d"/enabled/*; do [ -e "$f" ] || continue; n=${f##*/}
+  list-unit-files) pat=${args[1]:-*}; n_=0; for f in "$d"/enabled/*; do [ -e "$f" ] || continue; n=${f##*/}
                 # shellcheck disable=SC2053
-                [[ $n == $pat ]] && echo "$n enabled enabled"; done; : ;;
+                [[ $n == $pat ]] && { echo "$n enabled enabled"; n_=1; }; done
+                [ "$n_" = 1 ] ;;   # like the real one: exit 1 when nothing matches
   daemon-reload) ;;
   *) echo "fake systemctl: unsupported ${args[*]}" >&2; exit 1 ;;
 esac
