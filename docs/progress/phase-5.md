@@ -82,3 +82,10 @@ Date: 2026-10-16 · Branch: `phase-5-sounds-presence-pushes` (from `main` after 
 2. Subscribe the iPhone ntfy app to the topic (read it yourself from `~/.config/agent-push/topic`), then lock the Mac
    and confirm pushes from both hosts arrive within 30 s; unlocked and active → none. The two labelled Phase 5 test
    pushes sit in ntfy.sh's ~12 h cache and may show up right after subscribing; that is expected.
+
+## Human verification (2026-10-16 ~19:25–19:32 local)
+- Sound: the human heard Choo Choo for a cloud session's question; `/tmp/agent-relay.log`:
+  `ran PreToolUse/0/0 (cloud session e875e110)`, `ran Notification/0/0 (cloud session e875e110)`.
+- iPhone: subscribed to the topic in ntfy; both labelled test pushes arrived. With the Mac locked, pushes arrived from
+  both hosts: `✅ cloud · done — sleep-wait-60-seconds finished` and `⚠️ mac · needs input — …`.
+- Follow-up (human request): presence update every 15 s (was 30 s); cloud's freshness window scaled to 45 s (was 90 s).
