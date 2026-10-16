@@ -109,7 +109,8 @@ step_bin() { # links point into $LIVE (the checkout that runs; differs from $REP
   local f n before=$changes live=${LIVE:-$REPO}
   for f in "$REPO"/bin/*; do
     n=$(basename "$f")
-    [ -x "$f" ] && [ -f "$f" ] || continue
+    [ -x "$f" ] || continue
+    [ -f "$f" ] || continue
     case " ${BIN_SKIP:-} " in *" $n "*) continue ;; esac
     link bin "$live/bin/$n" "$HOME/.local/bin/$n"
   done
