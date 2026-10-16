@@ -14,13 +14,14 @@ setup() {
 if [ "$1" = -g ]; then printf 'Battery Power:\n sleep                1\nAC Power:\n'; sed 's/^/ /' "$PM_STATE"; exit 0; fi
 echo "pmset $*" >> "$PM_STATE.log"; printf 'sleep 0\ndisplaysleep 10\n' > "$PM_STATE"
 EOF
-  printf '#!/usr/bin/env bash\necho "fw $*" >> "%s/fw.log"\n[ "$1" = --listapps ] && printf "1 : %s \\n  (Allow incoming connections)\\n" "$(realpath /opt/homebrew/bin/mosh-server 2>/dev/null)"\nexit 0\n' "$BATS_TEST_TMPDIR" > "$F/fw"
+  printf '#!/usr/bin/env bash\necho "fw $*" >> "%s/fw.log"\n[ "$1" = --listapps ] && printf "1 : %s \\n  (Allow incoming connections)\\n" "$(realpath "$MOSH_SERVER" 2>/dev/null)"\nexit 0\n' "$BATS_TEST_TMPDIR" > "$F/fw"
   printf '#!/usr/bin/env bash\nexit ${SSHD_RC:-0}\n' > "$F/sshd"
   # like the real selftest: KEY_LOGIN=ok first, then more output (a `| grep -q` reader would SIGPIPE it)
   printf '#!/usr/bin/env bash\necho KEY_LOGIN=ok\nsleep 0.2\nseq 1 200000 | sed s/^/MORE=/\n' > "$F/selftest-ok"
   printf '#!/usr/bin/env bash\necho KEY_LOGIN=failed\n' > "$F/selftest-bad"
+  printf '#!/usr/bin/env bash\nexit 0\n' > "$F/mosh-server"
   chmod +x "$F"/*
-  export MRA_PMSET="$F/pmset" MRA_FW="$F/fw" MRA_SSHD="$F/sshd" MRA_SELFTEST="$F/selftest-ok"
+  export MOSH_SERVER="$F/mosh-server" MRA_PMSET="$F/pmset" MRA_FW="$F/fw" MRA_SSHD="$F/sshd" MRA_SELFTEST="$F/selftest-ok"
   ssh-keygen -q -t ed25519 -N '' -C moshi@iphone -f "$BATS_TEST_TMPDIR/moshi"
 }
 

@@ -27,7 +27,7 @@ PMSET=${MRA_PMSET:-pmset}
 FW=${MRA_FW:-/usr/libexec/ApplicationFirewall/socketfilterfw}
 SUDO=${CC_SUDO-sudo}
 AK="$HOME/.ssh/authorized_keys"
-MOSH_SERVER=/opt/homebrew/bin/mosh-server
+MOSH_SERVER=${MOSH_SERVER:-/opt/homebrew/bin/mosh-server}
 SELFTEST_TAG=cc-orchestrator-selftest
 ts=$(date +%Y%m%d-%H%M%S)
 
