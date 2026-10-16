@@ -95,3 +95,21 @@ and connected at 16:08:39 after the 16:05:38 cutover.
   `settings ok`, `files ok`, `4 macOS-only hook handler(s) relayed`; `make test` 46/46;
   `cc-agents`, `cc-rc@offers-pipeline` active.
 - The human items under "Outstanding" remain open.
+
+## Human items closed (2026-10-16 ~16:45 UTC)
+- 1–2 done by the human: `/data/fleet` and the four repos trusted; the Claude app lists device `cloud` with its repos.
+- 3 reboot (human ran `ssh cloud 'sudo reboot'`): `up 3 min`, hostname `cloud`, `cc-agents` active (tmux `fleet`),
+  `cc-rc@{arbinet,arbinet-specs,job-hunt,offers-pipeline,wick-sweep-reclaim}` all active, each with a
+  `Code anywhere …` (Ready) line since boot, 0 errors, `NRestarts=0`; no `agent@*` units; `Linger=yes`; `fleet` on the
+  Mac shows the `cloud` row. `./install.sh cloud` afterwards: `cloud-local: no changes`, `4 … relayed`.
+- 4 rollback drill: declined by the human.
+- 5/7 repos: one committed state everywhere (Mac = GitHub `main` = cloud, cloud clones clean):
+  arbinet `c45b717`, arbinet-specs `91028b3` (pushed); offers-pipeline `b27e6fb`, job-hunt `189b106`,
+  wick-sweep-reclaim `7550190` (repo-init files committed on the Mac, pushed to `main`, cloud fast-forwarded).
+  job-hunt's GitHub history had been rewritten elsewhere (author email only, identical trees); the Mac's `main` was
+  moved to it and the old history kept as `backup/pre-email-rewrite`. GitHub renamed job-hunt →
+  `job-search-pipeline` and wick-sweep-reclaim → `wick-sweep-reclaim-backtester-old` (old URLs redirect).
+- Bug found and fixed (#10): `repo-init` appended to a `.gitignore` without a trailing newline, turning offers-pipeline's
+  `backlog/` into `backlog/.claude/worktrees/`. The committed file is correct.
+- 6: oci-infra-old#4 merged (text-only); `make plan-core` = 2 in-place updates. `make apply-core` is left to the human
+  (the auto-mode classifier blocks IaC applies).
