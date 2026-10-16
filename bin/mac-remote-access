@@ -1,0 +1,140 @@
+#!/usr/bin/env bash
+# mac-remote-access — phone → Mac access (Phase 6). Mac-only; idempotent; never prints a private key.
+#   status            (default) read-only, no sudo: Remote Login, keys-only drop-in, authorized keys, AC sleep, mosh
+#                     firewall rule. Exit 1 if something is missing.
+#   add-key <file|->  append ONE public key (the Moshi key) to ~/.ssh/authorized_keys: validated with ssh-keygen,
+#                     private keys refused, backup first, 0600, no-op if already there.
+#   selftest          key login to this Mac with a throwaway key (from="127.0.0.1,::1", removed again) and what such
+#                     a login can do: read ~/Documents (TCC), reach the tmux server and its access to ~/Documents,
+#                     mosh in, claude logged in (Keychain). Prints KEY=VALUE lines; exit 1 if the key login fails.
+#   apply [--force]   sudo (run it in a real terminal, it prompts): /etc/ssh/sshd_config.d/100-keys-only.conf from
+#                     config/mac/sshd-100-keys-only.conf (backup in /etc/ssh/, `sshd -t`, rollback on error),
+#                     `pmset -c sleep 0 displaysleep 10`, firewall allow for the current mosh-server Cellar path.
+#                     Lockout guard: refuses unless a phone key is in authorized_keys and `selftest` logs in
+#                     (--force skips both).
+# Test hooks: MRA_SSHD_DIR, MRA_BAK_DIR, MRA_SSHD, MRA_PMSET, MRA_FW, MRA_SSHPORT (cmd: exit 0 = port 22 open),
+# MRA_SELFTEST (cmd), CC_SUDO.
+set -uo pipefail
+
+src=$0; [ -L "$src" ] && src=$(readlink "$src")
+REPO=$(cd "$(dirname "$src")/.." && pwd)
+CONF_SRC="$REPO/config/mac/sshd-100-keys-only.conf"
+SSHD_DIR=${MRA_SSHD_DIR:-/etc/ssh/sshd_config.d}
+BAK_DIR=${MRA_BAK_DIR:-/etc/ssh}          # NOT the drop-in dir: sshd_config does `Include sshd_config.d/*`
+CONF_DST="$SSHD_DIR/100-keys-only.conf"
+SSHD=${MRA_SSHD:-/usr/sbin/sshd}
+PMSET=${MRA_PMSET:-pmset}
+FW=${MRA_FW:-/usr/libexec/ApplicationFirewall/socketfilterfw}
+SUDO=${CC_SUDO-sudo}
+AK="$HOME/.ssh/authorized_keys"
+MOSH_SERVER=/opt/homebrew/bin/mosh-server
+SELFTEST_TAG=cc-orchestrator-selftest
+ts=$(date +%Y%m%d-%H%M%S)
+
+say() { printf '%-14s %s\n' "$1" "$2"; }
+port22() { if [ -n "${MRA_SSHPORT:-}" ]; then $MRA_SSHPORT; else nc -z -G 2 127.0.0.1 22 >/dev/null 2>&1; fi; }
+ac_value() { $PMSET -g custom 2>/dev/null | awk -v k="$1" '/^AC Power:/{ac=1;next} /^[A-Za-z].*:$/{ac=0} ac && $1==k {print $2; exit}'; }
+phone_keys() { local n=0; [ -f "$AK" ] && n=$(grep -vE '^[[:space:]]*(#|$)' "$AK" | grep -vc "$SELFTEST_TAG"); echo "${n:-0}"; }
+mosh_rule_ok() {
+  local p; p=$(realpath "$MOSH_SERVER" 2>/dev/null) || return 1
+  $FW --listapps 2>/dev/null | grep -A1 -F "$p" | grep -q 'Allow incoming'
+}
+
+status() {
+  local bad=0 n
+  if port22; then say remote-login "on (port 22 listening)"; else say remote-login "OFF: System Settings → General → Sharing → Remote Login"; bad=1; fi
+  if cmp -s "$CONF_SRC" "$CONF_DST"; then say keys-only "ok $CONF_DST"
+  elif [ -e "$CONF_DST" ]; then say keys-only "DIFFERS from config/mac/sshd-100-keys-only.conf: mac-remote-access apply"; bad=1
+  else say keys-only "missing $CONF_DST: mac-remote-access apply"; bad=1; fi
+  n=$(phone_keys)
+  if [ "$n" -gt 0 ]; then say authorized "$n key(s):"; grep -v "$SELFTEST_TAG" "$AK" | ssh-keygen -lf - 2>/dev/null | sed 's/^/               /'
+  else say authorized "no key in $AK: mac-remote-access add-key <moshi.pub>"; bad=1; fi
+  if [ "$(ac_value sleep)" = 0 ] && [ "$(ac_value displaysleep)" = 10 ]; then say sleep "ok (AC: sleep 0, displaysleep 10)"
+  else say sleep "AC sleep $(ac_value sleep), displaysleep $(ac_value displaysleep): mac-remote-access apply"; bad=1; fi
+  if mosh_rule_ok; then say firewall "ok mosh-server $(realpath "$MOSH_SERVER") allowed"
+  else say firewall "mosh-server $(realpath "$MOSH_SERVER" 2>/dev/null || echo missing) not allowed: mac-remote-access apply"; bad=1; fi
+  return $bad
+}
+
+add_key() {
+  local in="${1:-}" key tmp
+  [ -n "$in" ] || { echo "usage: mac-remote-access add-key <file.pub|->" >&2; return 2; }
+  if [ "$in" = - ]; then key=$(cat); else key=$(cat "$in") || return 1; fi
+  key=$(printf '%s\n' "$key" | grep -vE '^[[:space:]]*(#|$)' | tr -d '\r')
+  if printf '%s' "$key" | grep -q 'PRIVATE KEY'; then
+    echo "add-key: that is a PRIVATE key; send only the public key (Moshi → Keys → share public key)" >&2; return 1; fi
+  [ "$(printf '%s\n' "$key" | wc -l | tr -d ' ')" = 1 ] || { echo "add-key: expected exactly one public key line" >&2; return 1; }
+  tmp=$(mktemp); printf '%s\n' "$key" > "$tmp"
+  ssh-keygen -lf "$tmp" >/dev/null 2>&1 || { rm -f "$tmp"; echo "add-key: not a valid public key" >&2; return 1; }
+  local body; body=$(awk '{for(i=1;i<=NF;i++) if($i ~ /^(ssh-|ecdsa-|sk-)/){print $(i+1); exit}}' "$tmp")
+  rm -f "$tmp"
+  mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
+  if [ -f "$AK" ] && [ -n "$body" ] && grep -qF "$body" "$AK"; then echo "add-key: already present"; return 0; fi
+  [ -f "$AK" ] && cp -p "$AK" "$AK.bak.$ts"
+  printf '%s\n' "$key" >> "$AK" && chmod 600 "$AK"
+  echo "add-key: added $(printf '%s\n' "$key" | ssh-keygen -lf - 2>/dev/null)"
+}
+
+selftest() {
+  port22 || { echo "REMOTE_LOGIN=off"; return 1; }
+  t=$(mktemp -d)   # global: the EXIT trap runs after this function returns
+  ssh-keygen -q -t ed25519 -N '' -C "$SELFTEST_TAG" -f "$t/k" || return 1
+  mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"; touch "$AK"; chmod 600 "$AK"
+  cleanup() { local b; b=$(awk '{print $2}' "$t/k.pub")
+              grep -vF "$b" "$AK" > "$t/ak"; cat "$t/ak" > "$AK"; rm -rf "$t"; }
+  trap cleanup EXIT
+  printf 'from="127.0.0.1,::1",no-agent-forwarding,no-port-forwarding,no-X11-forwarding %s\n' "$(cat "$t/k.pub")" >> "$AK"
+  local o=(-F /dev/null -i "$t/k" -o IdentitiesOnly=yes -o BatchMode=yes -o ControlMaster=no -o ControlPath=none
+           -o StrictHostKeyChecking=no -o "UserKnownHostsFile=$t/kh" -o ConnectTimeout=5)
+  # shellcheck disable=SC2016  # expanded by the remote login shell
+  local probe='echo KEY_LOGIN=ok
+    ls "$HOME/Documents" >/dev/null 2>&1 && echo SSH_DOCUMENTS=readable || echo SSH_DOCUMENTS=denied
+    T=/opt/homebrew/bin/tmux
+    echo "TMUX_SESSIONS=$($T ls -F "#S" 2>/dev/null | tr "\n" " ")"
+    $T run-shell "ls \"$HOME/Documents\" >/dev/null 2>&1 && echo TMUX_SERVER_DOCUMENTS=readable || echo TMUX_SERVER_DOCUMENTS=denied" 2>/dev/null || echo TMUX_SERVER_DOCUMENTS=no-server
+    echo "CLAUDE_LOGGED_IN=$(~/.local/bin/claude auth status --json 2>/dev/null | /usr/bin/jq -r .loggedIn 2>/dev/null || echo error)"
+    r=$(cd /tmp && perl -e "alarm 120; exec @ARGV" ~/.local/bin/claude -p "Reply with exactly: PONG" --model haiku 2>/dev/null | tr -d "\r" | grep -c PONG)
+    [ "$r" -gt 0 ] && echo CLAUDE_KEYCHAIN=works || echo CLAUDE_KEYCHAIN=fails'
+  # shellcheck disable=SC2029  # $probe is a literal script for the remote shell
+  if ! ssh "${o[@]}" "$USER@localhost" "$probe"; then echo "KEY_LOGIN=failed"; return 1; fi
+  # mosh needs a terminal size even without a TTY
+  local m; m=$(script -q /dev/null sh -c "stty rows 40 cols 120 2>/dev/null; mosh --ssh='ssh ${o[*]}' --server=$MOSH_SERVER $USER@localhost -- sh -c 'ls \$HOME/Documents >/dev/null 2>&1 && echo MOSH_DOCUMENTS=readable || echo MOSH_DOCUMENTS=denied; sleep 1'" 2>&1 | tr -d '\r' | grep -oE 'MOSH_DOCUMENTS=[a-z]+' | head -1)
+  echo "${m:-MOSH=failed}"
+}
+
+apply() {
+  local force=0; [ "${1:-}" = --force ] && force=1
+  if [ $force = 0 ]; then
+    [ "$(phone_keys)" -gt 0 ] || { echo "apply: no phone key in $AK yet (add-key first) — refusing to go keys-only; --force overrides" >&2; return 1; }
+    local st; st=$(${MRA_SELFTEST:-"$0" selftest})   # read it all: `| grep -q` would SIGPIPE it (pipefail = fail)
+    grep -qx 'KEY_LOGIN=ok' <<<"$st" || { echo "apply: key login to this Mac does not work (mac-remote-access selftest) — refusing; --force overrides" >&2; return 1; }
+  fi
+  local changed=0
+  if cmp -s "$CONF_SRC" "$CONF_DST"; then say keys-only "ok"
+  else
+    [ -e "$CONF_DST" ] && $SUDO cp -p "$CONF_DST" "$BAK_DIR/100-keys-only.conf.bak.$ts"
+    $SUDO cp "$CONF_SRC" "$CONF_DST" && $SUDO chmod 644 "$CONF_DST"
+    if ! $SUDO "$SSHD" -t; then
+      echo "apply: sshd -t failed, rolling back" >&2
+      if [ -e "$BAK_DIR/100-keys-only.conf.bak.$ts" ]; then $SUDO cp -p "$BAK_DIR/100-keys-only.conf.bak.$ts" "$CONF_DST"; else $SUDO rm -f "$CONF_DST"; fi
+      return 1
+    fi
+    say keys-only "installed $CONF_DST (sshd -t ok; applies to the next ssh connection)"; changed=1
+  fi
+  if [ "$(ac_value sleep)" = 0 ] && [ "$(ac_value displaysleep)" = 10 ]; then say sleep "ok"
+  else $SUDO "$PMSET" -c sleep 0 displaysleep 10 && say sleep "set AC sleep 0, displaysleep 10"; changed=1; fi
+  if mosh_rule_ok; then say firewall "ok"
+  else local p; p=$(realpath "$MOSH_SERVER") || { echo "apply: $MOSH_SERVER missing (brew install mosh)" >&2; return 1; }
+       $SUDO "$FW" --add "$p" >/dev/null && $SUDO "$FW" --unblockapp "$p" >/dev/null && say firewall "allowed $p"; changed=1; fi
+  [ $changed = 0 ] && echo "mac-remote-access apply: no changes"
+  return 0
+}
+
+case "${1:-status}" in
+  status) status ;;
+  add-key) add_key "${2:-}" ;;
+  selftest) selftest ;;
+  apply) apply "${2:-}" ;;
+  -h|--help|help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) echo "usage: mac-remote-access [status|add-key <file|->|selftest|apply [--force]]" >&2; exit 2 ;;
+esac

@@ -2,7 +2,7 @@
 
 Scripts symlinked into `~/.local/bin` on both hosts by `install.sh` (editing them here changes what runs; on cloud
 the links point into the rsync copy `~/cc-orchestrator`, refreshed by `./install.sh cloud`). Mac-only, not linked on
-cloud: `cc-capture`, `cc-sync-settings`, `cc-orchestrator-start`, `agent-relay`. The relay LaunchAgent runs copies of
+cloud: `cc-capture`, `cc-sync-settings`, `cc-orchestrator-start`, `agent-relay`, `mac-remote-access`. The relay LaunchAgent runs copies of
 `agent-relay` and `agent-present` in `~/.local/libexec/cc-orchestrator/` (launchd can't read `~/Documents`);
 `./install.sh mac` refreshes them.
 | Script | What | Phase |
@@ -19,6 +19,7 @@ cloud: `cc-capture`, `cc-sync-settings`, `cc-orchestrator-start`, `agent-relay`.
 | `cc-sync-settings [--dry-run\|--print] [--install-plugins]` | Mac → cloud settings mirror (expect `4 … relayed`) | 4 |
 | `cc-relay-hook` | cloud: queue a relayed Mac hook event for `agent-relay` | 4 (used in 5) |
 | `agent-relay [--handle]` | Mac (LaunchAgent): one ssh to cloud; presence up, relayed hook events down; runs the Mac's own hash-checked handler | 5 |
+| `mac-remote-access [status\|add-key <pub>\|selftest\|apply [--force]]` | Mac: phone access (Remote Login check, Moshi key, keys-only sshd drop-in, AC sleep, mosh firewall; `apply` uses sudo, lockout-guarded) | 6 |
 | `cc-doctor` | health check | 7 |
 
 Rules: `#!/usr/bin/env bash`, idempotent, shellcheck-clean (`make lint`), bash 3.2 compatible if it runs on the Mac.

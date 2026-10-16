@@ -7,7 +7,7 @@
 # mac, in order (each step prints "ok" when already in place, "updated"/"created" when it wrote something):
 #   tools       brew install tmux mosh if missing
 #   bin         ~/.local/bin/<script> → <repo>/bin/<script> (symlinks; editing the repo changes what runs)
-#   config      ~/.config/cc-orchestrator/config (from config/mac/config.tmpl), zshrc.snippet symlink
+#   config      ~/.config/cc-orchestrator/config (from config/mac/config.tmpl), zshrc.snippet copy
 #   tmux        ~/.tmux.conf
 #   claude      ~/.claude/CLAUDE.md, statusline-combined.sh (node path fix), hooks/agent-push.sh;
 #               baseline files from config/claude/ only where missing (sounds, skills, claude-hud, ccstatusline)
@@ -30,7 +30,7 @@
 # cloud-local (on cloud as agent; sudo is passwordless there):
 #   claude      Claude Code binary for agent (~/.local/bin/claude, native installer) if missing — this repo owns it
 #   bin, path   ~/.local/bin → ~/cc-orchestrator/bin (not the Mac-only cc-capture, cc-sync-settings,
-#               cc-orchestrator-start, agent-relay); PATH line at the top of ~/.bashrc (non-interactive ssh)
+#               cc-orchestrator-start, agent-relay, mac-remote-access); PATH line at the top of ~/.bashrc (non-interactive ssh)
 #   config      ~/.config/cc-orchestrator/config (config/cloud/config.tmpl), ~/.tmux.conf
 #   legacy      oci's agent@<repo> units stopped + disabled, agent@.service, /usr/local/bin/fleet and the
 #               tmux -L agent-<repo> servers removed (one RC server per folder; ADR 0002)
@@ -132,7 +132,8 @@ step_config() {
   local tmp
   tmp=$(mktemp); sed "s#@CC_ORCH_DIR@#$REPO#g" "$REPO/config/mac/config.tmpl" > "$tmp"
   install_file config "$tmp" "$HOME/.config/cc-orchestrator/config" 644; rm -f "$tmp"
-  link config "$REPO/config/mac/zshrc.snippet" "$HOME/.config/cc-orchestrator/zshrc.snippet"
+  # a copy, not a link: ssh/mosh shells (phone) cannot read ~/Documents (no Full Disk Access)
+  install_file config "$REPO/config/mac/zshrc.snippet" "$HOME/.config/cc-orchestrator/zshrc.snippet" 644
 }
 
 step_tmux() { install_file tmux "$REPO/config/mac/tmux.conf" "$HOME/.tmux.conf" 644; }
@@ -442,7 +443,7 @@ step_rc() {
 install_cloud_local() {
   [ "$(uname)" = Linux ] || [ "${CC_INSTALL_ANY_OS:-0}" = 1 ] || die "install.sh cloud-local runs on cloud (Linux)"
   LIVE=${CC_CLOUD_REPO:-$REPO}
-  BIN_SKIP="cc-capture cc-sync-settings cc-orchestrator-start agent-relay"   # Mac-only (they read the Mac's ~/.claude / launchd)
+  BIN_SKIP="cc-capture cc-sync-settings cc-orchestrator-start agent-relay mac-remote-access"   # Mac-only (they read the Mac's ~/.claude / launchd)
   echo "install.sh cloud-local: $LIVE → $HOME$([ "$DRY" = 1 ] && echo ' (dry run)')"
   step_claude_bin; step_bin; step_path; step_config_cloud; step_tmux
   step_legacy; step_units; step_linger; step_repos; step_agents; step_rc

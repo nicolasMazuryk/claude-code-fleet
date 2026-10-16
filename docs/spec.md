@@ -352,9 +352,11 @@ Access (or Files & Folders → Documents) for `/opt/homebrew/bin/tmux`, `/usr/li
 
 ### 4.5 Let the iPhone into the Mac (Phase 6, manual)
 
-Remote Login **off today** → on, for user `nicolas` only; `config/mac/sshd-100-keys-only.conf` →
+Remote Login on, for user `nicolas` only; `config/mac/sshd-100-keys-only.conf` →
 `/etc/ssh/sshd_config.d/100-keys-only.conf`; Moshi public key in `~/.ssh/authorized_keys`; firewall allow for
-`mosh-server`; `sudo pmset -c sleep 0 displaysleep 10`.
+`mosh-server`; `sudo pmset -c sleep 0 displaysleep 10`. All but the GUI toggle and the phone are `bin/mac-remote-access`
+(`status`, `add-key`, `selftest`, `apply` with a lockout guard); order and the Full Disk Access trade-off:
+[runbooks/iphone-setup.md](runbooks/iphone-setup.md).
 
 ### 4.6 Shell shortcuts (`config/mac/zshrc.snippet`, sourced from `~/.zshrc`) and cmux
 
@@ -363,7 +365,7 @@ Remote Login **off today** → on, for user `nicolas` only; `config/mac/sshd-100
 
 ```bash
 alias am='tmux -u new -A -s agents ~/.local/bin/agents-loop'
-alias ac='mosh cloud -- tmux -u new -A -s fleet ~/.local/bin/agents-loop'
+alias ac="mosh cloud -- tmux -u new -A -s fleet '\$HOME/.local/bin/agents-loop'"   # quoted: a bare ~ expands on the Mac
 # fleet is ~/.local/bin/fleet (on PATH)
 ```
 
@@ -409,9 +411,11 @@ Applied by a human in the admin console **before** `tailscale up --advertise-tag
 | Host | Address | User / auth | mosh server | Command on connect |
 |---|---|---|---|---|
 | `cloud` | `cloud` | `agent`, Tailscale SSH (no key) | default | `tmux -u new -A -s fleet ~/.local/bin/agents-loop` |
-| `mac` | `macbook` | `nicolas`, Moshi key | `/opt/homebrew/bin/mosh-server` | `tmux -u new -A -s agents ~/.local/bin/agents-loop` |
+| `mac` | `macbook` | `nicolas`, Moshi key | `/opt/homebrew/bin/mosh-server` | `/opt/homebrew/bin/tmux -u new -A -s agents ~/.local/bin/agents-loop` |
 
 Plus: Tailscale app, ntfy subscription to the topic, Claude app (own notifications off), extra-keys row.
+A push carries `Click: https://claude.ai/code/<session>` only from a session bridged to Remote Control (app-started or
+interactive); Agent View background-session pushes have no session URL ([iphone-setup](runbooks/iphone-setup.md) §C).
 
 ## 7–8. Daily use, limits and recovery
 

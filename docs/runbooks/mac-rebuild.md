@@ -33,7 +33,8 @@ Status: steps 1–8 runnable (Phase 3). Phone access (step 9) is Phase 6. `[H]` 
    - `brew install tmux mosh` if missing;
    - symlinks `bin/*` → `~/.local/bin/` (and drops links to scripts that no longer exist);
    - writes `~/.config/cc-orchestrator/config` from `config/mac/config.tmpl` (`CC_ORCH_DIR` = this checkout) and
-     links `~/.config/cc-orchestrator/zshrc.snippet` → `config/mac/zshrc.snippet`;
+     copies `config/mac/zshrc.snippet` → `~/.config/cc-orchestrator/zshrc.snippet` (a copy, not a link: phone
+     ssh/mosh shells can't read `~/Documents`; re-run `./install.sh mac` after editing the snippet);
    - `~/.tmux.conf`, `~/.claude/CLAUDE.md`, `~/.claude/statusline-combined.sh` (node path fix),
      `~/.claude/hooks/agent-push.sh` (copies);
    - restores **missing** baseline files from `config/claude/` (sounds, `statusline-sys.sh`, claude-hud files,
@@ -67,8 +68,8 @@ Status: steps 1–8 runnable (Phase 3). Phone access (step 9) is Phase 6. `[H]` 
    (Equivalent: type `y` in each `rc:<repo>` window.)
 7. `[H]` Full Disk Access (System Settings → Privacy & Security → Full Disk Access → `+`, Cmd+Shift+G):
    `$(realpath /opt/homebrew/bin/tmux)` (the tmux server started by the LaunchAgent at login runs Agent View and the RC
-   servers in `~/Documents`), and for phone access (Phase 6) `/usr/libexec/sshd-keygen-wrapper`,
-   `$(realpath /opt/homebrew/bin/mosh-server)`. Check after the next login: `tmux ls` shows `agents` and `rc`, and
+   servers in `~/Documents`). Not by default for `sshd-keygen-wrapper` / `mosh-server` (phone logins): the phone
+   attaches to that tmux server; see [iphone-setup § Full Disk Access](iphone-setup.md#full-disk-access-for-remote-logins). Check after the next login: `tmux ls` shows `agents` and `rc`, and
    `/tmp/cc-orchestrator-start.log` has no `Operation not permitted`.
 8. `repo-init <repo>` for each repo in `config/mac/repos.txt` (TTY; accept the trust prompt, `/exit`). Trust is per
    directory (`projects["<dir>"].hasTrustDialogAccepted` in `~/.claude.json`); check which are missing with
@@ -76,9 +77,14 @@ Status: steps 1–8 runnable (Phase 3). Phone access (step 9) is Phase 6. `[H]` 
    yet cannot create worktrees: make an initial commit first. It adds
    `.claude/worktrees/` to `.gitignore` and `.env`, `.env.local` to `.worktreeinclude` (commit those once in the repo),
    then runs `rc-servers`. New repo for the app: `repo-init --rc <repo>` (appends to `config/mac/repos.txt`).
-9. Phone access (Phase 6): `[H]` System Settings → General → Sharing → Remote Login, allow `nicolas` only;
-   `sudo cp config/mac/sshd-100-keys-only.conf /etc/ssh/sshd_config.d/100-keys-only.conf`; Moshi key into
-   `~/.ssh/authorized_keys`; toggle Remote Login; firewall rule for mosh-server (step 2a); `sudo pmset -c sleep 0 displaysleep 10`.
+9. Phone access (Phase 6), in this order ([iphone-setup](iphone-setup.md) §A, `mac-remote-access status` shows what
+   is missing):
+   1. `[H]` System Settings → General → Sharing → Remote Login on, only `nicolas`, "full disk access for remote users" off;
+   2. `mac-remote-access selftest` (throwaway localhost-only key; proves key login, records TCC/Keychain behaviour);
+   3. `[H]` Moshi key on the phone → `mac-remote-access add-key <moshi.pub>`; `[H]` Moshi `mac` connects with the key;
+   4. `[H]` real terminal: `mac-remote-access apply` (sudo): `/etc/ssh/sshd_config.d/100-keys-only.conf` from
+      `config/mac/sshd-100-keys-only.conf` (backup in `/etc/ssh/`, `sshd -t`), `pmset -c sleep 0 displaysleep 10`,
+      mosh-server firewall allow (step 2a). Refuses without a phone key and a working key login. Re-run → `no changes`.
 10. [verify.md](verify.md) Mac section; `make doctor`.
 
 ## Restore the captured baseline by hand

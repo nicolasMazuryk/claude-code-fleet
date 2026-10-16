@@ -48,7 +48,11 @@ Each phase's PR records the output of its rows. `make doctor` (Phase 7) automate
 | 5b | Pushes | unlocked + moving the mouse; a cloud session finishes | no pushes: `push.log` on cloud `present: no push`. **2026-10-16: PASS** (bg session's `Stop` and Agent View's `agent_completed` both `present: no push`) | 5 |
 | 5c | Pushes | cloud gating with a fake curl: `ssh cloud 'd=~/.local/state/agent-events; p() { echo "{\"hook_event_name\":\"Stop\"}" \| AGENT_PUSH_CURL=/bin/true AGENT_PUSH_LOG=/tmp/g.log ~/.claude/hooks/agent-push.sh; }; touch $d/mac-present; p; touch -d "-2 min" $d/mac-present; p; cat /tmp/g.log; rm /tmp/g.log'` | `present: no push`, then `pushed "done"` (the relay restores the marker within 15 s). **2026-10-16: PASS** | 5 |
 | 6 | Remote Control | Claude app → Code | `mac/<repo>` (Phase 3) and `cloud/<repo>` under device `cloud` (Phase 4); new session lands in a worktree; approve a prompt from the app | 3–4 |
-| 7 | iPhone | Moshi `cloud` and `mac` | dispatch, peek-reply, attach-approve on both; tapping a push opens the session | 6 |
+| 7 | iPhone | `[H]` Moshi `cloud` and `mac` ([iphone-setup](iphone-setup.md) §D) | dispatch (`@<repo> …`), peek-reply (`Space`, type, `Enter`), attach-approve (`→`, approve, `←`) on both hosts | 6 |
+| 7a | iPhone | `mac-remote-access status; echo $?` | `remote-login on`, `keys-only ok`, ≥ 1 authorized key (the Moshi key's fingerprint), `sleep ok (AC: sleep 0, displaysleep 10)`, `firewall ok`; `0`. **2026-10-16:** Remote Login off, no key, AC sleep 10 (firewall ok) → human steps pending | 6 |
+| 7b | iPhone | `mac-remote-access selftest` | `KEY_LOGIN=ok`; `TMUX_SERVER_DOCUMENTS=readable`; `MOSH_DOCUMENTS=…`, `SSH_DOCUMENTS=…`, `CLAUDE_*` recorded in §10.6 | 6 |
+| 7c | iPhone | after `mac-remote-access apply`: `ssh -o PreferredAuthentications=password,keyboard-interactive -o PubkeyAuthentication=no localhost true` | `Permission denied (publickey)`; Moshi `mac` still logs in; `mac-remote-access apply` again → `no changes` | 6 |
+| 7d | iPhone | `[H]` lock the Mac, start a session from the Claude app (`mac/<repo>` or `cloud/<repo>`), let it finish, tap the push | `push.log` `pushed "done" (with Click)`; the tap opens that session (Claude app, or claude.ai in Safari). Agent View pushes have no Click (no bridged session): the tap opens ntfy | 6 |
 | 8 | Docs | a fresh agent answers "how do I add a repo to cloud?" from docs alone | → [add-repo](add-repo.md) | 0 |
 | 9 | Repo | `make lint test` | passes | 0+ |
 
@@ -61,5 +65,5 @@ Each phase's PR records the output of its rows. `make doctor` (Phase 7) automate
 | 3 | Is `CLAUDE_JOB_DIR` passed to hooks of background sessions? | `job=set\|unset` in `~/.local/state/agent-push/push.log` | **Yes** (2026-10-16, cloud, claude 2.1.301): a `claude --bg` session's own `Stop` logged `job=set` (no push); Agent View's `Notification:agent_completed` for it logged `job=unset` (pushes when away). No double push |
 | 4 | Does `cc-sync-settings` count all 4 Choo Choo handlers; relayed sound identical? | `make sync`; relay log | 4 counted (2026-10-16). The relay runs the Mac's own handler string (`afplay ~/.claude/sounds/choo-choo.mp3`, the Stop one with its jq guard on the cloud payload), so the sound is the same file; audible identity: human (verify row 4) |
 | 5 | Does `@` list every repo in `AGENTS_ROOT`? (names have no spaces; check `FIO`, `fio.contracts`) | type `@` | _tbd_ |
-| 6 | `claude` from an SSH login on the Mac: Keychain login available? | mosh macbook → `claude` | _tbd (Phase 6)_ |
+| 6 | `claude` from an SSH login on the Mac: Keychain login available? | `mac-remote-access selftest` (`CLAUDE_LOGGED_IN`, `CLAUDE_KEYCHAIN`; also `SSH_DOCUMENTS`, `TMUX_SERVER_DOCUMENTS`, `MOSH_DOCUMENTS` for the TCC question) | _tbd: needs Remote Login on (Phase 6, human step 1)_ |
 | 7 | Tenancy A1 allowance | oci `make free-tier` | 4 OCPU / 24 GB, using 2 / 12 |
