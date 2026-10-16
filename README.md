@@ -1,6 +1,6 @@
 # claude-code-fleet
 
-[![CI](../../actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
+[![CI](https://github.com/nicolasMazuryk/claude-code-fleet/actions/workflows/ci.yml/badge.svg)](https://github.com/nicolasMazuryk/claude-code-fleet/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Run, monitor and secure parallel Claude Code agents across a Mac, a cloud VM and an iPhone over Tailscale. Bash + launchd/systemd tooling, ADR-driven, tested with bats.
