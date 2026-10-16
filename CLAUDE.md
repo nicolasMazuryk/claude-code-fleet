@@ -54,10 +54,12 @@ Prepare the exact commands, make them resumable, and list them for the human.
 | User / home | `nicolas`, `/Users/nicolas` | `agent`, `/data/home/agent` (on persistent `/data`) |
 | `AGENTS_ROOT` | `~/Documents` | `/data/fleet` |
 | Agent View tmux session | `agents` | `fleet` |
-| RC servers | tmux session `rc`, one window per repo | systemd `cc-rc@<repo>` (replaces oci `agent@<repo>`) |
+| RC servers | tmux session `rc`, one window per repo | systemd `cc-rc@<repo>`, headless (no tmux); oci `agent@<repo>` removed in Phase 4b |
 | RC allowlist | `config/mac/repos.txt` | `config/cloud/repos.txt` |
 | Node | nvm (`~/.nvm`), pnpm via corepack | system Node 24 (NodeSource), pnpm via corepack |
 | Starts at boot | LaunchAgents `cc-orchestrator.claude.{agents,relay}` | `cc-agents.service`, `cc-rc@.service` (linger on) |
+| Claude Code binary | native installer (`~/.local/bin/claude`) | same, installed by `install.sh cloud` (not oci) |
+| This repo on the host | `~/Documents/cc-orchestrator` (live checkout) | `~/cc-orchestrator`, an rsync copy (never edit it there) |
 
 Environment notes: macOS ships bash 3.2 and BSD tools. Scripts use `#!/usr/bin/env bash`, avoid bash-4-only features
 unless the script only runs on cloud, and avoid `${arr[@]}` on empty arrays under `set -u`

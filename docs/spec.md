@@ -134,7 +134,7 @@ fi
 
 #### Cloud systemd units (`config/cloud/systemd/`, installed by `install.sh cloud`, Phase 4)
 
-`cc-rc@.service` — successor of oci `agent@.service`:
+`cc-rc@.service` — successor of oci `agent@.service` (as installed: `config/cloud/systemd/cc-rc@.service`):
 
 ```ini
 [Unit]
@@ -142,24 +142,35 @@ Description=Claude Code Remote Control server for %i (cc-orchestrator)
 After=network-online.target data.mount tailscaled.service
 Wants=network-online.target
 RequiresMountsFor=/data
+ConditionPathIsDirectory=/data/fleet/%i/.git
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
 User=agent
+Group=agent
 WorkingDirectory=/data/fleet/%i
 Environment=HOME=/data/home/agent
+StandardInput=null
+SyslogIdentifier=cc-rc@%i
 ExecStart=/data/home/agent/.local/bin/rc-serve /data/fleet/%i
 Restart=always
 RestartSec=30
+TimeoutStopSec=30
 CPUWeight=200
 
 [Install]
 WantedBy=multi-user.target
 ```
 
-Logs go to journald (`journalctl -u cc-rc@<repo>`). Interacting with a server (first-run prompts) is done by
-running `rc-serve` once by hand as `agent` (see [add-repo](runbooks/add-repo.md)), not by attaching to the unit.
-Phase 4 decides whether `rc-serve` needs a pty wrapper (`script -qfc`) under systemd; record it here.
+**No pty, no tmux (decided 2026-10-16, Phase 4b, with evidence):** a transient unit
+(`systemd-run … -p StandardInput=null claude remote-control …`, no terminal) registered
+(`POST /v1/environments/bridge -> 200`), printed `✔ Ready`, and on SIGTERM logged
+`Environment deregistered, bridge offline`. Under systemd (`$INVOCATION_ID` set) `rc-serve` `exec`s claude once, so
+systemd's SIGTERM reaches claude directly; on the Mac it keeps its restart loop in tmux. Logs go to journald
+(`journalctl -u cc-rc@<repo>`) and, through `30-cc-orchestrator.conf`, to `/var/log/core/agent.log` (shipped by oci).
+First-run prompts (trust, Remote Control) are answered once by hand as `agent` ([cloud-rebuild](runbooks/cloud-rebuild.md)
+step 5); `rc-servers` only enables units for trusted repos.
 
 `cc-agents.service` — Agent View in tmux session `fleet` (replaces the original `@reboot` cron):
 
@@ -269,9 +280,11 @@ Human, once: `sudo -iu agent claude auth login` (persists on `/data`).
 
 ### 3.2 Install from the Mac: `./install.sh cloud` (Phase 4)
 
-Replaces the original's `scp` list: rsync this repo to `/data/home/agent/cc-orchestrator`, symlink `bin/*` into
-`/data/home/agent/.local/bin`, write the cloud config, install tmux.conf, the ntfy topic, the systemd units, migrate
-`agent@*` → `cc-rc@*`, then run `cc-sync-settings`.
+Replaces the original's `scp` list: rsync this repo to `/data/home/agent/cc-orchestrator`, install the Claude Code
+binary if missing (this repo owns it since Phase 4b), symlink `bin/*` into `/data/home/agent/.local/bin`, write the
+cloud config (`config/cloud/config.tmpl`), install tmux.conf, the ntfy topic, the systemd units and rsyslog rule,
+migrate `agent@*` → `cc-rc@*` (legacy kept for `--rollback`), clone `config/cloud/repos.txt`, then run
+`cc-sync-settings`. `--dry-run` writes nothing. Steps and output: [runbooks/cloud-rebuild.md](runbooks/cloud-rebuild.md).
 
 ### 3.3 Start at boot
 
