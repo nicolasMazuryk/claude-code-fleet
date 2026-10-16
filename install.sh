@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # install.sh mac | cloud — install cc-orchestrator on this host. Idempotent: a second run changes nothing.
 #
-#   ./install.sh mac     (run on the Mac, from the checkout that should be live; usually ~/Documents/cc-orchestrator)
+#   ./install.sh mac     (run on the Mac, from the checkout that should be live; usually ~/Documents/claude-code-fleet)
 #   ./install.sh cloud [--dry-run | --rollback]   (run on the Mac; installs on cloud over `ssh cloud` as agent, sudo where needed)
 #
 # mac, in order (each step prints "ok" when already in place, "updated"/"created" when it wrote something):
@@ -22,14 +22,14 @@
 #   launchd     cc-orchestrator.claude.agents and .relay (sound relay + presence beacon), bootstrapped
 #
 # cloud, from the Mac (--dry-run: show what would change, write nothing on cloud except a staging copy in ~/.cache):
-#   sync        rsync this checkout (tracked + new files, not gitignored; not tests/ prompts/) → cloud:~/cc-orchestrator
+#   sync        rsync this checkout (tracked + new files, not gitignored; not tests/ prompts/) → cloud:~/claude-code-fleet
 #               (--delete)
 #   ntfy        ~/.config/agent-push/topic copied to cloud (0600) when missing or different
-#   cloud-local ~/cc-orchestrator/install.sh cloud-local on cloud (below)
+#   cloud-local ~/claude-code-fleet/install.sh cloud-local on cloud (below)
 #   settings    cc-sync-settings (expect "4 macOS-only hook handler(s) relayed")
 # cloud-local (on cloud as agent; sudo is passwordless there):
 #   claude      Claude Code binary for agent (~/.local/bin/claude, native installer) if missing — this repo owns it
-#   bin, path   ~/.local/bin → ~/cc-orchestrator/bin (not the Mac-only cc-capture, cc-sync-settings,
+#   bin, path   ~/.local/bin → ~/claude-code-fleet/bin (not the Mac-only cc-capture, cc-sync-settings,
 #               cc-orchestrator-start, agent-relay, mac-remote-access); PATH line at the top of ~/.bashrc (non-interactive ssh)
 #   config      ~/.config/cc-orchestrator/config (config/cloud/config.tmpl), ~/.tmux.conf
 #   legacy      oci's agent@<repo> units stopped + disabled, agent@.service, /usr/local/bin/fleet and the
@@ -497,14 +497,14 @@ install_cloud() {
   [ "${1:-}" = --dry-run ] && dry=1
   ssh -o BatchMode=yes -o ConnectTimeout=10 "$h" true || die "ssh $h failed (Tailscale up? see docs/runbooks/tailscale.md)"
   if [ "${1:-}" = --rollback ]; then
-    ssh -o BatchMode=yes "$h" "bash ~/cc-orchestrator/install.sh cloud-local-rollback"; return
+    ssh -o BatchMode=yes "$h" "bash ~/claude-code-fleet/install.sh cloud-local-rollback"; return
   fi
-  dest=cc-orchestrator; [ "$dry" = 1 ] && dest=.cache/cc-orchestrator-dryrun
+  dest=claude-code-fleet; [ "$dry" = 1 ] && dest=.cache/cc-orchestrator-dryrun
   echo "install.sh cloud: $REPO → $h:~/$dest$([ "$dry" = 1 ] && echo ' (dry run)')"
   out=$(rsync -rlpt --delete -i --exclude=/.git --exclude=/.claude/ --exclude=/tests/ --exclude=/prompts/ --exclude='*.bak.*' --exclude=.DS_Store \
           --filter=':- .gitignore' -e 'ssh -o BatchMode=yes' "$REPO/" "$h:$dest/")
   if [ -n "$out" ]; then
-    if [ "$dry" = 1 ]; then say sync "would update ~/cc-orchestrator with:"
+    if [ "$dry" = 1 ]; then say sync "would update ~/claude-code-fleet with:"
     else did sync "updated ~/$dest ($(printf '%s\n' "$out" | wc -l | tr -d ' ') item(s))"; fi
     printf '%s\n' "$out" | sed 's/^/            /'
   else say sync "ok ~/$dest"; fi
@@ -523,7 +523,7 @@ install_cloud() {
   else say ntfy "WARNING: no $topic on the Mac (run ./install.sh mac first); cloud pushes stay off"; fi
 
   if [ "$dry" = 1 ]; then
-    ssh -o BatchMode=yes "$h" "CC_DRY_RUN=1 CC_CLOUD_REPO=\$HOME/cc-orchestrator bash ~/$dest/install.sh cloud-local"
+    ssh -o BatchMode=yes "$h" "CC_DRY_RUN=1 CC_CLOUD_REPO=\$HOME/claude-code-fleet bash ~/$dest/install.sh cloud-local"
     "$REPO/bin/cc-sync-settings" --dry-run
   else
     ssh -o BatchMode=yes "$h" "bash ~/$dest/install.sh cloud-local"

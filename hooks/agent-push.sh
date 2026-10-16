@@ -34,11 +34,11 @@ esac
 msg=$(j '.message // .last_assistant_message' | tr '\n' ' ' | cut -c1-140)
 prio=default; tags=white_check_mark
 [ "$kind" = "needs input" ] && { prio=high; tags=warning; }
-click=()                                                          # tap opens the session in the Claude app
-[ -n "${CLAUDE_CODE_BRIDGE_SESSION_ID:-}" ] && click=(-H "Click: https://claude.ai/code/$CLAUDE_CODE_BRIDGE_SESSION_ID")
+click=https://claude.ai/code; via="Click: Code tab"              # tap opens the Claude app's Code tab …
+[ -n "${CLAUDE_CODE_BRIDGE_SESSION_ID:-}" ] && { click="$click/$CLAUDE_CODE_BRIDGE_SESSION_ID"; via="with Click"; }  # … or the session
 if ${AGENT_PUSH_CURL:-curl} -fsS -m 5 -H "Title: ${AGENT_HOST:-$(hostname -s)} · $kind" -H "Priority: $prio" \
-     -H "Tags: $tags" ${click[@]+"${click[@]}"} -d "${msg:-$kind}" \
+     -H "Tags: $tags" -H "Click: $click" -d "${msg:-$kind}" \
      -K <(printf 'url = "%s/%s"\n' "${NTFY_SERVER:-https://ntfy.sh}" "$topic") >/dev/null 2>&1   # topic not in argv
-then log "pushed \"$kind\"$([ ${#click[@]} -gt 0 ] && echo ' (with Click)')"
+then log "pushed \"$kind\" ($via)"
 else log "push \"$kind\" FAILED (curl)"; fi
 exit 0

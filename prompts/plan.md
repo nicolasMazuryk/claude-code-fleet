@@ -16,7 +16,7 @@
 | Mac sound hooks | 1 Choo Choo hook | **4** `afplay ~/.claude/sounds/choo-choo.mp3` hooks: Stop (jq-guarded), Notification `permission_prompt\|elicitation_dialog`, PreToolUse `AskUserQuestion\|ExitPlanMode`, StopFailure |
 | Mac settings | — | `agentPushNotifEnabled`/`inputNeededNotifEnabled` = true, no `remoteControlAtStartup`, no `~/.claude/CLAUDE.md`, statusline script hardcodes missing node v24.13.0 (bug), plugins `warp`, `claude-hud`, `claude-md-management` |
 | Cloud host | `cloud`, user `ubuntu`, `~/src`, port 22 | `core-vm-app` (A1 2 OCPU/12 GB, Ubuntu 24.04 arm64, uk-london-1), **no public IP, Bastion-only**, agents run as user **`agent`** (home `/data/home/agent`, persistent 100 GB `/data` volume), repos in **`/data/fleet/<repo>`** |
-| Cloud CC today | — | `~/Documents/oci` (`host/app/bootstrap.sh`) installs Claude Code, `agent@<repo>.service` (tmux + `claude remote-control --spawn worktree`), `/usr/local/bin/fleet` CLI, GitHub PAT from OCI Vault. No Tailscale, no mosh, no Agent View |
+| Cloud CC today | — | `~/Documents/oci-free-tier-platform` (`host/app/bootstrap.sh`) installs Claude Code, `agent@<repo>.service` (tmux + `claude remote-control --spawn worktree`), `/usr/local/bin/fleet` CLI, GitHub PAT from OCI Vault. No Tailscale, no mosh, no Agent View |
 | OCI invariants | — | no public IP, no `0.0.0.0/0` ingress, secrets only in OCI Vault, free-tier block storage full (200/200 GB), host changes via `make host-sync VM=app` |
 | claude CLI | — | 2.1.300; `claude agents --json`, `remote-control --spawn worktree --name --remote-control-session-name-prefix --[no-]create-session-in-dir --capacity` all exist |
 
@@ -118,7 +118,7 @@ Scripts in `bin/` are symlinked, so editing the repo changes what runs. Secrets 
 
 ## Phases
 
-Each phase ends with a commit on a feature branch (PR into `main`). oci-repo changes go through that repo's own branch/PR rules (`~/Documents/oci/CLAUDE.md`).
+Each phase ends with a commit on a feature branch (PR into `main`). oci-repo changes go through that repo's own branch/PR rules (`~/Documents/oci-free-tier-platform/CLAUDE.md`).
 
 ### Phase 0 — Repo foundation and docs skeleton
 - Create `CLAUDE.md` (invariants: secrets never in git, Mac = settings source of truth, cloud reachable only via Tailscale/Bastion, cloud must never reach Mac, scripts idempotent, every change updates the matching runbook plus `verify.md`).
@@ -177,7 +177,7 @@ Each phase ends with a commit on a feature branch (PR into `main`). oci-repo cha
 ### Phase 4 — Cloud runtime (cc-orchestrator takes over from oci)
 - **oci PR:** remove `agent@.service`, `fleet` and the `claude settings.json` write from `bootstrap.sh`. Keep the Claude Code binary install, or move it here too; recommendation: move it here for a single owner.
 - **`./install.sh cloud`** (run from the Mac):
-  - rsyncs the repo to `/data/home/agent/cc-orchestrator`
+  - rsyncs the repo to `/data/home/agent/claude-code-fleet`
   - symlinks `bin/`
   - writes the cloud config
   - installs the `cc-agents` and `cc-rc@` units
@@ -243,7 +243,7 @@ Each phase ends with a commit on a feature branch (PR into `main`). oci-repo cha
 - Record the spec §10 findings in `docs/verify.md`.
 
 ## Critical files touched outside this repo
-- `~/Documents/oci/host/cloud/bootstrap.sh`, `host/cloud/agent@.service` (removed), `host/cloud/fleet` (removed), oci `docs/runbooks/fleet-repos.md` and `access-ssh.md`, and oci `CLAUDE.md` (pointer to cc-orchestrator).
+- `~/Documents/oci-free-tier-platform/host/cloud/bootstrap.sh`, `host/cloud/agent@.service` (removed), `host/cloud/fleet` (removed), oci `docs/runbooks/fleet-repos.md` and `access-ssh.md`, and oci `CLAUDE.md` (pointer to cc-orchestrator).
 - Mac: `~/.claude/settings.json` (merged, backed up first), `~/.ssh/config` (appended `Host cloud`), `~/.zshrc` (snippet sourced), `~/Library/LaunchAgents/cc-orchestrator.*.plist`, `/etc/ssh/sshd_config.d/100-keys-only.conf`.
 
 ## Verification (end-to-end)
