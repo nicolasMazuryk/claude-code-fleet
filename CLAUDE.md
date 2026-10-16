@@ -1,7 +1,7 @@
 # CLAUDE.md: operating manual for this repo
 
 cc-orchestrator is the **single source of truth** for running Claude Code across three devices:
-the MacBook (`macbook`), the OCI VM `core-vm-app` (Tailscale name `cloud`) and the iPhone.
+the MacBook (`macbook`), the OCI VM `core-vm-cloud` (Tailscale name and OS hostname `cloud`) and the iPhone.
 Rebuilding any of them must be "follow this repo".
 
 - Human entry point: `README.md` → `docs/`.
@@ -19,7 +19,7 @@ Rebuilding any of them must be "follow this repo".
    `cc-capture` sanitizes before writing to `config/`; `make test` greps for secret-looking strings.
 2. **The Mac is the source of truth for Claude Code settings.** Flow is Mac → `config/claude/` (capture) →
    Mac (apply) and Mac → cloud (`cc-sync-settings`). Never edit cloud's `~/.claude` by hand; never sync cloud → Mac.
-3. **Cloud is reachable only via Tailscale (`cloud`, `tag:cloud`) or OCI Bastion (break-glass, `make ssh VM=app` in
+3. **Cloud is reachable only via Tailscale (`cloud`, `tag:cloud`) or OCI Bastion (break-glass, `make ssh VM=cloud` in
    `~/Documents/oci`).** No public IP, no `0.0.0.0/0` ingress, no port 22 on the internet. mosh is allowed only on
    `tailscale0` (UDP 60000–61000).
 4. **Cloud must never reach the Mac or the iPhone.** The tailnet policy has no rule with `src: tag:cloud`. Never put a
@@ -49,7 +49,8 @@ Prepare the exact commands, make them resumable, and list them for the human.
 
 | Thing | Mac | Cloud |
 |---|---|---|
-| Host / Tailscale name | `macbook` (tailnet `tailnet-example`; was `nicolas-macbook-pro`) | `cloud` = `core-vm-app`, `tag:cloud` |
+| Host / Tailscale name | `macbook` (tailnet `tailnet-example`; was `nicolas-macbook-pro`) | `cloud` = `core-vm-cloud`, `tag:cloud` |
+| OS hostname (= Remote Control device name) | `nicolas-macbook` (ComputerName/LocalHostName/HostName) | `cloud` (pinned by the oci bootstrap; was `app`) |
 | User / home | `nicolas`, `/Users/nicolas` | `agent`, `/data/home/agent` (on persistent `/data`) |
 | `AGENTS_ROOT` | `~/Documents` | `/data/fleet` |
 | Agent View tmux session | `agents` | `fleet` |

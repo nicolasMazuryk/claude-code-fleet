@@ -71,6 +71,6 @@ Verify: `tmux list-windows -t rc` shows `<repo>`; the app lists `mac/<repo>`. A 
 ## Fallback before Phase 4 (oci-managed `agent@<repo>`)
 
 Until `install.sh cloud` has migrated the VM, cloud repos are still managed by the oci CLI
-(`~/Documents/oci/docs/runbooks/fleet-repos.md`): `make ssh VM=app`, then `fleet add <repo>`,
+(`~/Documents/oci/docs/runbooks/fleet-repos.md`): `make ssh VM=cloud`, then `fleet add <repo>`,
 `fleet attach <repo>` (accept trust + Remote Control, `Ctrl-b d`). Also add the name to `config/cloud/repos.txt`
 here so the Phase 4 migration keeps it.

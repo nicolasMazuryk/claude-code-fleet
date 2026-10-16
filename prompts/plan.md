@@ -20,6 +20,10 @@
 | OCI invariants | — | no public IP, no `0.0.0.0/0` ingress, secrets only in OCI Vault, free-tier block storage full (200/200 GB), host changes via `make host-sync VM=app` |
 | claude CLI | — | 2.1.300; `claude agents --json`, `remote-control --spawn worktree --name --remote-control-session-name-prefix --[no-]create-session-in-dir --capacity` all exist |
 
+> **2026-10-16 (Phase 4a):** the OCI VM `app` is now **`cloud`** everywhere (`core-vm-cloud`, OS hostname `cloud`,
+> oci `host/cloud/`, `make ssh|host-sync VM=cloud`). The Mac's OS hostname is `nicolas-macbook`. Older names in this
+> plan are historical; use the new ones.
+
 ### Decisions (confirmed with user)
 
 1. **Cloud access = Tailscale on `core-vm-app`.** It is outbound-only, so the OCI no-ingress and no-public-IP invariants hold. The node is `cloud` with `tag:cloud`, and its auth key lives in OCI Vault. Bastion stays as break-glass.
@@ -239,7 +243,7 @@ Each phase ends with a commit on a feature branch (PR into `main`). oci-repo cha
 - Record the spec §10 findings in `docs/verify.md`.
 
 ## Critical files touched outside this repo
-- `~/Documents/oci/host/app/bootstrap.sh`, `host/app/agent@.service` (removed), `host/app/fleet` (removed), oci `docs/runbooks/fleet-repos.md` and `access-ssh.md`, and oci `CLAUDE.md` (pointer to cc-orchestrator).
+- `~/Documents/oci/host/cloud/bootstrap.sh`, `host/cloud/agent@.service` (removed), `host/cloud/fleet` (removed), oci `docs/runbooks/fleet-repos.md` and `access-ssh.md`, and oci `CLAUDE.md` (pointer to cc-orchestrator).
 - Mac: `~/.claude/settings.json` (merged, backed up first), `~/.ssh/config` (appended `Host cloud`), `~/.zshrc` (snippet sourced), `~/Library/LaunchAgents/cc-orchestrator.*.plist`, `/etc/ssh/sshd_config.d/100-keys-only.conf`.
 
 ## Verification (end-to-end)

@@ -4,7 +4,7 @@ Central repo for my Claude Code orchestration setup across MacBook, OCI cloud, a
 
 Parallel Claude Code agents on two machines, steered from a third:
 
-- **MacBook** (`macbook`) and **cloud** (`core-vm-app`, Tailscale name `cloud`) each run Agent View in tmux and one
+- **MacBook** (`macbook`) and **cloud** (`core-vm-cloud`, Tailscale name `cloud`) each run Agent View in tmux and one
   Remote Control server per allowlisted repo.
 - **iPhone** reaches both via mosh (Moshi) over Tailscale, or the Claude app (Remote Control). ntfy pushes arrive only
   when you're away from the Mac.
