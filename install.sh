@@ -30,7 +30,7 @@
 # cloud-local (on cloud as agent; sudo is passwordless there):
 #   claude      Claude Code binary for agent (~/.local/bin/claude, native installer) if missing — this repo owns it
 #   bin, path   ~/.local/bin → ~/cc-orchestrator/bin (not the Mac-only cc-capture, cc-sync-settings,
-#               cc-orchestrator-start, agent-relay); PATH line at the top of ~/.bashrc (non-interactive ssh)
+#               cc-orchestrator-start, agent-relay, mac-remote-access); PATH line at the top of ~/.bashrc (non-interactive ssh)
 #   config      ~/.config/cc-orchestrator/config (config/cloud/config.tmpl), ~/.tmux.conf
 #   legacy      oci's agent@<repo> units stopped + disabled, agent@.service, /usr/local/bin/fleet and the
 #               tmux -L agent-<repo> servers removed (one RC server per folder; ADR 0002)
@@ -442,7 +442,7 @@ step_rc() {
 install_cloud_local() {
   [ "$(uname)" = Linux ] || [ "${CC_INSTALL_ANY_OS:-0}" = 1 ] || die "install.sh cloud-local runs on cloud (Linux)"
   LIVE=${CC_CLOUD_REPO:-$REPO}
-  BIN_SKIP="cc-capture cc-sync-settings cc-orchestrator-start agent-relay"   # Mac-only (they read the Mac's ~/.claude / launchd)
+  BIN_SKIP="cc-capture cc-sync-settings cc-orchestrator-start agent-relay mac-remote-access"   # Mac-only (they read the Mac's ~/.claude / launchd)
   echo "install.sh cloud-local: $LIVE → $HOME$([ "$DRY" = 1 ] && echo ' (dry run)')"
   step_claude_bin; step_bin; step_path; step_config_cloud; step_tmux
   step_legacy; step_units; step_linger; step_repos; step_agents; step_rc

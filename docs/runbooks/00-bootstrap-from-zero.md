@@ -15,5 +15,5 @@ Each step links to the runbook that has the details. `[H]` = human-only step.
 | 8 | Cloud runtime: `./install.sh cloud` | [cloud-rebuild](cloud-rebuild.md) | `ac` shows Agent View; sync reports 4 relayed |
 | 9 | `[H]` Cloud (only on a fresh `/data`): `claude auth login`, accept Remote Control, trust `/data/fleet` in `ac`, `repo-init` each allowlisted repo | [cloud-rebuild](cloud-rebuild.md) step 5 | app lists `cloud/<repo>` under device `cloud` |
 | 10 | `[H]` iPhone: Tailscale, Moshi hosts, ntfy, Claude app | [iphone-setup](iphone-setup.md) | dispatch from the phone on both hosts |
-| 11 | Mac remote access for the phone (Remote Login, keys-only sshd, mosh firewall, pmset) | [mac-rebuild](mac-rebuild.md) | `mosh macbook` from the phone |
+| 11 | `[H]` Mac remote access for the phone (Remote Login, Moshi key, keys-only sshd, mosh firewall, pmset): `mac-remote-access` | [iphone-setup](iphone-setup.md) §A | `mac-remote-access status` exit 0; Moshi `mac` from the phone |
 | 12 | Run every check | [verify](verify.md) | `make doctor` green on both hosts |
