@@ -1,8 +1,6 @@
 # Add a repo (Mac or cloud)
 
-Status: Mac scripts exist (Phase 3); cloud units land in Phase 4. **Which path applies now:** if `install.sh` and
-`bin/repo-init` exist in this repo and `ssh cloud 'systemctl list-units "cc-rc@*"'` shows units, use the main steps;
-otherwise (cloud still runs oci `agent@<repo>`) use the [fallback](#fallback-before-phase-4-oci-managed-agentrepo).
+Status: Mac (Phase 3) and cloud (Phase 4b, 2026-10-16: `cc-rc@<repo>` units; oci's `agent@`/`fleet` are gone).
 Phase status: [docs/progress/](../progress/).
 
 Terms: `ac` = Mac alias that opens cloud's Agent View (`mosh cloud` → tmux `fleet`); `fleet` = Mac command listing
@@ -31,8 +29,9 @@ in to claude.ai and to gh (`ssh cloud 'claude auth status; gh auth status'`); Re
 2. **Ship the list to cloud** (rsyncs the Mac's working tree; idempotent, safe to re-run). Deploying from the PR
    branch is fine; the human merges the PR afterwards. If the PR is rejected, revert the line and re-run.
    ```bash
-   ./install.sh cloud        # or: make install-cloud
+   ./install.sh cloud        # or: make install-cloud; clones the new repo into /data/fleet
    ```
+   `rc-servers` prints `skip <repo>: workspace not trusted` until step 3.
 3. **Clone + prepare + trust** — needs a real terminal (TTY) because of the trust prompt:
    ```bash
    ssh -t cloud 'repo-init <repo>'
@@ -40,7 +39,8 @@ in to claude.ai and to gh (`ssh cloud 'claude auth status; gh auth status'`); Re
    - Clones `https://github.com/nicolasMazuryk/<repo>.git` into `/data/fleet/<repo>` if missing (gh PAT; personal
      repos under `nicolasMazuryk` only; for other hosts pass the full git URL), adds `.claude/worktrees/` to `.gitignore` and `.env`, `.env.local` to `.worktreeinclude`.
    - Opens `claude`: **accept the workspace trust prompt, then `/exit`.**
-   - Runs `rc-servers`, which does `sudo systemctl enable --now cc-rc@<repo>` if `<repo>` is in the allowlist.
+   - Runs `rc-servers`, which does `sudo systemctl enable --now cc-rc@<repo>` if `<repo>` is in the allowlist and
+     trusted (it reads `projects[dir].hasTrustDialogAccepted` in `~/.claude.json`).
    - Extra files to copy into worktrees: `ssh -t cloud 'REPO_INIT_INCLUDE=".env .env.local .env.test" repo-init <repo>'`.
    - Copy any `.env` files the repo needs: `scp ~/Documents/<repo>/.env cloud:/data/fleet/<repo>/` (never commit them).
 4. **Commit the setup files once** in the target repo (on cloud or the Mac) so every machine has them:
@@ -68,9 +68,3 @@ Verify: `tmux list-windows -t rc` shows `<repo>`; the app lists `mac/<repo>`. A 
 `Enable Remote Control? (y/n)` until Remote Control has been accepted once on this Mac (`tmux attach -t rc:<repo>`).
 `repo-init --rc` edits `config/mac/repos.txt` of the checkout in `~/.config/cc-orchestrator/config` (`CC_ORCH_DIR`).
 
-## Fallback before Phase 4 (oci-managed `agent@<repo>`)
-
-Until `install.sh cloud` has migrated the VM, cloud repos are still managed by the oci CLI
-(`~/Documents/oci/docs/runbooks/fleet-repos.md`): `make ssh VM=cloud`, then `fleet add <repo>`,
-`fleet attach <repo>` (accept trust + Remote Control, `Ctrl-b d`). Also add the name to `config/cloud/repos.txt`
-here so the Phase 4 migration keeps it.

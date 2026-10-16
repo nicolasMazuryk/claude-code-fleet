@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Fake loginctl for bats: linger flag in $FAKE_SYSTEMD/linger.
+d=${FAKE_SYSTEMD:?}; echo "loginctl $*" >> "$d/calls"
+case $1 in
+  show-user) [ -e "$d/linger" ] && echo yes || echo no ;;
+  enable-linger) touch "$d/linger" ;;
+esac

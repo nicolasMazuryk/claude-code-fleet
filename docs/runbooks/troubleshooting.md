@@ -19,6 +19,11 @@
 | `cc-sync-settings` relays < 4 | a sound hook changed; see [sync-settings](sync-settings.md) |
 | Too many / no pushes | `agent-present; echo $?` on the Mac (0 = present). Cloud: `ls -l ~/.local/state/agent-events/mac-present` age < 90 s |
 | Repo missing in the Claude app | not in `config/<host>/repos.txt`, or server down: Mac `tmux list-windows -t rc`, cloud `systemctl status cc-rc@<repo>` |
+| Cloud repo listed but no `cc-rc@<repo>` | `./install.sh cloud` prints `skip <repo>: workspace not trusted` (or `not cloned`): `ssh -t cloud 'repo-init <repo>'`, accept trust, `/exit` |
+| `cc-rc@<repo>` log: `already served by a terminal claude remote-control on this device` | the folder's previous server is still registered server-side (~3–4 min after an unclean kill, e.g. legacy `tmux kill-server`). The unit retries every 30 s; it clears by itself. Make sure no `agent@<repo>` runs: `systemctl list-units "agent@*"` |
+| `cc-rc@<repo>` log: `Workspace not trusted` | trust it: `ssh -t cloud 'cd /data/fleet/<repo> && claude'` → accept → `/exit`; then `ssh cloud rc-servers` |
+| `ac` shows "Accessing workspace: /data/fleet … trust this folder?" | one-time Agent View trust: choose "Yes, I trust this folder" |
+| `agent@<repo>` or `/usr/local/bin/fleet` back on cloud | an old oci bootstrap ran (`host-sync` from an old checkout). Update `~/Documents/oci` to main, `make host-sync VM=cloud`, then `./install.sh cloud` |
 | `.env` missing in a new worktree | `.worktreeinclude` copies only files that are also **gitignored**: add `.env` to the repo's `.gitignore` |
 | `rc:<repo>` shows `Trust /Users/nicolas/Documents/<repo>? [y/N]` | workspace not trusted yet: answer `y` there (or `repo-init <repo>` at a TTY) |
 | "Workspace not trusted" | `repo-init <repo>` again (TTY) and accept |

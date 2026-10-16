@@ -12,7 +12,7 @@
 | `mac/zshrc.captured` | the `# Claude Code` and `# Tailscale…` blocks of `~/.zshrc` (reference, not sourced) | 1 (`make capture`) |
 | `claude/CLAUDE.md` | global agent rules → `~/.claude/CLAUDE.md` (`install.sh mac`) | 3 |
 | `mac/` | `config.tmpl` (→ `~/.config/cc-orchestrator/config`), `repos.txt`, `tmux.conf`, `zshrc.snippet` (`am`, `ac`), `ssh_config.snippet` (`Host cloud`), `cmux.json`, `launchd/*.plist.tmpl` (`@HOME@`, `@TMUX@`); `sshd-100-keys-only.conf` in Phase 6 | 1, 3, 6 |
-| `cloud/` | `config`, `repos.txt`, `systemd/{cc-agents.service,cc-rc@.service}` | 4 |
+| `cloud/` | `config.tmpl` (→ `~/.config/cc-orchestrator/config` on cloud), `repos.txt`, `systemd/{cc-agents.service,cc-rc@.service}`, `rsyslog-cc-orchestrator.conf` (→ `/etc/rsyslog.d/30-cc-orchestrator.conf`) | 4 |
 | `tailscale/policy.hujson` | full tailnet policy as applied | 2 |
 | `iphone/hosts.md` | Moshi hosts, ntfy, Claude app settings | 6 |
 

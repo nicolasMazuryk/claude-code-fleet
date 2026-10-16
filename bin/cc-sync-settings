@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+# cc-sync-settings [--dry-run | --print] [--install-plugins] — mirror the Mac's Claude Code user configuration to
+# cloud (Mac = source of truth; never the other way). Runs on the Mac; cloud never connects back.
+#   settings.json  every key copied, then:
+#                  - macOS-only hook handlers ($CC_MAC_ONLY: afplay, osascript, …) → `cc-relay-hook <event> <group>
+#                    <handler> <sha256[:16]>` stand-ins (same events/matchers; the Mac's agent-relay plays them)
+#                  - dropped: statusLine (needs ccstatusline + claude-hud, Mac only), preferredNotifChannel,
+#                    enabledPlugins "warp@…", credential-like env keys (TOKEN, KEY, SECRET, PASSWORD, AUTH, CREDENTIAL)
+#                  - /Users/nicolas → cloud $HOME; config/claude/cloud-settings.json deep-merged on top
+#                  written only when it differs (previous one kept as settings.json.bak.<ts>)
+#   mirrored       CLAUDE.md keybindings.json skills agents commands output-styles hooks (rsync --delete; symlinks
+#                  copied as files; skills/synced is claude.ai's own and left alone)
+#   plugins        enabled on the Mac but not installed on cloud: listed with the install command
+#                  (--install-plugins runs them, adding the Mac's GitHub marketplace on cloud first)
+#   --dry-run      show what would change, write nothing      --print   print the cloud settings.json and exit
+# Must report "4 macOS-only hook handler(s) relayed" (docs/runbooks/sync-settings.md).
+# Test switches: CC_SYNC_SRC, CC_SYNC_OVERRIDES, CC_SYNC_CLOUD_HOME (skips the ssh lookup), CC_SYNC_HOST.
+set -eo pipefail
+# shellcheck source=bin/agent-env
+. "$HOME/.local/bin/agent-env"
+H=${CC_SYNC_HOST:-cloud}
+MAC_ONLY=${CC_MAC_ONLY:-'afplay|osascript|terminal-notifier|/usr/bin/say|say -v'}
+src=${CC_SYNC_SRC:-$HOME/.claude/settings.json}
+overrides=${CC_SYNC_OVERRIDES:-${CC_ORCH_DIR:-$(cd "$(dirname "$(readlink "$0" || echo "$0")")/.." && pwd)}/config/claude/cloud-settings.json}
+mode=sync; plugins=list
+for a in "$@"; do
+  case $a in
+    --dry-run) mode=dry ;;
+    --print) mode=print ;;
+    --install-plugins) plugins=install ;;
+    -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "cc-sync-settings: unknown option $a" >&2; exit 2 ;;
+  esac
+done
+[ "$AGENT_HOST" = mac ] || { echo "cc-sync-settings runs on the Mac (Mac → cloud only)" >&2; exit 2; }
+jq empty "$src" || { echo "cc-sync-settings: $src is not valid JSON" >&2; exit 1; }
+rsh() { ssh -o BatchMode=yes -o ConnectTimeout=10 "$H" "$@"; }
+
+# shellcheck disable=SC2016  # $HOME of cloud
+cloud_home=${CC_SYNC_CLOUD_HOME:-$(rsh 'printf %s "$HOME"')}
+[ -n "$cloud_home" ] || { echo "cc-sync-settings: cannot reach $H" >&2; exit 1; }
+
+is_mac_only() { # the command, or the script it runs, uses a macOS-only tool
+  local f
+  grep -qE "$MAC_ONLY" <<<"$1" && return 0
+  f=$(awk '{print $1}' <<<"$1"); f=${f//\"/}; f=${f//\'/}; f=${f/#\~/$HOME}
+  [ -f "$f" ] && grep -qE "$MAC_ONLY" "$f"
+}
+
+s=$(cat "$src"); relayed=0
+while IFS=$'\t' read -r ev g h; do
+  [ -n "$ev" ] || continue
+  cmd=$(jq -r --arg ev "$ev" --argjson g "$g" --argjson h "$h" '.hooks[$ev][$g].hooks[$h].command' "$src")
+  is_mac_only "$cmd" || continue
+  sum=$(printf %s "$cmd" | shasum -a 256 | cut -c1-16)
+  # shellcheck disable=SC2088  # the ~ is for cloud's shell
+  s=$(jq --arg ev "$ev" --argjson g "$g" --argjson h "$h" --arg c "~/.local/bin/cc-relay-hook $ev $g $h $sum" \
+        '.hooks[$ev][$g].hooks[$h] = {type: "command", command: $c, async: true}' <<<"$s")
+  relayed=$((relayed + 1))
+done < <(jq -r '(.hooks // {}) | to_entries[] | .key as $ev | .value | to_entries[] | .key as $g
+                | (.value.hooks // []) | to_entries[] | select(.value.type == "command") | [$ev, $g, .key] | @tsv' "$src")
+
+# shellcheck disable=SC2016  # jq program
+s=$(jq --arg mh "$HOME" --arg ch "$cloud_home" '
+      del(.statusLine, .preferredNotifChannel)
+      | if .enabledPlugins then .enabledPlugins |= with_entries(select(.key | startswith("warp@") | not)) else . end
+      | if .env then .env |= with_entries(select(.key | test("TOKEN|KEY|SECRET|PASSWORD|AUTH|CREDENTIAL"; "i") | not)) else . end
+      | walk(if type == "string" then split($mh) | join($ch) else . end)' <<<"$s")
+[ -f "$overrides" ] && s=$(jq -s '.[0] * .[1]' <(printf '%s' "$s") "$overrides")
+s=$(jq -S . <<<"$s")
+
+if [ "$mode" = print ]; then
+  printf '%s\n' "$s"
+  echo "$relayed macOS-only hook handler(s) relayed" >&2
+  exit 0
+fi
+
+# settings.json: write only on a real change, keep the previous one
+cur=$(rsh 'cat ~/.claude/settings.json 2>/dev/null' | jq -S . 2>/dev/null || true)
+if [ "$cur" = "$s" ]; then
+  echo "  settings  ok $H:~/.claude/settings.json"
+elif [ "$mode" = dry ]; then
+  echo "  settings  would update $H:~/.claude/settings.json:"
+  diff <(printf '%s\n' "$cur") <(printf '%s\n' "$s") | sed 's/^/            /' || true
+else
+  # shellcheck disable=SC2016  # expanded on cloud
+  printf '%s\n' "$s" | rsh 'set -e; mkdir -p ~/.claude; f=~/.claude/settings.json
+    [ -f "$f" ] && cp -p "$f" "$f.bak.$(date +%Y%m%d-%H%M%S)"
+    cat > "$f.tmp"; chmod 600 "$f.tmp"; mv "$f.tmp" "$f"'
+  echo "  settings  updated $H:~/.claude/settings.json (previous kept as .bak.<ts>)"
+fi
+
+# mirrored files and directories
+cd "$HOME/.claude"
+items=()
+for i in CLAUDE.md keybindings.json skills agents commands output-styles hooks; do [ -e "$i" ] && items+=("$i"); done
+if [ ${#items[@]} -gt 0 ]; then
+  ropts=(-rlptL --delete --exclude=/skills/synced --exclude=.DS_Store --exclude='*.bak*' -i)
+  [ "$mode" = dry ] && ropts+=(-n)
+  out=$(rsync "${ropts[@]}" "${items[@]}" "$H:.claude/")
+  if [ -z "$out" ]; then echo "  files     ok ${items[*]}"
+  else printf '%s\n' "$out" | sed "s/^/  files     $([ "$mode" = dry ] && echo 'would ')/"; fi
+fi
+
+# plugins: listed (or installed with --install-plugins), never silently
+want=$(jq -r '(.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key | select(startswith("warp@") | not)' "$src")
+have=$(rsh 'jq -r ".plugins | keys[]" ~/.claude/plugins/installed_plugins.json 2>/dev/null' || true)
+for p in $want; do
+  grep -qxF "$p" <<<"$have" && continue
+  if [ "$plugins" = install ] && [ "$mode" = sync ]; then
+    # the marketplace first, from the Mac's own source (cloud only knows the default directory)
+    m=${p#*@}
+    src_repo=$(jq -r --arg m "$m" '.[$m].source | select(.source == "github") | .repo // empty' \
+                 "$HOME/.claude/plugins/known_marketplaces.json" 2>/dev/null || true)
+    if [ -n "$src_repo" ] && ! rsh "jq -e --arg m '$m' 'has(\$m)' ~/.claude/plugins/known_marketplaces.json" >/dev/null 2>&1; then
+      # shellcheck disable=SC2088
+      rsh "~/.local/bin/claude plugin marketplace add '$src_repo'" >/dev/null && echo "  plugins   added marketplace $m ($src_repo) on $H"
+    fi
+    # shellcheck disable=SC2088
+    rsh "~/.local/bin/claude plugin install '$p'" && echo "  plugins   installed $p on $H"
+  else
+    echo "  plugins   missing on $H: $p → ssh $H \"~/.local/bin/claude plugin install '$p'\" (or cc-sync-settings --install-plugins)"
+  fi
+done
+
+echo "✓ $H mirrors the Mac's Claude Code settings$([ "$mode" = dry ] && echo ' (dry run: nothing written)') · $relayed macOS-only hook handler(s) relayed to the Mac"

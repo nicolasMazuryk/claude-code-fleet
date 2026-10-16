@@ -1,0 +1,28 @@
+# cc-rc@<repo> — Claude Code Remote Control server for /data/fleet/<repo> (cc-orchestrator; successor of oci agent@).
+# Installed by ./install.sh cloud; enabled/disabled per config/cloud/repos.txt by bin/rc-servers.
+# No tmux/pty: `claude remote-control` runs headless (verified 2026-10-16, Phase 4b). systemd's SIGTERM makes it
+# deregister its environment cleanly; logs go to journald (journalctl -u cc-rc@<repo>).
+[Unit]
+Description=Claude Code Remote Control server for %i (cc-orchestrator)
+After=network-online.target data.mount tailscaled.service
+Wants=network-online.target
+RequiresMountsFor=/data
+ConditionPathIsDirectory=/data/fleet/%i/.git
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=agent
+Group=agent
+WorkingDirectory=/data/fleet/%i
+Environment=HOME=/data/home/agent
+StandardInput=null
+SyslogIdentifier=cc-rc@%i
+ExecStart=/data/home/agent/.local/bin/rc-serve /data/fleet/%i
+Restart=always
+RestartSec=30
+TimeoutStopSec=30
+CPUWeight=200
+
+[Install]
+WantedBy=multi-user.target
