@@ -1,0 +1,6 @@
+# cc-orchestrator shell shortcuts on cloud — sourced from ~/.bashrc via ~/.config/cc-orchestrator/bashrc.snippet
+# (a link to config/cloud/bashrc.snippet; managed by install.sh cloud). Same names as on the Mac:
+# `ac` = Agent View on cloud (here: attach locally), `am` = the Mac (not reachable from cloud, by design).
+alias ac='tmux -u new -A -s fleet ~/.local/bin/agents-loop'   # Agent View on cloud
+alias am='echo "am: Agent View on the Mac; cloud never connects to the Mac. Open it from the phone (Moshi: mac) or the Mac. Here: ac" >&2; false'
+# fleet (the all-hosts table) runs on the Mac only: it opens the connections to cloud.

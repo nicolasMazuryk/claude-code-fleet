@@ -334,6 +334,18 @@ step_path() {
   did path "prepended the PATH line to $b (backup .bak.$TS)"
 }
 
+BASHRC_SNIPPET_MARK='# cc-orchestrator: ac/am shortcuts (managed by install.sh cloud)'
+step_bashrc_snippet() { # appended at the END: after Ubuntu's "not interactive → return", so only interactive shells
+  local b="$HOME/.bashrc"
+  link config "${LIVE:-$REPO}/config/cloud/bashrc.snippet" "$HOME/.config/cc-orchestrator/bashrc.snippet"
+  if [ -f "$b" ] && grep -qxF "$BASHRC_SNIPPET_MARK" "$b"; then say bashrc "ok $b"; return 0; fi
+  if [ "$DRY" = 1 ]; then did bashrc "would append the snippet line to $b"; return 0; fi
+  backup "$b"
+  # shellcheck disable=SC2016
+  printf '\n%s\n%s\n' "$BASHRC_SNIPPET_MARK" '[ -r ~/.config/cc-orchestrator/bashrc.snippet ] && . ~/.config/cc-orchestrator/bashrc.snippet' >> "$b"
+  did bashrc "appended the snippet line to $b (backup .bak.$TS)"
+}
+
 step_config_cloud() {
   local tmp
   tmp=$(mktemp); sed "s#@CC_ORCH_DIR@#${LIVE:-$REPO}#g" "$REPO/config/cloud/config.tmpl" > "$tmp"
@@ -445,7 +457,7 @@ install_cloud_local() {
   LIVE=${CC_CLOUD_REPO:-$REPO}
   BIN_SKIP="cc-capture cc-sync-settings cc-orchestrator-start agent-relay mac-remote-access"   # Mac-only (they read the Mac's ~/.claude / launchd)
   echo "install.sh cloud-local: $LIVE → $HOME$([ "$DRY" = 1 ] && echo ' (dry run)')"
-  step_claude_bin; step_bin; step_path; step_config_cloud; step_tmux
+  step_claude_bin; step_bin; step_path; step_config_cloud; step_bashrc_snippet; step_tmux
   step_legacy; step_units; step_linger; step_repos; step_agents; step_rc
   if [ "$changes" -eq 0 ]; then echo "install.sh cloud-local: no changes"
   else echo "install.sh cloud-local: $changes change(s)$([ "$DRY" = 1 ] && echo ' would be made')"; fi
