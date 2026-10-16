@@ -37,9 +37,11 @@ git rev-parse --git-dir >/dev/null
 r=$(basename "$dir")
 case $r in *[[:space:]]*) echo "repo-init: '$r' has spaces; Agent View's @ list skips it" >&2 ;; esac
 
-grep -qxF '.claude/worktrees/' .gitignore 2>/dev/null || { echo '.claude/worktrees/' >> .gitignore; echo "  .gitignore += .claude/worktrees/"; }
+# append_line FILE LINE: append LINE, first ending FILE's last line if it has no trailing newline
+append_line() { if [ -s "$1" ] && [ -n "$(tail -c1 "$1")" ]; then echo >> "$1"; fi; echo "$2" >> "$1"; }
+grep -qxF '.claude/worktrees/' .gitignore 2>/dev/null || { append_line .gitignore '.claude/worktrees/'; echo "  .gitignore += .claude/worktrees/"; }
 for f in ${REPO_INIT_INCLUDE:-.env .env.local}; do   # gitignored files copied into every worktree
-  grep -qxF "$f" .worktreeinclude 2>/dev/null || { echo "$f" >> .worktreeinclude; echo "  .worktreeinclude += $f"; }
+  grep -qxF "$f" .worktreeinclude 2>/dev/null || { append_line .worktreeinclude "$f"; echo "  .worktreeinclude += $f"; }
 done
 
 if [ "$rc" -eq 1 ]; then
@@ -49,7 +51,7 @@ if [ "$rc" -eq 1 ]; then
   if in_list "$r"; then
     echo "  $r already in $REPOS_FILE"
   else
-    echo "$r" >> "$REPOS_FILE"; echo "  $REPOS_FILE += $r (commit it in cc-orchestrator)"
+    append_line "$REPOS_FILE" "$r"; echo "  $REPOS_FILE += $r (commit it in cc-orchestrator)"
   fi
 fi
 
