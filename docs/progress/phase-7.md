@@ -1,7 +1,8 @@
 # Phase 7 — Hardening and disaster-recovery drills
 
 Date: 2026-10-17 · Branch: `phase-7-doctor` (from `main` 91672cb) · Status: **`cc-doctor`, tests and the Mac dry-run
-drill done; cloud wipe/restore drill and iPhone re-add drill wait for the human.**
+drill done and merged (PR #2, 28bedc9); `make doctor` green on both hosts. Cloud wipe/restore drill skipped by the
+owner's decision; iPhone re-add drill waits for the human.**
 
 ## Done
 - **`bin/cc-doctor [--local]`** (`make doctor`): read-only, no sudo, never prints the ntfy topic; exit 1 on any FAIL.
@@ -37,7 +38,16 @@ drill done; cloud wipe/restore drill and iPhone re-add drill wait for the human.
   `rc:cc-orchestrator` (→ `rc:claude-code-fleet`); stale status line. Not exercised (human/GUI): Tailscale login,
   firewall, `/login`, Remote Control acceptance, Full Disk Access, Remote Login; `cc-doctor` checks their results.
 
-## Waiting for the human
-1. **Cloud drill** (oci `make wipe` → `make restore` → `./install.sh cloud` → `make doctor`): needs an explicit go.
-   Downtime ~6 min apex, ~18 min status page (oci drill 2026-10-13). Sequence in the PR / chat.
-2. **iPhone drill**: delete the `cloud` and `mac` hosts in Moshi and re-add them from `iphone-setup.md` alone.
+## After merge (2026-10-17, from `main` 28bedc9)
+- `./install.sh cloud`: `install.sh cloud-local: 2 change(s)` (the new `cc-doctor` link), settings `ok`, `4 macOS-only
+  hook handler(s) relayed`; `cc-rc@` running for arbinet, arbinet-specs, offers-pipeline.
+- `make doctor` (verify row 10): **`cc-doctor: 37 ok, 0 warn, 0 FAIL, 2 skip`**, exit 0. Mac 18 ok; cloud 19 ok,
+  including `settings.json = cc-sync-settings output`; skips are the untrusted-by-choice `job-search-pipeline` and
+  `wick-sweep-reclaim-backtester`.
+
+## Not done
+- **Cloud drill** (oci `make wipe` → `make restore` → `./install.sh cloud` → `make doctor`): **skipped, owner's
+  decision (2026-10-17).** The procedure stays in `cloud-rebuild.md` and oci `wipe-and-restore.md`; the last oci
+  wipe/restore drill was 2026-10-13 (before cc-orchestrator took over the cloud runtime).
+- **iPhone drill** (human): delete the `cloud` and `mac` hosts in Moshi and re-add them from `iphone-setup.md` alone.
+- Push-tap re-check (verify row 7d): on the next push, the tap should open the Claude app's Code tab.
