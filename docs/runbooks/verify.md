@@ -55,7 +55,7 @@ Each phase's PR records the output of its rows. `make doctor` (`bin/cc-doctor`: 
 | 7d | iPhone | `[H]` lock the Mac, start a session from the Claude app (`mac/<repo>` or `cloud/<repo>`), let it finish, tap the push | `push.log` `pushed "done" (with Click)` → the tap opens that session; or `(Click: Code tab)` (no session id in the hook; seen for app-started cloud sessions) → the tap opens the Claude app's Code tab. Never the ntfy app. **2026-10-16:** the tap opened ntfy (no Click at all; `job=unset pushed "done"`) → fallback added; re-check pending | 6 |
 | 8 | Docs | a fresh agent answers "how do I add a repo to cloud?" from docs alone | → [add-repo](add-repo.md) | 0 |
 | 9 | Repo | `make lint test` | passes | 0+ |
-| 10 | Doctor | `make doctor` (Mac; = `bin/cc-doctor`); on cloud alone: `ssh cloud cc-doctor` | every line `ok` (or `skip` for a listed repo whose workspace is not trusted on cloud), last line `… 0 FAIL …`, exit 0. Lines: `tools config runtime rc relay ntfy settings tcc disk` per host, plus `cloud settings` parity with `cc-sync-settings --print` | 7 |
+| 10 | Doctor | `make doctor` (Mac; = `bin/cc-doctor`); on cloud alone: `ssh cloud cc-doctor` | every line `ok` (or `skip` for a listed repo whose workspace is not trusted on cloud), last line `… 0 FAIL …`, exit 0. **2026-10-17: PASS** (37 ok, 0 FAIL, 2 skip). Lines: `tools config runtime rc relay ntfy settings tcc disk` per host, plus `cloud settings` parity with `cc-sync-settings --print` | 7 |
 
 ## Check once (spec §10)
 
