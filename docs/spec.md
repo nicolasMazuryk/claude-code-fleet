@@ -92,8 +92,7 @@ Repo directory names must have no spaces (Agent View's `@` list skips them).
 
 ### 2.3 Global agent rules: `config/claude/CLAUDE.md` → `~/.claude/CLAUDE.md` (Phase 3)
 
-Content as the original §2.3 (install deps first, run affected tests, commit on the worktree branch, never push or
-open a PR unless asked). The Mac currently has no `~/.claude/CLAUDE.md`; `install.sh mac` creates it.
+Content: install dependencies first in a fresh worktree, run only the tests affected by the change. The Mac currently has no `~/.claude/CLAUDE.md`; `install.sh mac` creates it.
 
 ### 2.4 Agent View and Remote Control servers
 
