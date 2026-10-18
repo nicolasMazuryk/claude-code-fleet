@@ -8,7 +8,7 @@
 #                    enabledPlugins "warp@…", credential-like env keys (TOKEN, KEY, SECRET, PASSWORD, AUTH, CREDENTIAL)
 #                  - /Users/nicolas → cloud $HOME; config/claude/cloud-settings.json deep-merged on top
 #                  written only when it differs (previous one kept as settings.json.bak.<ts>)
-#   mirrored       CLAUDE.md keybindings.json skills agents commands output-styles hooks (rsync --delete; symlinks
+#   mirrored       CLAUDE.md keybindings.json skills agents commands output-styles hooks profile (rsync --delete; symlinks
 #                  copied as files; skills/synced is claude.ai's own and left alone)
 #   plugins        enabled on the Mac but not installed on cloud: listed with the install command
 #                  (--install-plugins runs them, adding the Mac's GitHub marketplace on cloud first)
@@ -93,7 +93,7 @@ fi
 # mirrored files and directories
 cd "$HOME/.claude"
 items=()
-for i in CLAUDE.md keybindings.json skills agents commands output-styles hooks; do [ -e "$i" ] && items+=("$i"); done
+for i in CLAUDE.md keybindings.json skills agents commands output-styles hooks profile; do [ -e "$i" ] && items+=("$i"); done
 if [ ${#items[@]} -gt 0 ]; then
   ropts=(-rlptL --delete --exclude=/skills/synced --exclude=.DS_Store --exclude='*.bak*' -i)
   [ "$mode" = dry ] && ropts+=(-n)

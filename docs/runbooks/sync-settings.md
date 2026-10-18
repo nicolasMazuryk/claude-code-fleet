@@ -18,12 +18,17 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
      `bin/cc-sync-settings --install-plugins` runs them (adding the Mac's GitHub marketplace on cloud first).
    - Dropped on the way: `statusLine` (needs ccstatusline + claude-hud, Mac only), `preferredNotifChannel`,
      `enabledPlugins["warp@…"]`, credential-like `env` keys. `/Users/nicolas` becomes `/data/home/agent`.
-   - Mirrored with `rsync --delete`: `CLAUDE.md keybindings.json skills agents commands output-styles hooks`
+   - Mirrored with `rsync --delete`: `CLAUDE.md keybindings.json skills agents commands output-styles hooks profile`
      (symlinks copied as files; `skills/synced` is claude.ai's own). The previous cloud `settings.json` is kept as
      `settings.json.bak.<ts>`; nothing is written when it is unchanged.
    - `--dry-run` shows the diff and the rsync list without writing; `--print` prints the cloud `settings.json`.
 4. Keys this repo enforces live in `config/claude/settings.orchestrator.json` (Mac) and
    `config/claude/cloud-settings.json` (cloud). Change them there, then `./install.sh mac` / `make sync`.
 5. Never edit cloud's `~/.claude` directly; the next sync overwrites it.
+6. The global profile (`~/.claude/profile/*.md`: who the owner is, goals, working style, environments) is personal
+   and lives **only** on the Mac, outside the repo ([ADR 0006](../decisions/0006-global-profile-outside-git.md)).
+   Edit it in place on the Mac, then `make sync`; check with verify row 3j. `config/claude/CLAUDE.md` carries only
+   the `@~/.claude/profile/…` import lines, and `cc-capture` never captures the profile. A rebuilt Mac restores it
+   from a backup (`~/.claude/backups/` or Time Machine), not from this repo.
 
 Until `make sync` is run, cloud sounds whose Mac handler changed are skipped and logged in `/tmp/agent-relay.log`.

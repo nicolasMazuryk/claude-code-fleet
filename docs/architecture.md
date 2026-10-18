@@ -83,6 +83,8 @@ See [ADR 0002](decisions/0002-ownership-split.md).
 - `config/claude/` + `settings.orchestrator.json` → Mac via `install.sh mac` (deep-merge, backup first).
 - Mac `~/.claude` → cloud via `cc-sync-settings` (home path rewrite, Mac-only bits dropped, `cloud-settings.json`
   merged on top). See [ADR 0005](decisions/0005-capture-apply-settings.md).
+- Global profile: `~/.claude/profile/*.md` (Mac only, outside git), imported by `~/.claude/CLAUDE.md` and mirrored
+  to cloud by `cc-sync-settings`. See [ADR 0006](decisions/0006-global-profile-outside-git.md).
 
 ### Overview
 `fleet` (Mac) merges `claude agents --json` from the Mac and from `ssh cloud`, waiting-for-you first; it also wraps

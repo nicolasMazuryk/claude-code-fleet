@@ -50,4 +50,6 @@ owner's decision; iPhone re-add drill waits for the human.**
   decision (2026-10-17).** The procedure stays in `cloud-rebuild.md` and oci `wipe-and-restore.md`; the last oci
   wipe/restore drill was 2026-10-13 (before cc-orchestrator took over the cloud runtime).
 - **iPhone drill** (human): delete the `cloud` and `mac` hosts in Moshi and re-add them from `iphone-setup.md` alone.
-- Push-tap re-check (verify row 7d): on the next push, the tap should open the Claude app's Code tab.
+
+## Closed after the phase
+- Push-tap re-check (verify row 7d): re-checked by owner 2026-10-18, passed (the tap opens the Claude app).
