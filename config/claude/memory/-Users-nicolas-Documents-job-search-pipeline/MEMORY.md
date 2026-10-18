@@ -1,0 +1,4 @@
+- [One ID per item](one-id-per-item.md) — never bundle several claims/questions under one REVIEW/NEED_YOU ID
+- [Pipe separator](pipe-separator.md) — use ' | ' not ' · ' in all pipeline text
+- [Paste-ready forms](paste-ready-forms.md) — form answers are exact plain-text paste blocks, never file pointers
+- [Statusline project-agnostic](statusline-project-agnostic.md) — no project-specific statusline widgets

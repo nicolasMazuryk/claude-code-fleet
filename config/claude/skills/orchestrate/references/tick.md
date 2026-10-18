@@ -11,7 +11,8 @@
    - Set its state to `blocked` (if not already) with the question in `needs_input`.
    - Add it to "Pending decisions" in `ORCHESTRATOR.md` and notify the user: PushNotification (load via ToolSearch if
      deferred) plus a line in your output: `needs input: <job>: <question> | options: … | recommend: …`.
-   - All other jobs continue.
+   - Other jobs already running in the current phase continue; nothing from a later phase launches while a decision is
+     pending (SKILL.md "Sequential, blocking escalation").
    - When the user answers (in this session, or by writing `answer.md`): write/keep the answer verbatim in
      `jobs/<job>/answer.md`, then `cd <job cwd> && claude --resume <session_id> --bg "Read <R>/jobs/<job>/answer.md and
      continue from handoff.md."` If resume fails, relaunch fresh with `orch-launch` using the Resume prompt below.
@@ -35,7 +36,9 @@
      verify-report.md, fix, then set ready_for_verify again." Third FAIL → block and ask the user.
    - `done` / `failed` → free the slot; `failed` means block-and-ask unless the plan says otherwise.
    - Fill free slots (live sessions < cap) in queue order with jobs whose dependencies are `done` and whose gate is
-     cleared: `$S/orch-launch $R <job> <cwd> sonnet medium "<Launch prompt>"`.
+     cleared: `$S/orch-launch $R <job> <cwd> sonnet medium "<Launch prompt>"`. Only jobs of the current phase; the next
+     phase opens when all current-phase jobs are `done` + verified and "Pending decisions" is empty. If the phase is
+     finished but decisions are pending, notify the user and pause the loop instead of ticking on.
    - `orch-launch` fails with "Workspace not trusted" → block that job and ask the user to run `claude` once in that cwd
      and accept the trust prompt (only they can). Other launch failures: retry once next tick, then block.
    - Human-gate jobs (drafts for review): when the job reaches its gate, notify the user as in step 2.

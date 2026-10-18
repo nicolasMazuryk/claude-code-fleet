@@ -1,0 +1,3 @@
+- [Worktree .context is ephemeral](worktree-context-ephemeral.md) — long-lived secrets/artifacts go to ~/ persistent paths, never the worktree
+- [Hetzner private NIC dhcpcd race](hetzner-private-nic-dhcpcd-race.md) — fresh provision: slow boxes miss 10.0.1.x lease, WG bootstrap fails until `sudo dhcpcd enp7s0`
+- [Hot-path re-architecture status](hot-path-rearchitecture.md) — Phases 0–3 done (2026-07-15); locked decisions

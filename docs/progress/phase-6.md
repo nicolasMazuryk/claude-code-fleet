@@ -44,7 +44,7 @@ blocked on the human (Remote Login)**.
     `agent_*` notifications or the test, and Agent View background sessions are not bridged (this agent's own `--bg`
     session has no such variable, even with `remoteControlAtStartup: true`)
   - so: app-started and interactive sessions → deep link; Agent View sessions → the tap opens ntfy
-  - whether iOS opens `claude.ai/code/session_…` in the Claude app or in Safari: human verify (row 7d)
+  - whether iOS opens `claude.ai/code/session_…` in the Claude app or in Safari: human verify (row 7d; passed 2026-10-18)
 - A live probe to show the variable's value inside an interactive cloud session was **stopped by the auto-mode
   classifier** (it would have shown a session id). The throwaway tmux session `p6probe` was killed;
   `/data/fleet/offers-pipeline` was left clean (`main`, no worktree).
@@ -92,7 +92,7 @@ blocked on the human (Remote Login)**.
 - Push tap (row 7d): Mac locked, session started from the Claude app on cloud → sound on the Mac and an ntfy push on
   the iPhone, but the tap opened the ntfy app: the hook saw no `CLAUDE_CODE_BRIDGE_SESSION_ID`
   (`Stop:- job=unset pushed "done"`). **Decision (human): every push now opens the Claude app's Code tab**
-  (`Click: https://claude.ai/code`) unless a session id is available. Re-check pending.
+  (`Click: https://claude.ai/code`) unless a session id is available. Re-checked by owner 2026-10-18: passed.
 
 ## Repo renames (2026-10-16, with the human)
 Another agent (github-portfolio) renamed and republished the GitHub repos. Final names, the same on GitHub, the Mac
