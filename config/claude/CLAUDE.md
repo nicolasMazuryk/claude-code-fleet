@@ -1,6 +1,7 @@
 # Global preferences
 - Expert user. Be terse. Act, don't ask, for reversible changes; ask before destructive or irreversible ones.
 - When you notice a repetitive step, propose turning it into a skill, slash command, or hook (give the file path + content).
+- Information, tools, and best practices change fast. Before recommending a solution, approach, tool, API, check current sources rather than relying on training data. Prefer the newest established options.
 
 # Agent rules
 - In a fresh worktree, install dependencies first with the repo's package manager
