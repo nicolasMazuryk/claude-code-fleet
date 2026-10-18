@@ -20,7 +20,6 @@
 | Notification sounds | Your existing Mac sound hooks stay exactly as they are: same events, matchers and the Choo Choo sound. Cloud uses the same events and matchers, and its sounds play on the MacBook through `agent-relay` |
 | iPhone alerts | ntfy, **only when you're away from the MacBook**: screen locked, Mac asleep, or no keyboard, mouse or trackpad input for 2 minutes. Covers both machines |
 | Hands-on work | cmux workspace per repo, `claude -w <name>`, diff viewer and browser pane. These sessions also appear in the Claude app automatically |
-| Git | Agents commit on their worktree branch. They push or open a pull request only when you ask |
 
 **Why two Agent Views.** Background sessions are local to the machine that runs them, so each machine has its own Agent View. For the terminal there's `fleet`. For the app, the Claude app's Code tab lists the Remote Control sessions of both machines in one place.
 
@@ -140,11 +139,9 @@ Notes:
 - In a fresh worktree, install dependencies first with the repo's package manager
   (pnpm install --frozen-lockfile / npm ci) before running anything else.
 - Run only the tests affected by your change unless asked for the full suite.
-- When done, commit your changes on your worktree branch with a clear message.
-  Do not push the branch and do not open a pull request unless I explicitly ask you to.
 ```
 
-Background sessions would otherwise commit, push and open a draft PR. Your instructions in `CLAUDE.md` take precedence over that default. `cc-sync-settings` copies this file to cloud.
+`cc-sync-settings` copies this file to cloud.
 
 ### 2.4 Start Agent View and the Remote Control servers
 
@@ -225,7 +222,6 @@ Merge these keys into the Mac's `~/.claude/settings.json`. Leave everything else
 
 - **`remoteControlAtStartup: true`:** every interactive session connects to the Claude app automatically.
 - **Native app push off:** ntfy is the single push channel because it knows when you're away. The app's own push only knows whether you're focused on the terminal.
-- **Retention:** cleanup and worktree-retention settings stay at Claude Code's defaults.
 
 Cloud gets the same file through `cc-sync-settings` (§4.7), plus the cloud-only values in `~/.config/cc-orchestrator/cloud-settings.json`. That file lives **on the Mac** and is deep-merged on top:
 
