@@ -8,7 +8,8 @@
 #   ~/.claude/settings.json              → config/claude/settings.mac.json   (sanitized, see below)
 #   ~/.claude/statusline-*.sh            → config/claude/
 #   ~/.claude/sounds/*                   → config/claude/sounds/
-#   ~/.claude/{CLAUDE.md,keybindings.json,agents,commands,output-styles,hooks} → config/claude/ (if present)
+#   ~/.claude/{CLAUDE.md,keybindings.json,agents,commands,output-styles,hooks,profile} → config/claude/ (if present)
+#   ~/.claude/projects/<dir>/memory/     → config/claude/memory/<dir>/ (non-empty project memories)
 #   ~/.claude/plugins/claude-hud/{config.json,statusline.mjs} → config/claude/plugins/claude-hud/
 #   ~/.config/ccstatusline/settings.json → config/claude/ccstatusline/settings.json
 #   ~/.claude/skills/                    → config/claude/skills.txt (inventory) + local skills copied
@@ -80,11 +81,18 @@ jq --arg re "$CRED_NAME_RE" '
 for f in "$CLAUDE_DIR"/statusline-*.sh; do
   if [ -f "$f" ]; then cp -p "$f" "$STAGE/claude/"; fi
 done
-optional="CLAUDE.md keybindings.json sounds agents commands output-styles hooks"
+optional="CLAUDE.md keybindings.json sounds agents commands output-styles hooks profile"
 for item in $optional; do
   if [ -e "$CLAUDE_DIR/$item" ]; then
     cp -RL "$CLAUDE_DIR/$item" "$STAGE/claude/$item"
   fi
+done
+# project auto-memory: every non-empty ~/.claude/projects/<dir>/memory, keyed by Claude Code's own <dir> name
+for m in "$CLAUDE_DIR"/projects/*/memory; do
+  [ -d "$m" ] && [ -n "$(ls -A "$m")" ] || continue
+  p=$(basename "$(dirname "$m")")
+  mkdir -p "$STAGE/claude/memory"
+  cp -RL "$m" "$STAGE/claude/memory/$p"
 done
 # hooks/agent-push.sh is installed from the repo's hooks/ by install.sh, not user state; backups are not state either
 rm -f "$STAGE/claude/hooks/agent-push.sh"
@@ -172,7 +180,7 @@ fi
 # --- mirror the staging dir into config/ ------------------------------------------------------
 # Files we own: everything staged, plus captured dirs that are mirrored (stale entries removed).
 # Optional items missing on the Mac are left alone in the repo (e.g. a repo-authored CLAUDE.md).
-mirrored_dirs="claude/skills claude/sounds claude/agents claude/commands claude/output-styles claude/hooks claude/plugins/claude-hud claude/ccstatusline"
+mirrored_dirs="claude/skills claude/sounds claude/agents claude/commands claude/output-styles claude/hooks claude/profile claude/memory claude/plugins/claude-hud claude/ccstatusline"
 changes=0
 sync_file() { # sync_file <rel>
   local rel=$1

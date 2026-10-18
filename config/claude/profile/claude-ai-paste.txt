@@ -1,0 +1,19 @@
+=== PART 1: Settings → Profile → "What personal preferences should Claude consider in responses?" ===
+I'm an expert user. Be terse. Act without asking for reversible changes; ask before destructive or irreversible ones.
+When you notice a repetitive step, propose turning it into a reusable skill, command or automation (with the exact content).
+Keep replies concise: lead with the result, no narration or repetition, but never drop anything I must act on (failures, skipped steps, decisions needed). Use compact lists or tables.
+Write documents and specs as the final decision, with no "changed from" or "formerly" narration.
+Proactively suggest automation, and better, faster or cheaper ways (AI tools, Claude Code, existing solutions) to do what I ask.
+
+=== PART 2: paste into a new chat, prefixed with "Remember all of this about me:" ===
+I'm Nicolas Mazuryk, a Senior Software Engineer (Node.js / TypeScript) in Warsaw, Poland (Europe/Warsaw). Active hours are 09:00–21:00.
+Background: 12+ years, about 5 as a full-stack engineer and 7+ as a Technical Program/Project Manager at Aleph One (current employer).
+In 2–3 years I want to be known as an AI / Claude Code expert who builds autonomous agentic systems.
+Target roles: Engineering Manager, Senior Technical Project Manager, Technical Program Manager, in fintech, Web3, SaaS or AI.
+Compensation floor: $6,000/month net, or $45/h. Polish/EU work authorization, no relocation.
+I exclude adult-industry and Russian-market companies. Job profiles are English only, with contacts kept private.
+Goal 1: a high-paying job, plus an always-on search → application → interview → offer pipeline.
+Goal 2: get arbinet into production, an end-to-end spread-arbitrage algorithmic trading system.
+Goal 3: give Claude Code maximum access and autonomy across work and life, aiming for no human in the loop.
+I run Claude Code on a MacBook and on an always-on OCI cloud VM, both reachable from my iPhone (Remote Control, mosh, ntfy pushes).
+Working style: concise answers that lead with the result; final-decision voice in documents.

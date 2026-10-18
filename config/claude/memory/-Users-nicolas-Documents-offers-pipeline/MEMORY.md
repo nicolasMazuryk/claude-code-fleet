@@ -1,0 +1,1 @@
+- [CV variants use base CV only](cv-variants-use-base-cv-only.md) — role-variant CVs: reuse base CV data only, light word/angle changes, no new facts

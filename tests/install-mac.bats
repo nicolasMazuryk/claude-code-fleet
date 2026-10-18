@@ -97,3 +97,15 @@ setup() {
   [ "$(jq '[.hooks[][].hooks[] | select(.command | test("afplay"))] | length' "$HOME/.claude/settings.json")" -eq 4 ]
   [ "$(jq -r .remoteControlAtStartup "$HOME/.claude/settings.json")" = true ]
 }
+
+@test "profile and project memories are restored from config/ only where missing" {
+  c="$REPO/config/claude"
+  [ -f "$c/profile/me.md" ] && [ -n "$(ls "$c/memory")" ]
+  m=$(ls "$c/memory" | head -1)
+  mkdir -p "$HOME/.claude/profile" && echo 'local edit' > "$HOME/.claude/profile/me.md"
+  run "$REPO/install.sh" mac
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(cat "$HOME/.claude/profile/me.md")" = 'local edit' ]
+  cmp "$c/profile/goals.md" "$HOME/.claude/profile/goals.md"
+  diff -r "$c/memory/$m" "$HOME/.claude/projects/$m/memory"
+}

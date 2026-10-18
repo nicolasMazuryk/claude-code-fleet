@@ -95,16 +95,3 @@ sum() { printf %s "$1" | shasum -a 256 | cut -c1-16; }
   grep -qx -- --delete "$BATS_TEST_TMPDIR/rsync.args"
   grep -qx cloud:.claude/ "$BATS_TEST_TMPDIR/rsync.args"
 }
-
-@test "cc-capture never copies ~/.claude/profile into the repo" {
-  H="$BATS_TEST_TMPDIR/caphome" R="$BATS_TEST_TMPDIR/caprepo"
-  mkdir -p "$H/.claude/profile" "$R/config/claude" "$R/config/mac"
-  echo '{"model":"opus"}' > "$H/.claude/settings.json"
-  echo '# Agent rules' > "$H/.claude/CLAUDE.md"
-  echo 'personal profile text' > "$H/.claude/profile/me.md"
-  CC_CAPTURE_HOME="$H" CC_CAPTURE_REPO="$R" run "$REPO/bin/cc-capture"
-  [ "$status" -eq 0 ]
-  [ -f "$R/config/claude/CLAUDE.md" ]
-  [ ! -e "$R/config/claude/profile" ]
-  ! grep -rq 'personal profile text' "$R/config"
-}

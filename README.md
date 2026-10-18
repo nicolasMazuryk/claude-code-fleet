@@ -76,7 +76,7 @@ tests/     bats suites + fakes          install.sh  idempotent installer (mac | 
 [0003 repo allowlist](docs/decisions/0003-repos-allowlist.md) ·
 [0004 ntfy public topic](docs/decisions/0004-ntfy-public-topic.md) ·
 [0005 capture/apply settings](docs/decisions/0005-capture-apply-settings.md) ·
-[0006 global profile outside git](docs/decisions/0006-global-profile-outside-git.md)
+[0006 global profile and memory in git](docs/decisions/0006-global-profile-and-memory-in-git.md)
 
 ## License
 

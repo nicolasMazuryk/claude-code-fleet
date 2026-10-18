@@ -130,3 +130,25 @@ cap() { run "$ROOT/bin/cc-capture" "$@"; }
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [ "$(ls "$R/config/claude/hooks")" = mine.sh ]
 }
+
+@test "the global profile and non-empty project memories are captured and mirrored" {
+  P="$H/.claude/projects"
+  mkdir -p "$H/.claude/profile" "$P/-Users-x-Documents-a/memory" "$P/-Users-x-Documents-b/memory" "$P/-Users-x-Documents-c"
+  echo '# me' > "$H/.claude/profile/me.md"
+  printf -- '- [A](a.md) — a\n' > "$P/-Users-x-Documents-a/memory/MEMORY.md"
+  echo 'fact' > "$P/-Users-x-Documents-a/memory/a.md"
+  echo 'transcript' > "$P/-Users-x-Documents-c/session.jsonl"
+  cap
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(cat "$R/config/claude/profile/me.md")" = '# me' ]
+  [ "$(cat "$R/config/claude/memory/-Users-x-Documents-a/a.md")" = fact ]
+  # empty memory dirs and session transcripts are not captured
+  [ "$(ls "$R/config/claude/memory")" = -Users-x-Documents-a ]
+  ! grep -rq transcript "$R/config"
+  # a memory deleted on the Mac disappears from the repo on the next capture
+  rm "$P/-Users-x-Documents-a/memory/a.md"
+  cap
+  [ "$status" -eq 0 ]
+  [ ! -e "$R/config/claude/memory/-Users-x-Documents-a/a.md" ]
+  [ -f "$R/config/claude/memory/-Users-x-Documents-a/MEMORY.md" ]
+}

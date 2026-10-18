@@ -10,7 +10,9 @@
 | `claude/plugins.json` | marketplaces + installed plugins (id, scope, version, project, enabled) | 1 (`make capture`) |
 | `claude/keybindings.json`, `agents/`, `commands/`, `output-styles/` | captured if present on the Mac (none today) | 1 |
 | `mac/zshrc.captured` | the `# Claude Code` and `# Tailscale…` blocks of `~/.zshrc` (reference, not sourced) | 1 (`make capture`) |
-| `claude/CLAUDE.md` | global agent rules + `@~/.claude/profile/*` imports (the profile itself is never in git, ADR 0006) → `~/.claude/CLAUDE.md` (`install.sh mac`) | 3 |
+| `claude/CLAUDE.md` | global preferences, agent rules, `@~/.claude/profile/*` imports → `~/.claude/CLAUDE.md` (`install.sh mac`) | 3 |
+| `claude/profile/` | captured global profile (`~/.claude/profile/`, plaintext, ADR 0006); restored where missing | 3 |
+| `claude/memory/<dir>/` | captured project memories (`~/.claude/projects/<dir>/memory/`); restored where missing | 3 |
 | `mac/` | `config.tmpl` (→ `~/.config/cc-orchestrator/config`), `repos.txt`, `tmux.conf`, `zshrc.snippet` (`am`, `ac`), `ssh_config.snippet` (`Host cloud`), `cmux.json`, `launchd/*.plist.tmpl` (`@HOME@`, `@TMUX@`); `sshd-100-keys-only.conf` (→ `/etc/ssh/sshd_config.d/100-keys-only.conf` via `mac-remote-access apply`) | 1, 3, 6 |
 | `cloud/` | `config.tmpl` (→ `~/.config/cc-orchestrator/config` on cloud), `repos.txt`, `systemd/{cc-agents.service,cc-rc@.service}`, `rsyslog-cc-orchestrator.conf` (→ `/etc/rsyslog.d/30-cc-orchestrator.conf`) | 4 |
 | `tailscale/policy.hujson` | full tailnet policy as applied | 2 |

@@ -25,10 +25,10 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
 4. Keys this repo enforces live in `config/claude/settings.orchestrator.json` (Mac) and
    `config/claude/cloud-settings.json` (cloud). Change them there, then `./install.sh mac` / `make sync`.
 5. Never edit cloud's `~/.claude` directly; the next sync overwrites it.
-6. The global profile (`~/.claude/profile/*.md`: who the owner is, goals, working style, environments) is personal
-   and lives **only** on the Mac, outside the repo ([ADR 0006](../decisions/0006-global-profile-outside-git.md)).
-   Edit it in place on the Mac, then `make sync`; check with verify row 3j. `config/claude/CLAUDE.md` carries only
-   the `@~/.claude/profile/…` import lines, and `cc-capture` never captures the profile. A rebuilt Mac restores it
-   from a backup (`~/.claude/backups/` or Time Machine), not from this repo.
+6. The global profile (`~/.claude/profile/*.md`: who the owner is, goals, working style, environments) and the
+   project memories (`~/.claude/projects/<dir>/memory/`) are edited on the Mac in place. `make capture` saves them
+   to `config/claude/profile/` and `config/claude/memory/<dir>/` in **plaintext in this public repo**
+   ([ADR 0006](../decisions/0006-global-profile-and-memory-in-git.md)): never put a secret there. `make sync` mirrors the
+   profile to cloud (verify row 3j); `install.sh mac` restores missing profile files and memory folders.
 
 Until `make sync` is run, cloud sounds whose Mac handler changed are skipped and logged in `/tmp/agent-relay.log`.

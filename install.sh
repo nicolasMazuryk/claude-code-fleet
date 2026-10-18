@@ -10,7 +10,8 @@
 #   config      ~/.config/cc-orchestrator/config (from config/mac/config.tmpl), zshrc.snippet copy
 #   tmux        ~/.tmux.conf
 #   claude      ~/.claude/CLAUDE.md, statusline-combined.sh (node path fix), hooks/agent-push.sh;
-#               baseline files from config/claude/ only where missing (sounds, skills, claude-hud, ccstatusline)
+#               baseline files from config/claude/ only where missing (sounds, skills, claude-hud, ccstatusline,
+#               profile/*, memory/<dir> → ~/.claude/projects/<dir>/memory)
 #   settings    ~/.claude/settings.json: seeded from settings.mac.json if absent; settings.orchestrator.json
 #               deep-merged; one agent-push.sh group appended to Notification and Stop (once). Backup first.
 #   ntfy        ~/.config/agent-push/topic (0600): kept if present, else Vault core-secret-ntfy-topic, else new
@@ -151,6 +152,12 @@ step_claude() {
   local s
   for s in "$c"/skills/*; do
     [ -d "$s" ] && install_missing claude "$s" "$d/skills/$(basename "$s")"
+  done
+  for s in "$c"/profile/*; do
+    [ -f "$s" ] && install_missing claude "$s" "$d/profile/$(basename "$s")"
+  done
+  for s in "$c"/memory/*; do
+    [ -d "$s" ] && install_missing claude "$s" "$d/projects/$(basename "$s")/memory"
   done
   return 0
 }
