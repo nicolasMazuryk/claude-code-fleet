@@ -85,7 +85,7 @@ symlinks. `cc-capture` snapshots Mac → `config/claude/` (sanitized); `install.
 1. Read the matching runbook and ADR first. If a change contradicts an ADR, write a new ADR that supersedes it.
 2. Branch (`phase-N-*` or `feat/*`), commit with the trailer
    `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`, open a **draft** PR into `main`.
-   Never push to `main`, never force-push, never merge.
+   Never push to `main`, never force-push.
 3. Run `make lint test` before committing. Add a bats test for any non-trivial transform (settings sync,
    relay hash check, push gating).
 4. Update the runbook + `verify.md`, and the phase log in `docs/progress/` when working a plan phase.
