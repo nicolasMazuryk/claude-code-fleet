@@ -1,1 +1,2 @@
 - [CV variants use base CV only](cv-variants-use-base-cv-only.md) — role-variant CVs: reuse base CV data only, light word/angle changes, no new facts
+- [Career constraints](career-constraints.md) — target roles, pay floor $6k/month net or $45/h, Polish/EU, no relocation, excluded employers

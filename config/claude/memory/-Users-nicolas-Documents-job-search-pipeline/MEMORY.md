@@ -2,3 +2,4 @@
 - [Pipe separator](pipe-separator.md) — use ' | ' not ' · ' in all pipeline text
 - [Paste-ready forms](paste-ready-forms.md) — form answers are exact plain-text paste blocks, never file pointers
 - [Statusline project-agnostic](statusline-project-agnostic.md) — no project-specific statusline widgets
+- [Career constraints](career-constraints.md) — target roles, pay floor $6k/month net or $45/h, Polish/EU, no relocation, excluded employers
