@@ -1,7 +1,7 @@
 # Environments: devices, names and how they connect
 
 Authoritative detail: `~/Documents/claude-code-fleet/CLAUDE.md` and `docs/architecture.md` (cloud copy:
-`~/claude-code-fleet`). No secrets or IPs here.
+`~/claude-code-fleet`).
 
 ## Devices
 | | Mac | Cloud | iPhone |
