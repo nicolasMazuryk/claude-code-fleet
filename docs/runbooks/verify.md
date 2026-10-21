@@ -58,6 +58,11 @@ Each phase's PR records the output of its rows. `make doctor` (`bin/cc-doctor`: 
 | 8 | Docs | a fresh agent answers "how do I add a repo to cloud?" from docs alone | → [add-repo](add-repo.md) | 0 |
 | 9 | Repo | `make lint test` | passes | 0+ |
 | 10 | Doctor | `make doctor` (Mac; = `bin/cc-doctor`); on cloud alone: `ssh cloud cc-doctor` | every line `ok` (or `skip` for a listed repo whose workspace is not trusted on cloud), last line `… 0 FAIL …`, exit 0. **2026-10-17: PASS** (37 ok, 0 FAIL, 2 skip). Lines: `tools config runtime rc relay ntfy settings tcc disk` per host, plus `cloud settings` parity with `cc-sync-settings --print` | 7 |
+| 11a | Browser | `ssh cloud 'stat -c %Y ~/.local/state/agent-events/mac-up; date +%s; jq -c .versions ~/.local/state/agent-events/mac-up'` (relay running) | marker ≤ 45 s old; `versions` lists dia/chrome/claude_in_chrome/agent_browser | 7 |
+| 11b | Browser | `ssh cloud 'browser-relay-cloud lease <site> <profile> --ttl 60'`, then `ssh cloud 'curl -s 127.0.0.1:<port>/json/version'`, then `… release <id>` | `<id> <port>` (9300–9399); CDP answers on cloud's loopback; after release the port is closed and Chrome gone. `ss -ltn` on the Mac shows the port bound to 127.0.0.1 only | 7 |
+| 11c | Browser | `ssh cloud 'systemctl list-timers browser-router-vault-drain.timer; browser-router --help | head -n1; agent-browser --version'` | timer active, next run ≤ 3 min; CLI and agent-browser present | 6 |
+| 11d | Browser | `make sync` with a changed `~/.config/browser-router/sites.yaml` | `sites updated`; second run `sites ok`; `ssh cloud 'jq -r .env.CLAUDE_CODE_ENABLE_CFC ~/.claude/settings.json'` → `1`; cloud settings keep the `browser-router-relay` SessionStart group | 7 |
+| 11e | Browser | `bats tests/browser-relay.bats`; tailnet policy review | the cloud scripts (`browser-relay-cloud`, `browser-vault-drain`) contain no ssh/mosh/nc/curl; the policy has no `src: tag:cloud` rule: cloud never initiates to the Mac | 7 |
 
 ## Check once (spec §10)
 

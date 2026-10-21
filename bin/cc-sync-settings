@@ -10,11 +10,12 @@
 #                  written only when it differs (previous one kept as settings.json.bak.<ts>)
 #   mirrored       CLAUDE.md keybindings.json skills agents commands output-styles hooks profile (rsync --delete; symlinks
 #                  copied as files; skills/synced is claude.ai's own and left alone)
+#   sites.yaml     ~/.config/browser-router/sites.yaml → cloud (browser-router's routing table; rsync -L, written only when different)
 #   plugins        enabled on the Mac but not installed on cloud: listed with the install command
 #                  (--install-plugins runs them, adding the Mac's GitHub marketplace on cloud first)
 #   --dry-run      show what would change, write nothing      --print   print the cloud settings.json and exit
 # Must report "4 macOS-only hook handler(s) relayed" (docs/runbooks/sync-settings.md).
-# Test switches: CC_SYNC_SRC, CC_SYNC_OVERRIDES, CC_SYNC_CLOUD_HOME (skips the ssh lookup), CC_SYNC_HOST.
+# Test switches: CC_SYNC_SITES (sites.yaml path), CC_SYNC_SRC, CC_SYNC_OVERRIDES, CC_SYNC_CLOUD_HOME (skips the ssh lookup), CC_SYNC_HOST.
 set -eo pipefail
 # shellcheck source=bin/agent-env
 . "$HOME/.local/bin/agent-env"
@@ -28,7 +29,7 @@ for a in "$@"; do
     --dry-run) mode=dry ;;
     --print) mode=print ;;
     --install-plugins) plugins=install ;;
-    -h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "cc-sync-settings: unknown option $a" >&2; exit 2 ;;
   esac
 done
@@ -100,6 +101,16 @@ if [ ${#items[@]} -gt 0 ]; then
   out=$(rsync "${ropts[@]}" "${items[@]}" "$H:.claude/")
   if [ -z "$out" ]; then echo "  files     ok ${items[*]}"
   else printf '%s\n' "$out" | sed "s/^/  files     $([ "$mode" = dry ] && echo 'would ')/"; fi
+fi
+
+# browser-router's routing table (the CLI on cloud reads ~/.config/browser-router/sites.yaml)
+sites=${CC_SYNC_SITES:-$HOME/.config/browser-router/sites.yaml}
+if [ -f "$sites" ]; then
+  sopts=(-ptL -i --rsync-path='mkdir -p ~/.config/browser-router && rsync')
+  [ "$mode" = dry ] && sopts+=(-n)
+  out=$(rsync "${sopts[@]}" "$sites" "$H:.config/browser-router/sites.yaml")
+  if [ -z "$out" ]; then echo "  sites     ok $H:~/.config/browser-router/sites.yaml"
+  else echo "  sites     $([ "$mode" = dry ] && echo 'would ')update $H:~/.config/browser-router/sites.yaml"; fi
 fi
 
 # plugins: listed (or installed with --install-plugins), never silently

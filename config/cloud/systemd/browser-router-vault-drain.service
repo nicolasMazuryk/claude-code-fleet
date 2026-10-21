@@ -1,0 +1,16 @@
+# browser-router-vault-drain — one pass of the vault queue (browser-router vault drain): starts at most one runnable
+# job (mac-chrome → claude -p --chrome here; mac-computer-use → a dispatch event for the Mac's agent-relay).
+# Fired every 3 minutes by browser-router-vault-drain.timer. Installed by ./install.sh cloud.
+[Unit]
+Description=browser-router vault queue drain (cc-orchestrator)
+After=network-online.target data.mount
+RequiresMountsFor=/data
+
+[Service]
+Type=oneshot
+User=agent
+Group=agent
+WorkingDirectory=/data/fleet
+Environment=HOME=/data/home/agent
+ExecStart=/data/home/agent/.local/bin/browser-vault-drain
+TimeoutStartSec=120

@@ -109,3 +109,17 @@ setup() {
   cmp "$c/profile/goals.md" "$HOME/.claude/profile/goals.md"
   diff -r "$c/memory/$m" "$HOME/.claude/projects/$m/memory"
 }
+
+@test "browser-router: guard hooks per tool family and the relay slot are added once; relay copies installed" {
+  run "$REPO/install.sh" mac
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  s="$HOME/.claude/settings.json"
+  for m in 'mcp__claude-in-chrome__.*' 'mcp__computer-use__.*' Bash; do
+    [ "$(jq --arg m "$m" '[.hooks.PreToolUse[] | select(.matcher == $m) | .hooks[] | select(.command == "~/.claude/hooks/browser-guard")] | length' "$s")" -eq 1 ]
+  done
+  [ "$(jq -r '[.hooks.SessionStart[] | select(.matcher == "browser-router-relay")] | length' "$s")" -eq 1 ]
+  [ "$(jq -r '.hooks.SessionStart[] | select(.matcher == "browser-router-relay") | .hooks[0].command' "$s")" = "~/.local/libexec/cc-orchestrator/browser-relay-handler" ]
+  for f in browser-up browser-relay-handler; do cmp "$REPO/bin/$f" "$HOME/.local/libexec/cc-orchestrator/$f"; done
+  "$REPO/install.sh" mac >/dev/null
+  [ "$(jq '[.hooks.PreToolUse[] | select(.matcher == "Bash")] | length' "$s")" -eq 1 ]
+}

@@ -13,12 +13,13 @@
 #               baseline files from config/claude/ only where missing (sounds, skills, claude-hud, ccstatusline,
 #               profile/*, memory/<dir> → ~/.claude/projects/<dir>/memory)
 #   settings    ~/.claude/settings.json: seeded from settings.mac.json if absent; settings.orchestrator.json
-#               deep-merged; one agent-push.sh group appended to Notification and Stop (once). Backup first.
+#               deep-merged; one agent-push.sh group appended to Notification and Stop (once); browser-guard PreToolUse
+#               groups and the browser-router-relay SessionStart slot (once each). Backup first.
 #   ntfy        ~/.config/agent-push/topic (0600): kept if present, else Vault core-secret-ntfy-topic, else new
 #   zshrc       one sourcing line for the snippet (am, ac); existing aliases untouched
 #   ssh         Host cloud appended to ~/.ssh/config if no Host cloud exists
 #   cmux        ~/.config/cmux/cmux.json if absent or still cmux's all-comments template
-#   relay       copies of bin/agent-relay + bin/agent-present in ~/.local/libexec/cc-orchestrator/ (launchd can't
+#   relay       copies of bin/agent-relay, agent-present, browser-up, browser-relay-handler in ~/.local/libexec/cc-orchestrator/ (launchd can't
 #               read ~/Documents, TCC); the relay LaunchAgent is restarted when they change
 #   launchd     cc-orchestrator.claude.agents and .relay (sound relay + presence beacon), bootstrapped
 #
@@ -31,11 +32,13 @@
 # cloud-local (on cloud as agent; sudo is passwordless there):
 #   claude      Claude Code binary for agent (~/.local/bin/claude, native installer) if missing — this repo owns it
 #   bin, path   ~/.local/bin → ~/claude-code-fleet/bin (not the Mac-only cc-capture, cc-sync-settings,
-#               cc-orchestrator-start, agent-relay, mac-remote-access); PATH line at the top of ~/.bashrc (non-interactive ssh)
+#               cc-orchestrator-start, agent-relay, mac-remote-access, browser-up, browser-relay-handler); PATH line at the top of ~/.bashrc (non-interactive ssh)
 #   config      ~/.config/cc-orchestrator/config (config/cloud/config.tmpl), ~/.tmux.conf
 #   legacy      oci's agent@<repo> units stopped + disabled, agent@.service, /usr/local/bin/fleet and the
 #               tmux -L agent-<repo> servers removed (one RC server per folder; ADR 0002)
-#   units       cc-rc@.service, cc-agents.service → /etc/systemd/system; rsyslog rule → /var/log/core/agent.log
+#   browser     browser-router cloned + built (~/.local/share/browser-router, linked into ~/.local/bin), agent-browser pinned
+#   units       cc-rc@.service, cc-agents.service, browser-router-vault-drain.{service,timer} → /etc/systemd/system
+#               (timer enabled once browser-router is installed); rsyslog rule → /var/log/core/agent.log
 #   linger      loginctl enable-linger agent
 #   repos       clone missing config/cloud/repos.txt repos into /data/fleet (gh auth), repo-init --no-trust each
 #   agents      cc-agents.service enabled + started (Agent View, tmux session "fleet")
@@ -46,7 +49,7 @@
 # Every overwritten user file is backed up first as <file>.bak.<timestamp>.
 # Test/CI switches: CC_INSTALL_NO_BREW=1, CC_INSTALL_NO_LAUNCHD=1, CC_INSTALL_NO_VAULT=1 (HOME may be a scratch dir);
 # cloud-local: CC_SUDO (default sudo; "" in tests), CC_UNIT_DIR, CC_RSYSLOG_DIR, CC_LOG_DIR, CC_LEGACY_BIN,
-# CC_INSTALL_NO_CLAUDE=1, CC_INSTALL_NO_CLONE=1, CC_DRY_RUN=1, CC_CLOUD_REPO (path written into links/config),
+# CC_INSTALL_NO_CLAUDE=1, CC_INSTALL_NO_BROWSER=1, CC_BROWSER_DIR, AGENT_BROWSER_VERSION, CC_INSTALL_NO_CLONE=1, CC_DRY_RUN=1, CC_CLOUD_REPO (path written into links/config),
 # CC_AGENTS_ROOT, CC_TMUX_DIR, CC_INSTALL_ANY_OS=1.
 set -euo pipefail
 
@@ -168,7 +171,18 @@ SETTINGS_JQ='
     .hooks[$ev] = ((.hooks[$ev] // []) as $g
       | if any($g[]?.hooks[]?; (.command // "") | test("agent-push\\.sh")) then $g
         else $g + [{hooks: [{type: "command", command: "~/.claude/hooks/agent-push.sh", async: true}]}] end);
-  (.[0] * .[1]) | addpush("Notification") | addpush("Stop")'
+  # browser-router: PreToolUse guard per browser tool family (contracts §9), and the relay slot agent-relay looks up for
+  # BrowserLease/Release/Dispatch events (a SessionStart matcher Claude Code never reports, so it only runs from the relay)
+  def addguard($m):
+    .hooks.PreToolUse = ((.hooks.PreToolUse // []) as $g
+      | if any($g[]?; .matcher == $m and any(.hooks[]?; (.command // "") | test("browser-guard"))) then $g
+        else $g + [{matcher: $m, hooks: [{type: "command", command: "~/.claude/hooks/browser-guard"}]}] end);
+  def addrelay:
+    .hooks.SessionStart = ((.hooks.SessionStart // []) as $g
+      | if any($g[]?; .matcher == "browser-router-relay") then $g
+        else $g + [{matcher: "browser-router-relay", hooks: [{type: "command", command: "~/.local/libexec/cc-orchestrator/browser-relay-handler"}]}] end);
+  (.[0] * .[1]) | addpush("Notification") | addpush("Stop")
+  | addguard("mcp__claude-in-chrome__.*") | addguard("mcp__computer-use__.*") | addguard("Bash") | addrelay'
 
 step_settings() {
   local s="$HOME/.claude/settings.json" new
@@ -271,7 +285,7 @@ launchd_load() { # launchd_load <label> <plist> <changed 0|1>
 RELAY_CHANGED=0
 step_relay() { # launchd jobs can't read ~/Documents (TCC: "Operation not permitted"), so the relay runs from copies
   local d="$HOME/.local/libexec/cc-orchestrator" f before=$changes
-  for f in agent-relay agent-present; do
+  for f in agent-relay agent-present browser-up browser-relay-handler; do
     if [ -f "$d/$f" ] && cmp -s "$REPO/bin/$f" "$d/$f"; then continue; fi
     mkdir -p "$d"; cp "$REPO/bin/$f" "$d/$f.tmp"; chmod 755 "$d/$f.tmp"; mv "$d/$f.tmp" "$d/$f"
     did relay "copied bin/$f → $d/$f"
@@ -390,12 +404,44 @@ step_legacy() { # oci's pre-Phase-4b Claude Code setup (ADR 0002): stop it befor
   [ "$changes" -ne "$before" ] || say legacy "ok no agent@ units, agent@.service or $LEGACY_BIN"
 }
 
+BROWSER_DIR=${CC_BROWSER_DIR:-$HOME/.local/share/browser-router}
+step_browser() { # browser-router (CLI + vault, github.com/<owner>/browser-router) and agent-browser, both from upstream
+  local url="https://github.com/${GH_OWNER:-nicolasMazuryk}/browser-router.git" d=$BROWSER_DIR sha stamp="$BROWSER_DIR/.built" ab want
+  if [ "${CC_INSTALL_NO_BROWSER:-0}" = 1 ]; then say browser "skipped (CC_INSTALL_NO_BROWSER set)"; return 0; fi
+  if [ ! -d "$d/.git" ]; then
+    if [ "${CC_INSTALL_NO_CLONE:-0}" = 1 ]; then say browser "missing $d (CC_INSTALL_NO_CLONE set)"; return 0; fi
+    act browser "clone $url → $d" git clone -q "$url" "$d"
+  elif [ "$DRY" != 1 ] && [ "${CC_INSTALL_NO_CLONE:-0}" != 1 ]; then
+    if ! { git -C "$d" fetch -q origin && git -C "$d" merge -q --ff-only '@{u}' 2>/dev/null; }; then
+      say browser "WARNING: could not fast-forward $d"
+    fi
+  fi
+  if [ -d "$d/.git" ]; then
+    sha=$(git -C "$d" rev-parse HEAD)
+    if [ "$(cat "$stamp" 2>/dev/null)" != "$sha" ]; then
+      act browser "build browser-router @ ${sha%"${sha#???????}"} (pnpm install --frozen-lockfile; pnpm build)" \
+        sh -c "cd '$d' && corepack pnpm install --frozen-lockfile >/dev/null && corepack pnpm build >/dev/null && echo '$sha' > '$stamp'"
+    else say browser "ok browser-router built @ ${sha%"${sha#???????}"}"; fi
+    link browser "$d/dist/cli.js" "$HOME/.local/bin/browser-router"
+  fi
+  want=${AGENT_BROWSER_VERSION:-0.39.1}
+  ab=$(agent-browser --version 2>/dev/null | head -n1 | awk '{print $NF}' || true)
+  if [ "$ab" = "$want" ]; then say browser "ok agent-browser $ab"; return 0; fi
+  act browser "install agent-browser@$want (npm -g) + agent-browser install" \
+    sh -c "$SUDO npm install -g 'agent-browser@$want' >/dev/null && agent-browser install >/dev/null"
+}
+
 step_units() {
   local reload=0 f
-  for f in cc-rc@.service cc-agents.service; do
+  for f in cc-rc@.service cc-agents.service browser-router-vault-drain.service browser-router-vault-drain.timer; do
     root_file units "$REPO/config/cloud/systemd/$f" "$UNIT_DIR/$f" && reload=1
   done
   if [ "$reload" = 1 ] || [ "$changes" -gt 0 ]; then act units "systemctl daemon-reload" sudo_ systemctl daemon-reload; fi
+  # the vault drain runs only once browser-router is installed
+  if [ -x "$HOME/.local/bin/browser-router" ] || [ -L "$HOME/.local/bin/browser-router" ]; then
+    if systemctl is-enabled --quiet browser-router-vault-drain.timer 2>/dev/null; then say units "ok browser-router-vault-drain.timer"
+    else act units "enable + start browser-router-vault-drain.timer" sudo_ systemctl enable --now browser-router-vault-drain.timer; fi
+  fi
   if [ -d "$RSYSLOG_DIR" ]; then
     if [ ! -e "$LOG_DIR/agent.log" ]; then
       act units "create $LOG_DIR/agent.log" sh -c "$SUDO install -d -m 0755 '$LOG_DIR' && $SUDO install -m 0640 /dev/null '$LOG_DIR/agent.log' && { $SUDO chown syslog:adm '$LOG_DIR/agent.log' 2>/dev/null || true; }"
@@ -462,10 +508,10 @@ step_rc() {
 install_cloud_local() {
   [ "$(uname)" = Linux ] || [ "${CC_INSTALL_ANY_OS:-0}" = 1 ] || die "install.sh cloud-local runs on cloud (Linux)"
   LIVE=${CC_CLOUD_REPO:-$REPO}
-  BIN_SKIP="cc-capture cc-sync-settings cc-orchestrator-start agent-relay mac-remote-access"   # Mac-only (they read the Mac's ~/.claude / launchd)
+  BIN_SKIP="cc-capture cc-sync-settings cc-orchestrator-start agent-relay mac-remote-access browser-up browser-relay-handler"   # Mac-only (they read the Mac's ~/.claude / launchd / browsers)
   echo "install.sh cloud-local: $LIVE → $HOME$([ "$DRY" = 1 ] && echo ' (dry run)')"
   step_claude_bin; step_bin; step_path; step_config_cloud; step_bashrc_snippet; step_tmux
-  step_legacy; step_units; step_linger; step_repos; step_agents; step_rc
+  step_legacy; step_browser; step_units; step_linger; step_repos; step_agents; step_rc
   if [ "$changes" -eq 0 ]; then echo "install.sh cloud-local: no changes"
   else echo "install.sh cloud-local: $changes change(s)$([ "$DRY" = 1 ] && echo ' would be made')"; fi
 }

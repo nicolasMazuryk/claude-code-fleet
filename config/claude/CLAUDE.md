@@ -12,3 +12,6 @@ Who I am, my goals and how to work with me, for every repo.
 @~/.claude/profile/goals.md
 @~/.claude/profile/working-style.md
 @~/.claude/profile/environments.md
+
+# Browser
+- Before any browser or web-app task (sites, logins, forms, scraping, accounts), use the `browser-router` skill (`~/.claude/skills/browser-router`); never pick a browser tool directly.

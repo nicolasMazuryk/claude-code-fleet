@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# browser-relay-cloud — the cloud side of the browser-router relay (browser-router docs/contracts.md §7). Cloud never
+# connects to the Mac: agent-relay's remote script (opened by the Mac) hands every line the Mac sends up to `line`,
+# and the commands below only append to events.jsonl, the file agent-relay tails.
+#   line <text>            handle one Mac → cloud line (called by agent-relay's remote script; never trusts the text):
+#                            mac-up <json>                  → <events>/mac-up (atomic; the file mtime is its freshness)
+#                            lease-ready <id> <port>        → <events>/replies/<id>   (port must be 9300–9399)
+#                            lease-failed <id> <reason>     → replies/<id>
+#                            release-ok <id> | dispatch-ok <job_id> → replies/<id>
+#                            dispatch-done <job_id> <exit>  → replies/<job_id>, then `browser-router vault finish`
+#   lease <site> <profile> [--session <sid>] [--ttl <s>] [--wait <s>]
+#                          queue a BrowserLease event, wait for the reply, print "<id> <port>" (exit 0), or exit 5
+#                          with the reason when the Mac is down, refuses or does not answer
+#   release <id>           queue a BrowserRelease event (the Mac cancels the forward and closes the browser)
+#   sum                    print the 16-hex hash agent-relay expects (sha256 of the Mac's relay handler command,
+#                          from the synced ~/.claude/settings.json): the value for BROWSER_ROUTER_RELAY_SUM
+# Test switches: BROWSER_ROUTER_EVENTS (default ~/.local/state/agent-events), BROWSER_ROUTER_BIN (browser-router),
+# BROWSER_RELAY_SETTINGS, BROWSER_RELAY_POLL (seconds between reply polls, 0.5).
+EVENTS=${BROWSER_ROUTER_EVENTS:-$HOME/.local/state/agent-events}
+BR=${BROWSER_ROUTER_BIN:-browser-router}
+SETTINGS=${BROWSER_RELAY_SETTINGS:-$HOME/.claude/settings.json}
+HANDLER_MATCHER=browser-router-relay
+
+die() { echo "browser-relay-cloud: $*" >&2; exit "${2:-1}"; }
+ok_id() { [[ $1 =~ ^[A-Za-z0-9_-]{1,64}$ ]]; }
+now() { date +%s; }
+sum_of() { # sha256 of the handler command, first 16 hex (sha256sum on Linux, shasum on macOS)
+  if command -v sha256sum >/dev/null 2>&1; then printf %s "$1" | sha256sum | cut -c1-16
+  else printf %s "$1" | shasum -a 256 | cut -c1-16; fi
+}
+
+relay_sum() {
+  local cmd
+  cmd=$(jq -r --arg m "$HANDLER_MATCHER" \
+    '[.hooks.SessionStart[]? | select(.matcher == $m) | .hooks[0] | select(.type == "command") | .command][0] // empty' \
+    "$SETTINGS" 2>/dev/null)
+  [ -n "$cmd" ] || die "no relay handler (SessionStart matcher $HANDLER_MATCHER) in $SETTINGS; run cc-sync-settings"
+  sum_of "$cmd"
+}
+
+atomic_write() { # atomic_write <file> <content>
+  local t
+  mkdir -p "$(dirname "$1")"
+  t=$(mktemp "$1.XXXXXX") || return 1
+  printf '%s\n' "$2" > "$t" && mv "$t" "$1"
+}
+
+append_event() { # append_event <event> <payload-json>
+  local sum
+  sum=${BROWSER_ROUTER_RELAY_SUM:-$(relay_sum)} || exit 1
+  mkdir -p "$EVENTS"
+  jq -nc --arg e "$1" --arg s "$sum" --argjson ts "$(now)" --argjson p "$2" \
+    '{event: $e, group: 0, handler: 0, sum: $s, ts: $ts, payload: $p}' >> "$EVENTS/events.jsonl"
+}
+
+cmd_line() {
+  local kind rest a b
+  kind=${1%% *}; rest=${1#"$kind"}; rest=${rest# }
+  [ "${#1}" -le 4096 ] || return 0
+  case $kind in
+    mac-up)
+      jq -e 'type == "object" and .schema == 1 and (.ts | type == "number")' <<<"$rest" >/dev/null 2>&1 || return 0
+      atomic_write "$EVENTS/mac-up" "$(jq -c . <<<"$rest")" ;;
+    lease-ready)
+      read -r a b <<<"$rest"
+      ok_id "$a" && [[ $b =~ ^93[0-9][0-9]$ ]] || return 0
+      atomic_write "$EVENTS/replies/$a" "lease-ready $a $b" ;;
+    lease-failed)
+      read -r a b <<<"$rest"
+      ok_id "$a" && [[ $b =~ ^[a-z_]{1,40}$ ]] || return 0
+      atomic_write "$EVENTS/replies/$a" "lease-failed $a $b" ;;
+    release-ok|dispatch-ok)
+      ok_id "$rest" || return 0
+      atomic_write "$EVENTS/replies/$rest" "$kind $rest" ;;
+    dispatch-done)
+      read -r a b <<<"$rest"
+      ok_id "$a" && [[ $b =~ ^[0-9]{1,3}$ ]] || return 0
+      atomic_write "$EVENTS/replies/$a" "dispatch-done $a $b"
+      "$BR" vault finish "$a" --exit "$b" >/dev/null 2>&1 || true ;;
+    *) return 0 ;; # presence lines and anything else are handled (or ignored) by agent-relay's remote script
+  esac
+}
+
+cmd_lease() {
+  local site=${1:-} profile=${2:-} sid='' ttl=900 wait=30 id r i poll=${BROWSER_RELAY_POLL:-0.5}
+  [ -n "$site" ] && [ -n "$profile" ] || die "usage: lease <site> <profile> [--session <sid>] [--ttl <s>] [--wait <s>]"
+  shift 2
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --session) sid=${2:-}; shift 2 ;; --ttl) ttl=${2:-}; shift 2 ;; --wait) wait=${2:-}; shift 2 ;;
+      *) die "unknown option $1" ;;
+    esac
+  done
+  [ -f "$EVENTS/mac-up" ] || die "the Mac is down (no mac-up marker)" 5
+  id="cdp-$(now)-$RANDOM"
+  append_event BrowserLease "$(jq -nc --arg id "$id" --arg site "$site" --arg profile "$profile" --arg sid "$sid" \
+    --argjson ttl "$ttl" '{id: $id, site: $site, profile: $profile, session_id: $sid, ttl_s: $ttl}')"
+  i=0
+  while [ "$i" -lt $((wait * 2)) ]; do
+    if [ -f "$EVENTS/replies/$id" ]; then
+      r=$(cat "$EVENTS/replies/$id")
+      case $r in
+        "lease-ready $id "*) echo "$id ${r##* }"; return 0 ;;
+        *) die "${r#lease-failed "$id" }" 5 ;;
+      esac
+    fi
+    sleep "$poll"; i=$((i + 1))
+  done
+  die "no answer from the Mac within ${wait}s" 5
+}
+
+case ${1:-} in
+  line) shift; cmd_line "${1:-}" ;;
+  lease) shift; cmd_lease "$@" ;;
+  release) ok_id "${2:-}" || die "usage: release <id>"
+           append_event BrowserRelease "$(jq -nc --arg id "$2" '{id: $id}')" ;;
+  sum) relay_sum ;;
+  -h|--help|"") sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  *) die "unknown command $1" 2 ;;
+esac

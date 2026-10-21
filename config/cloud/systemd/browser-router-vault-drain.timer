@@ -1,0 +1,11 @@
+# browser-router-vault-drain.timer — every 3 minutes (spec §4.1). Enabled by ./install.sh cloud once browser-router is installed.
+[Unit]
+Description=browser-router vault queue drain, every 3 minutes (cc-orchestrator)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=3min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

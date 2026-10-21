@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# browser-vault-drain — cloud only. What browser-router-vault-drain.service runs every 3 min: `browser-router vault drain`
+# (starts at most one runnable vault job) with BROWSER_ROUTER_RELAY_SUM set, so a dispatch event for the Mac carries the
+# hash agent-relay expects. Without a synced relay handler the sum stays unset and mac-chrome jobs still drain.
+# CLAUDE_CODE_ENABLE_CFC=1 lets the `claude -p --chrome` job drain starts use the Mac's browser.
+export PATH="$HOME/.local/bin:/usr/local/bin:$PATH:/usr/bin:/bin"
+export CLAUDE_CODE_ENABLE_CFC=1
+sum=$(browser-relay-cloud sum 2>/dev/null) && export BROWSER_ROUTER_RELAY_SUM=$sum
+exec browser-router vault drain "$@"
