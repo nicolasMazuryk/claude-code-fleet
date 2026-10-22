@@ -14,9 +14,9 @@ this repo owns the relay, the cloud install, the drain timer and the settings wi
 ## Browser profiles (Mac)
 | Browser | Profile | Used for |
 |---|---|---|
-| Dia | `vault-extension` | Claude in Chrome; mbank, Google accounts, OCI console, PayPal, podatki |
+| Dia | `vault-extension` | Claude in Chrome; Google accounts, OCI console |
 | Dia | `vault-screen` | no extensions; LinkedIn via computer use |
-| Chrome | `shield-extension` | Claude in Chrome; github.com |
+| Chrome | `shield-extension` | Claude in Chrome; mac-chrome shield profile, no sites assigned |
 
 Leased Chrome profiles (`~/.chrome-agent-profiles/<profile>`) are separate from these.
 
