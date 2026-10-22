@@ -9,7 +9,8 @@
 # A missing Keychain token or a missing lego binary skips with a log line (exit 0). Idempotent; secrets never on argv.
 # Usage: egress-cert-renew [--dry-run]   (--dry-run: no ACME call, report what would be pushed)
 # Test hooks: EGRESS_CERT_DOMAIN (egress.mazuryktech.com), EGRESS_ACME_DIR, EGRESS_ACME_SERVER (letsencrypt; use
-# letsencrypt-staging for tests), EGRESS_ACME_EMAIL, EGRESS_LEGO (lego), CC_CLOUD_HOST (cloud), EGRESS_GOST_CONTAINER.
+# letsencrypt-staging for tests), EGRESS_DNS_RESOLVERS (1.1.1.1:53,8.8.8.8:53: lego's recursive resolvers for the DNS-01
+# propagation check; the Mac's MagicDNS 100.100.100.100 times out on _acme-challenge TXT/SOA), EGRESS_ACME_EMAIL, EGRESS_LEGO (lego), CC_CLOUD_HOST (cloud), EGRESS_GOST_CONTAINER.
 set -euo pipefail
 PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
 domain=${EGRESS_CERT_DOMAIN:-egress.mazuryktech.com}
@@ -17,6 +18,7 @@ dir=${EGRESS_ACME_DIR:-$HOME/Library/Application Support/claude-code-fleet/acme}
 server=${EGRESS_ACME_SERVER:-letsencrypt}
 email=${EGRESS_ACME_EMAIL:-tripod.dev.engineers@gmail.com}
 lego=${EGRESS_LEGO:-lego}
+resolvers=${EGRESS_DNS_RESOLVERS:-1.1.1.1:53,8.8.8.8:53}
 h=${CC_CLOUD_HOST:-cloud}
 gost=${EGRESS_GOST_CONTAINER:-egress-gost-1}
 dry=0; [ "${1:-}" = --dry-run ] && dry=1
@@ -32,7 +34,7 @@ crt="$dir/certificates/$domain.crt"; key="$dir/certificates/$domain.key"
 if [ "$dry" = 0 ]; then
   # lego decides: obtains when absent, renews only when ARI / 1/3 lifetime says so, else exits without changes.
   CLOUDFLARE_DNS_API_TOKEN=$token LEGO_PATH=$dir "$lego" --log.level info \
-    run --accept-tos --email "$email" --server "$server" --dns cloudflare -d "$domain" >&2 \
+    run --accept-tos --email "$email" --server "$server" --dns cloudflare --dns.resolvers "$resolvers" -d "$domain" >&2 \
     || { say "ERROR: lego failed for $domain"; exit 1; }
 fi
 unset token

@@ -38,6 +38,7 @@ SPY
   grep -q 'docker restart egress-gost-1' "$FAKE_DOCKER_LOG"
   grep -q 'token-env-set' "$FAKE_LEGO_LOG"; ! grep -q 'cf-token-xyz' "$FAKE_LEGO_LOG"
   grep -qE 'run .*--server letsencrypt-staging .*--dns cloudflare .*-d egress.example.test' "$FAKE_LEGO_LOG"
+  grep -qE -- '--dns.resolvers 1\.1\.1\.1:53,8\.8\.8\.8:53 ' "$FAKE_LEGO_LOG"             # public resolvers by default
   ! grep -q -- '--renew-days' "$FAKE_LEGO_LOG"                       # ARI / 1/3 lifetime is lego's own decision
   [ "$(mode "$EGRESS_ACME_DIR")" = 700 ]
   [[ "$output" != *cf-token-xyz* ]]
@@ -80,6 +81,12 @@ SPY
   printf '#!/bin/sh\nexit 1\n' > "$BATS_TEST_TMPDIR/badlego"; chmod +x "$BATS_TEST_TMPDIR/badlego"
   EGRESS_LEGO="$BATS_TEST_TMPDIR/badlego" run "$REPO/bin/egress-cert-renew"
   [ "$status" -eq 1 ]; [ ! -e "$R/cert.pem" ]
+}
+
+@test "renew: EGRESS_DNS_RESOLVERS overrides lego's resolvers" {
+  EGRESS_DNS_RESOLVERS=9.9.9.9:53 run "$REPO/bin/egress-cert-renew"
+  [ "$status" -eq 0 ]
+  grep -qE -- '--dns.resolvers 9\.9\.9\.9:53 ' "$FAKE_LEGO_LOG"; ! grep -q '1.1.1.1:53' "$FAKE_LEGO_LOG"
 }
 
 # --- egress-cert-check -----------------------------------------------------------------------------------------------

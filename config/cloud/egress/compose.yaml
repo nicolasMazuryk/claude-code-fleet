@@ -15,7 +15,7 @@ services:
     restart: unless-stopped
     cap_add: [net_admin, net_raw]
     devices: ["/dev/net/tun:/dev/net/tun"]
-    # a public resolver: the Docker resolver (127.0.0.11) is loopback, which the guard drops for gost's uid
+    # the shared namespace's own lookups; gost does not use it (its resolver is in gost.yaml: 127.0.0.11 is dropped for its uid)
     dns: [1.1.1.1, 9.9.9.9]
     ports: ["8443:8443"]
     environment:
