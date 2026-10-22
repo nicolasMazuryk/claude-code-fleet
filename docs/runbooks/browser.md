@@ -49,6 +49,7 @@ A host with no `sites.yaml` entry matches only `"*"`. The agent classifies the t
 ## Egress gateway (Browser Use through our IP)
 Design: [ADR 0007](../decisions/0007-browser-router-control-plane.md) (exception for TCP 8443). Files: `config/cloud/egress/`
 (`compose.yaml`, `guard.nft`, `guard.sh`, `gost.yaml`), units `cc-egress.service`, `cc-egress-bytes.{service,timer}`.
+The egress sidecar runs on cloud only; on the Mac, browser-router reaches it over `ssh cloud docker exec egress tailscale …` (Mac→cloud only; `BROWSER_ROUTER_EGRESS_SSH` overrides, empty forces local).
 Order matters; `[H]` = human step.
 1. `[H]` oci repo, G3: apply foundation then core, `make secret-put` for `core-secret-egress-proxy-password` and
    `core-secret-browser-use-api-key`, `make host-sync VM=cloud` (opens 8443 on the host, enables IP forwarding and
