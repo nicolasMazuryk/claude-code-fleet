@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# egress-cert-check — cloud: alert through agent-push when the egress gateway certificate has less than 1/3 of its
+# lifetime left (the Mac renews well before that, so this means the renewal stopped working). One push per certificate.
+# Run by cc-egress-bytes.service after the bytes alert. Missing certificate: log line, exit 0 (gost keeps its fallback).
+# Test hooks: EGRESS_CERT_FILE, EGRESS_CERT_STATE, EGRESS_NOW (epoch seconds), AGENT_PUSH_HOOK.
+set -euo pipefail
+cert=${EGRESS_CERT_FILE:-$HOME/.config/egress/tls/cert.pem}
+state=${EGRESS_CERT_STATE:-$HOME/.local/state/egress/cert.state}
+hook=${AGENT_PUSH_HOOK:-$HOME/.claude/hooks/agent-push.sh}
+now=${EGRESS_NOW:-$(date +%s)}
+
+[ -s "$cert" ] || { echo "egress-cert-check: no certificate at $cert (gost serves its self-signed fallback)"; exit 0; }
+epoch() { # openssl date ("Oct 22 10:00:00 2026 GMT") → epoch, GNU or BSD date
+  date -u -d "$1" +%s 2>/dev/null || date -u -j -f '%b %e %T %Y %Z' "$1" +%s
+}
+start=$(epoch "$(openssl x509 -in "$cert" -noout -startdate | cut -d= -f2)")
+end=$(epoch "$(openssl x509 -in "$cert" -noout -enddate | cut -d= -f2)")
+left=$((end - now)); life=$((end - start))
+[ "$life" -gt 0 ] || { echo "egress-cert-check: bad certificate dates" >&2; exit 1; }
+if [ $((left * 3)) -ge "$life" ]; then echo "egress-cert-check: ok ($((left / 86400)) days left of $((life / 86400)))"; exit 0; fi
+
+if [ -f "$state" ] && [ "$(cat "$state")" = "$end" ]; then exit 0; fi   # already alerted for this certificate
+msg="egress gateway certificate expires in $((left / 86400)) days (under 1/3 of its lifetime): check egress-cert-renew on the Mac"
+jq -nc --arg m "$msg" '{hook_event_name: "Notification", notification_type: "agent_needs_input", message: $m}' | "$hook" || true
+echo "egress-cert-check: ALERT $msg"
+mkdir -p "$(dirname "$state")"; printf '%s\n' "$end" > "$state.tmp" && mv "$state.tmp" "$state"

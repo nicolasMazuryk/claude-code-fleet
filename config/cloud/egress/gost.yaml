@@ -11,7 +11,13 @@ services:
     auther: auther-0
     # chain: upstream
   listener:
-    type: tls      # no cert files: gost generates a self-signed certificate at start
+    type: tls
+    # Publicly trusted certificate for egress.mazuryktech.com, issued on the Mac and delivered by bin/egress-cert-renew
+    # to ~/.config/egress/tls (mounted at /etc/gost/tls). Without readable files the gost entrypoint (compose.yaml)
+    # drops this `tls:` block and gost serves a self-signed certificate; keep the block exactly three lines.
+    tls:
+      certFile: /etc/gost/tls/cert.pem
+      keyFile: /etc/gost/tls/key.pem
   metadata:
     limiter.scope: service
 
