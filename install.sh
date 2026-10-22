@@ -420,7 +420,7 @@ step_legacy() { # oci's pre-Phase-4b Claude Code setup (ADR 0002): stop it befor
 
 BROWSER_DIR=${CC_BROWSER_DIR:-$HOME/.local/share/browser-router}
 step_browser() { # browser-router (CLI + vault, github.com/<owner>/browser-router) and agent-browser, both from upstream
-  local url="https://github.com/${GH_OWNER:-nicolasMazuryk}/browser-router.git" d=$BROWSER_DIR sha stamp="$BROWSER_DIR/.built" ab want
+  local url="https://github.com/${GH_OWNER:-nicolasMazuryk}/browser-router.git" d=$BROWSER_DIR sha stamp="$BROWSER_DIR/.built" ab want arm64
   if [ "${CC_INSTALL_NO_BROWSER:-0}" = 1 ]; then say browser "skipped (CC_INSTALL_NO_BROWSER set)"; return 0; fi
   if [ ! -d "$d/.git" ]; then
     if [ "${CC_INSTALL_NO_CLONE:-0}" = 1 ]; then say browser "missing $d (CC_INSTALL_NO_CLONE set)"; return 0; fi
@@ -440,9 +440,35 @@ step_browser() { # browser-router (CLI + vault, github.com/<owner>/browser-route
   fi
   want=${AGENT_BROWSER_VERSION:-0.39.1}
   ab=$(agent-browser --version 2>/dev/null | head -n1 | awk '{print $NF}' || true)
+  arm64=0; [ "$(uname -s)" = Linux ] && case "$(uname -m)" in aarch64|arm64) arm64=1 ;; esac
+  if [ "$arm64" = 1 ]; then
+    # Chrome for Testing has no Linux ARM64 build, so `agent-browser install` fails there (and Ubuntu's chromium is a snap shim):
+    # use Playwright's linux-arm64 Chromium and point agent-browser at it via executablePath.
+    if [ "$ab" = "$want" ]; then say browser "ok agent-browser $ab"
+    else act browser "install agent-browser@$want (npm -g)" sh -c "$SUDO npm install -g 'agent-browser@$want' >/dev/null"; fi
+    step_browser_chromium
+    return 0
+  fi
   if [ "$ab" = "$want" ]; then say browser "ok agent-browser $ab"; return 0; fi
   act browser "install agent-browser@$want (npm -g) + agent-browser install" \
     sh -c "$SUDO npm install -g 'agent-browser@$want' >/dev/null && agent-browser install >/dev/null"
+}
+
+# Chromium for agent-browser on Linux ARM64: Playwright's build in a stable dir, its path in ~/.agent-browser/config.json.
+step_browser_chromium() {
+  local pwv=${PLAYWRIGHT_VERSION:-1.63.0} root=${CC_PLAYWRIGHT_DIR:-$HOME/.cache/ms-playwright} cfg="$HOME/.agent-browser/config.json" exe cur
+  exe=$(find "$root" -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | sort | tail -n1 || true)
+  if [ -z "$exe" ]; then
+    # OS libraries need root; the browser itself is downloaded as this user
+    act browser "install Chromium for linux-arm64 (playwright@$pwv install-deps + install chromium → $root)" \
+      sh -c "$SUDO env PLAYWRIGHT_BROWSERS_PATH='$root' npx --yes 'playwright@$pwv' install-deps chromium >/dev/null && PLAYWRIGHT_BROWSERS_PATH='$root' npx --yes 'playwright@$pwv' install chromium >/dev/null"
+    [ "$DRY" = 1 ] && return 0
+    exe=$(find "$root" -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | sort | tail -n1 || true)
+    [ -n "$exe" ] || die "playwright installed no chromium under $root"
+  else say browser "ok chromium $exe"; fi
+  cur=$(jq -r '.executablePath // empty' "$cfg" 2>/dev/null || true)
+  if [ "$cur" = "$exe" ]; then say browser "ok agent-browser executablePath"; return 0; fi
+  act browser "set agent-browser executablePath → $exe" sh -c "mkdir -p '$(dirname "$cfg")' && { [ -s '$cfg' ] && cat '$cfg' || echo '{}'; } | jq --arg p '$exe' '.executablePath = \$p' > '$cfg.tmp' && mv '$cfg.tmp' '$cfg'"
 }
 
 step_units() {

@@ -182,6 +182,39 @@ browser_fakes() {
   [ "$(wc -l < "$HOME/npm.calls")" -eq 1 ]
 }
 
+# agent-browser on Linux ARM64: Chrome for Testing has no build, so Playwright's Chromium is installed and executablePath set
+arm64_fakes() {
+  local b="$BATS_TEST_TMPDIR/fakebin"
+  printf '#!/bin/sh\ncase "$1" in -m) echo aarch64 ;; -s) echo Linux ;; *) exec /usr/bin/uname "$@" ;; esac\n' > "$b/uname"
+  printf '#!/bin/sh\necho "$*" >> "$HOME/npx.calls"\ncase "$*" in *"install chromium"*) d="$PLAYWRIGHT_BROWSERS_PATH/chromium-1234/chrome-linux"; mkdir -p "$d"; : > "$d/chrome" ;; esac\n' > "$b/npx"
+  printf '#!/bin/sh\nif [ "$1" = install ]; then echo "Chrome for Testing does not provide Linux ARM64 builds" >&2; exit 1; fi\necho "agent-browser 0.39.1"\n' > "$b/agent-browser"
+  chmod +x "$b/uname" "$b/npx" "$b/agent-browser"
+  export CC_PLAYWRIGHT_DIR="$BATS_TEST_TMPDIR/pw"
+}
+
+@test "cloud-local on linux-arm64: Playwright chromium installed, executablePath set, no 'agent-browser install'; rerun changes nothing" {
+  local_setup; browser_fakes; arm64_fakes
+  run "$REPO/install.sh" cloud-local
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  grep -q 'install-deps chromium' "$HOME/npx.calls" && grep -q 'install chromium' "$HOME/npx.calls"
+  [ "$(jq -r .executablePath "$HOME/.agent-browser/config.json")" = "$CC_PLAYWRIGHT_DIR/chromium-1234/chrome-linux/chrome" ]
+  n=$(wc -l < "$HOME/npx.calls")
+  run "$REPO/install.sh" cloud-local
+  [[ "$output" == *"no changes"* ]] || { echo "$output"; return 1; }
+  [ "$(wc -l < "$HOME/npx.calls")" -eq "$n" ]
+}
+
+@test "cloud-local on linux-arm64 keeps other agent-browser config keys and fails when chromium cannot be installed" {
+  local_setup; browser_fakes; arm64_fakes
+  mkdir -p "$HOME/.agent-browser"; echo '{"headed":true}' > "$HOME/.agent-browser/config.json"
+  run "$REPO/install.sh" cloud-local
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  jq -e '.headed == true and (.executablePath | endswith("/chrome"))' "$HOME/.agent-browser/config.json"
+  rm -rf "$CC_PLAYWRIGHT_DIR" "$HOME/.agent-browser"; printf '#!/bin/sh\nexit 1\n' > "$BATS_TEST_TMPDIR/fakebin/npx"
+  run "$REPO/install.sh" cloud-local
+  [ "$status" -ne 0 ]
+}
+
 @test "cloud-local --dry-run with browser-router missing writes nothing for it" {
   local_setup
   export CC_INSTALL_NO_CLONE=0 CC_DRY_RUN=1 CC_BROWSER_DIR="$BATS_TEST_TMPDIR/absent"

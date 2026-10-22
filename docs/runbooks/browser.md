@@ -17,6 +17,9 @@ this repo owns the relay, the cloud install, the drain timer and the settings wi
 2. `cc-sync-settings` (mirrors settings with `CLAUDE_CODE_ENABLE_CFC=1`, the relay slot, and `sites.yaml`).
 3. `./install.sh cloud` (human step, pushes the checkout and runs `cloud-local`: clone + build browser-router, install
    agent-browser, units + timer). `CC_INSTALL_NO_BROWSER=1` skips the browser step.
+   On Linux ARM64 (cloud) Chrome for Testing does not exist, so the step installs Playwright's Chromium
+   (`playwright@1.63.0 install-deps chromium`, then `install chromium` into `~/.cache/ms-playwright`) and sets
+   `executablePath` in `~/.agent-browser/config.json`; a rerun changes nothing. macOS runs `agent-browser install` as before.
 
 ## Use
 - Lease a Mac Chrome profile from cloud: `browser-relay-cloud lease <site> <profile> [--session <sid>] [--ttl 900]` prints `<id> <port>`
@@ -63,6 +66,12 @@ Order matters; `[H]` = human step.
   (creates the `tls` dir), then run `bin/egress-cert-renew` once. Staging dry run:
   `EGRESS_ACME_SERVER=letsencrypt-staging EGRESS_ACME_DIR=/tmp/acme-staging bin/egress-cert-renew`.
 - Daily bytes: `EGRESS_DAILY_BYTES` (default 5 GiB) in `cc-egress-bytes.service`; the alert is a push via `agent-push`, only when you are away.
+- DNS: gost resolves CONNECT targets itself through the `egress-dns` resolver in `gost.yaml` (DNS-over-HTTPS to 1.1.1.1 and
+  9.9.9.9, tcp 443). Docker's embedded resolver (127.0.0.11) is loopback, which the guard drops for uid 10001, and the guard
+  has no loopback exemption. A `lookup … 127.0.0.11:53 … operation not permitted` in `docker logs egress-gost-1` means the
+  service lost its `resolver:` line.
+- lego resolvers: `bin/egress-cert-renew` passes `--dns.resolvers 1.1.1.1:53,8.8.8.8:53` (override with
+  `EGRESS_DNS_RESOLVERS`), because the Mac's MagicDNS (100.100.100.100) times out on the `_acme-challenge` propagation check.
 - Bought ISP proxy: uncomment the `chains:` block and `chain: upstream` in `gost.yaml`; credentials never go in git.
 - Logs: `docker logs egress-gost-1`; `journalctl -u cc-egress`. If tailscale restarts alone, `sudo systemctl restart cc-egress`
   (gost and the guard share its namespace).

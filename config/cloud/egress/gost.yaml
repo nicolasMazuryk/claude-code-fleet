@@ -6,6 +6,7 @@ services:
   addr: ":8443"
   bypass: deny-private
   limiter: egress-rate
+  resolver: egress-dns
   handler:
     type: http
     auther: auther-0
@@ -40,6 +41,15 @@ bypasses:
   - '*:0-79'
   - '*:81-442'
   - '*:444-65535'
+
+# Name resolution for CONNECT targets. Docker's embedded resolver (127.0.0.11, what /etc/resolv.conf holds on a user-defined
+# network whatever `dns:` says) is loopback, which the guard drops for uid 10001, so gost resolves itself over DNS-over-HTTPS
+# to public resolvers on tcp 443, the one outbound port the guard keeps. The guard's drop sets have no loopback exemption.
+resolvers:
+- name: egress-dns
+  nameservers:
+  - addr: https://1.1.1.1/dns-query
+  - addr: https://9.9.9.9/dns-query
 
 # Throughput cap for the whole service ($) and per connection ($$): bytes per second, in then out.
 limiters:
