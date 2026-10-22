@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# browser-router-env-push — builds the browser-router env file (KEY=VALUE, 0600) from the Mac Keychain and writes it to
+# cloud ~/.config/browser-router/env (agent user) or, with --local, to the Mac's own ~/.config/browser-router/env:
+#   cc-browser-use-api-key → BROWSER_USE_API_KEY
+# The Polish ISP proxy URL is not part of this file: it is set once per host with `browser-router proxy set <url>`.
+# A missing Keychain item skips that key with a log line; it never fails. No key at all → no file written.
+# Idempotent: compares the sha256 first, writes only when different. Values never appear in argv or output.
+# Usage: browser-router-env-push [--dry-run] [--local]  (--local: only the Mac env file, used by install.sh mac).
+# Test hook: CC_CLOUD_HOST (default cloud).
+set -euo pipefail
+h=${CC_CLOUD_HOST:-cloud}; dry=0; local_only=0
+for a in "$@"; do case $a in --dry-run) dry=1 ;; --local) local_only=1 ;; esac; done
+
+kc() { security find-generic-password -s "$1" -a "$USER" -w 2>/dev/null || true; }
+
+env_content() { # prints the env file; logs (stderr) each skipped key
+  local v
+  v=$(kc cc-browser-use-api-key)
+  if [ -n "$v" ]; then printf 'BROWSER_USE_API_KEY=%s\n' "$v"; else printf '  %-10s %s\n' router-env "skip BROWSER_USE_API_KEY: no Keychain item cc-browser-use-api-key" >&2; fi
+}
+
+push_env() { # push_env <local|cloud>
+  local where=$1 content lhash rhash f
+  content=$(env_content)
+  if [ -z "$content" ]; then printf '  %-10s %s\n' router-env "no browser-router env keys in the Keychain; $where env not written"; return 0; fi
+  lhash=$(printf '%s\n' "$content" | shasum -a 256 | cut -c1-64)
+  if [ "$where" = local ]; then
+    f="$HOME/.config/browser-router/env"
+    rhash=$(shasum -a 256 < "$f" 2>/dev/null | cut -c1-64 || true)
+  else
+    # shellcheck disable=SC2016
+    rhash=$(ssh -o BatchMode=yes "$h" 'sha256sum ~/.config/browser-router/env 2>/dev/null | cut -c1-64' || true)
+  fi
+  if [ "$lhash" = "$rhash" ]; then printf '  %-10s %s\n' router-env "ok $where browser-router env"; return 0; fi
+  if [ "$dry" = 1 ]; then printf '  %-10s %s\n' router-env "would write the $where browser-router env"; return 0; fi
+  if [ "$where" = local ]; then
+    ( umask 077; mkdir -p "${f%/*}"; printf '%s\n' "$content" > "$f.tmp" ); chmod 600 "$f.tmp"; mv "$f.tmp" "$f"
+  else
+    # shellcheck disable=SC2016
+    printf '%s\n' "$content" | ssh -o BatchMode=yes "$h" 'umask 077; d=$HOME/.config/browser-router; mkdir -p "$d" && cat > "$d/env.tmp" && chmod 600 "$d/env.tmp" && mv "$d/env.tmp" "$d/env"'
+  fi
+  printf '  %-10s %s\n' router-env "wrote $where browser-router env (0600)"
+}
+
+if [ "$local_only" = 1 ]; then push_env local; else push_env cloud; fi
+exit 0

@@ -51,9 +51,7 @@ Status: all steps runnable; dry-run drill 2026-10-17 (Phase 7, see `docs/progres
      when the plist changed). It also copies `bin/agent-relay` + `bin/agent-present` to
      `~/.local/libexec/cc-orchestrator/` (launchd can't read `~/Documents`) and bootstraps
      `cc-orchestrator.claude.relay` (cloud sounds + presence), re-bootstrapping it when the copies change. After
-     editing either script, re-run `./install.sh mac`. It also bootstraps `cc-orchestrator.claude.egress-cert` (daily
-   `egress-cert-renew`: the egress gateway certificate; needs `brew install lego` and Keychain `cc-cf-acme-dns-token`,
-   otherwise it logs a skip; see [browser.md](browser.md)). Check: `tail /tmp/agent-relay.log` →
+     editing either script, re-run `./install.sh mac`. Check: `tail /tmp/agent-relay.log` →
      `connected to cloud, waiting for events`.
    The LaunchAgent execs `/opt/homebrew/bin/tmux new-session -d -s cc-start ~/.local/bin/cc-orchestrator-start`, so
    the scripts (in `~/Documents`, TCC-protected) run inside the tmux server. A launchd job that runs a script from

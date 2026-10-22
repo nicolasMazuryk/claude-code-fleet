@@ -1,6 +1,6 @@
 # Captured from ~/.zshrc by cc-capture (blocks: # Claude Code, # Tailscale…). Reference, not sourced.
 
-# Tailscale exit node: `browser-router exit-node use <macbook|iphone|cloud|static-ip|none> [--for self|egress]`
+# Tailscale exit node: `browser-router exit-node use <cloud|none> [--for self]`
 # (replaces the former staticipup/staticipdown aliases)
 
 # Claude Code
