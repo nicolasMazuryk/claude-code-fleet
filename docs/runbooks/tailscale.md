@@ -97,3 +97,13 @@ grant `tag:egress → autogroup:internet`. `tag:egress` has no other permission;
    (remove them from `~/.zshrc`; `config/mac/zshrc.captured` no longer carries them). A node acting as an exit node cannot use one.
 5. Check: `ssh cloud docker exec egress tailscale status` lists the node `egress` with the tag; `tailscale ping --icmp`
    from it to `macbook` gets no pong.
+
+## 7. Route the Mac or iPhone through cloud
+`cloud` already advertises `0.0.0.0/0` and `::/0` (approved), and the policy grants members `autogroup:internet:*`, so no policy change is needed.
+- **iPhone:** Tailscale app → Exit Node → `cloud`. Back to normal: Exit Node → None.
+- **Mac:** `browser-router exit-node use cloud --for self` (host override: `BROWSER_ROUTER_EXITNODE_CLOUD`). Undo: `browser-router exit-node use none --for self`.
+- **Trade-off (Mac):** tailscale refuses an exit node while the Mac advertises itself as one. The command therefore runs one
+  `tailscale set --advertise-exit-node=false --exit-node=cloud`, records the suspension in the egress state, and warns that the
+  macbook egress exit (#1 in the failover order) is unavailable. `use none --for self` restores `--advertise-exit-node=true`.
+  `browser-router egress status` shows the self exit node and whether advertising is suspended.
+- `cloud` is valid only `--for self`; `--for egress` is rejected because the egress sidecar runs on cloud (use `none`).
