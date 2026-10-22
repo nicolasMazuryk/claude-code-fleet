@@ -38,9 +38,9 @@ Leased Chrome profiles (`~/.chrome-agent-profiles/<profile>`) are separate from 
 - Vault drain by hand: `ssh cloud browser-vault-drain`; logs: `journalctl -u browser-router-vault-drain`.
 
 ## Unregistered sites
-A host with no `sites.yaml` entry matches only `"*"`. The agent classifies the task and routes with `--risk public|private`.
-- Public (no login, no personal data, read-only): runs on the `"*"` default.
-- Private, or `--risk` missing: `route` is blocked (exit 7) and lists the configuration choices. A human picks one
+A host with no `sites.yaml` entry matches only `"*"`. The agent classifies the task and routes with `--identity anonymous|personal`.
+- Anonymous (no login, none of the user's own data, read-only public pages): runs on the `"*"` default.
+- Personal (acting as the user or on the user's data or money, or any other risk), or `--identity` missing: `route` is blocked (exit 7) and lists the configuration choices. A human picks one
   (tier vault|shield, executor, profile, optional `--egress-pin`, `--caps`, `--logged-in`), then
   `browser-router site add <host> --tier … --executor …` writes the entry to the registry file the symlink points at
   (`~/Documents/browser-router/config/sites.yaml`). Commit that change in the browser-router repo, run `cc-sync-settings`
