@@ -37,6 +37,15 @@ Leased Chrome profiles (`~/.chrome-agent-profiles/<profile>`) are separate from 
 - Check what the Mac reports: `ssh cloud 'cat ~/.local/state/agent-events/mac-up'` (fresh = mtime under 45 s).
 - Vault drain by hand: `ssh cloud browser-vault-drain`; logs: `journalctl -u browser-router-vault-drain`.
 
+## Unregistered sites
+A host with no `sites.yaml` entry matches only `"*"`. The agent classifies the task and routes with `--risk public|private`.
+- Public (no login, no personal data, read-only): runs on the `"*"` default.
+- Private, or `--risk` missing: `route` is blocked (exit 7) and lists the configuration choices. A human picks one
+  (tier vault|shield, executor, profile, optional `--egress-pin`, `--caps`, `--logged-in`), then
+  `browser-router site add <host> --tier … --executor …` writes the entry to the registry file the symlink points at
+  (`~/Documents/browser-router/config/sites.yaml`). Commit that change in the browser-router repo, run `cc-sync-settings`
+  to mirror it to cloud, then route again. Background sessions stop with "needs input: site config for <host>".
+
 ## Egress gateway (Browser Use through our IP)
 Design: [ADR 0007](../decisions/0007-browser-router-control-plane.md) (exception for TCP 8443). Files: `config/cloud/egress/`
 (`compose.yaml`, `guard.nft`, `guard.sh`, `gost.yaml`), units `cc-egress.service`, `cc-egress-bytes.{service,timer}`.
