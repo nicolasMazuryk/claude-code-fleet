@@ -73,6 +73,9 @@ Order matters; `[H]` = human step.
 - lego resolvers: `bin/egress-cert-renew` passes `--dns.resolvers 1.1.1.1:53,8.8.8.8:53` (override with
   `EGRESS_DNS_RESOLVERS`), because the Mac's MagicDNS (100.100.100.100) times out on the `_acme-challenge` propagation check.
 - Bought ISP proxy: uncomment the `chains:` block and `chain: upstream` in `gost.yaml`; credentials never go in git.
+- Routing: tailscale runs with kernel networking (`TS_USERSPACE=false`), so an exit node (`browser-router exit-node use <n> --for egress`)
+  carries gost's traffic and DoH through table 52. Replies to inbound :8443 clients leave via eth0 (`fwmark 0x2/0x2 lookup main`
+  at priority 5100, before tailscale's rules at 5210-5270); with no exit node selected everything leaves via eth0 (cloud IP).
 - Logs: `docker logs egress-gost-1`; `journalctl -u cc-egress`. If tailscale restarts alone, `sudo systemctl restart cc-egress`
   (gost and the guard share its namespace).
 
@@ -84,5 +87,8 @@ Order matters; `[H]` = human step.
 | `no_free_port` | 100 leases held: release stale ones (`~/.local/state/browser-router/relay/leases/`) |
 | `browser-relay-cloud sum` fails | the synced settings lack the `browser-router-relay` group: `./install.sh mac` then `cc-sync-settings` |
 | clients connect but get no reply | the reply-routing rule is missing: `docker exec egress-guard-1 ip rule show` must list `fwmark 0x2/0x2 lookup main`; restart `egress-guard-1` |
+| exit node selected but the probe still shows the cloud IP | tailscale runs in userspace mode: `docker exec egress ip link show tailscale0` must exist and `ip route show table 52` must list a default route (compose sets `TS_USERSPACE: "false"`); with no exit node selected traffic leaves via eth0 (cloud IP) |
+| `exit-node use … --for egress`: `No such container: egress` | the tailscale service is named `egress` (compose `container_name`); `docker ps` must list it, otherwise `sudo systemctl restart cc-egress` |
+| `browser-router: Permission denied` | `dist/cli.js` lost its exec bit: `./install.sh cloud` (step_browser sets it) |
 | gost down, guard unhealthy | `docker logs egress-guard-1` (nft error); gost stays down by design (fail closed) |
 | timer not active | browser-router not installed on cloud: `./install.sh cloud` |

@@ -146,7 +146,7 @@ local_setup() {
 # browser-router on cloud: fake corepack/npm stand in for the build and the agent-browser install
 browser_fakes() {
   local b="$BATS_TEST_TMPDIR/fakebin"; mkdir -p "$b"
-  printf '#!/bin/sh\ncase "$*" in *build*) mkdir -p dist; printf "#!/bin/sh\\n" > dist/cli.js; chmod +x dist/cli.js ;; esac\n' > "$b/corepack"
+  printf '#!/bin/sh\ncase "$*" in *build*) mkdir -p dist; printf "#!/bin/sh\\n" > dist/cli.js ;; esac\n' > "$b/corepack"
   # shellcheck disable=SC2016
   printf '#!/bin/sh\nprintf "#!/bin/sh\\n[ \\"\\$1\\" = --version ] && echo \\"agent-browser 0.39.1\\"\\nexit 0\\n" > "$HOME/.local/bin/agent-browser"; chmod +x "$HOME/.local/bin/agent-browser"\necho "$*" >> "$HOME/npm.calls"\n' > "$b/npm"
   chmod +x "$b/corepack" "$b/npm"
@@ -180,6 +180,18 @@ browser_fakes() {
   run "$REPO/install.sh" cloud-local
   [[ "$output" == *"no changes"* ]] || { echo "$output"; return 1; }
   [ "$(wc -l < "$HOME/npm.calls")" -eq 1 ]
+}
+
+@test "cloud-local: the linked browser-router entry is made executable (tsc writes 0644); a lost exec bit is restored" {
+  local_setup; browser_fakes
+  run "$REPO/install.sh" cloud-local
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ -x "$HOME/.local/bin/browser-router" ]
+  chmod 644 "$CC_BROWSER_DIR/dist/cli.js"
+  run "$REPO/install.sh" cloud-local
+  [ -x "$HOME/.local/bin/browser-router" ]
+  run "$REPO/install.sh" cloud-local
+  [[ "$output" == *"no changes"* ]] || { echo "$output"; return 1; }
 }
 
 # agent-browser on Linux ARM64: Chrome for Testing has no build, so Playwright's Chromium is installed and executablePath set
