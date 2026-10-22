@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# orchestrator-plan <run-dir> <job> — read the plan-mode planner session P-<job> from its transcript.
+#   ready <path>  last tool_use is ExitPlanMode with no tool_result yet; input.plan is written to jobs/<job>/plan.md
+#   asking        last pending tool_use is AskUserQuestion; the question text follows on the next lines
+#   none          otherwise
+# The orchestrator never approves ExitPlanMode: after "ready" it stops the planner (claude stop), which rejects the plan.
+set -euo pipefail
+[ $# -eq 2 ] || { echo "usage: orchestrator-plan <run-dir> <job>" >&2; exit 2; }
+run=$(cd "$1" && pwd) job=${2#P-}
+st="$run/jobs/P-$job/status.json"
+[ -s "$st" ] || { echo "orchestrator-plan: no $st" >&2; exit 1; }
+sid=$(jq -r '.session_id // empty' "$st")
+[ -n "$sid" ] || { echo none; exit 0; }
+tr=$(find "$HOME/.claude/projects" -name "$sid.jsonl" -print -quit 2>/dev/null)
+[ -n "$tr" ] || { echo none; exit 0; }
+# last tool_use across assistant entries, and whether any later tool_result answers it
+pending=$(jq -R -s -c '[split("\n")[] | fromjson?] as $e
+  | ([$e[] | select(.type == "assistant") | .message.content | arrays | .[] | select(.type == "tool_use")] | last) as $u
+  | if $u == null then null
+    elif ([$e[] | select(.type == "user") | .message.content | arrays | .[]
+           | select(.type == "tool_result" and .tool_use_id == $u.id)] | length) > 0 then null
+    else $u end' "$tr")
+case $(jq -r '.name // empty' <<<"$pending") in
+  ExitPlanMode)
+    out="$run/jobs/$job/plan.md"; mkdir -p "$run/jobs/$job"
+    tmp=$(mktemp "$run/jobs/$job/.plan.XXXXXX")
+    jq -r '.input.plan // empty' <<<"$pending" >"$tmp"
+    [ -s "$tmp" ] || { rm -f "$tmp"; echo none; exit 0; }
+    mv "$tmp" "$out"; echo "ready $out" ;;
+  AskUserQuestion)
+    echo asking
+    jq -r '.input.questions // [] | .[] | "- " + .question
+      + (if (.options // []) | length > 0 then " [" + ([.options[].label] | join(" | ")) + "]" else "" end)' <<<"$pending" ;;
+  *) echo none ;;
+esac

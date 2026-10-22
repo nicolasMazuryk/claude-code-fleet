@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# orchestrator-status <run-dir> [--json] — per job: live session state, waiting-for, context tokens, job state, step,
+# age. The first row (job "orchestrator", role "orchestrator") is the orchestrator session itself (<slug>-orchestrator).
+# Roles: P-* planner, V-*/PV-* verifier, else implementer. Live planners also get plan: ready|asking|none (orchestrator-plan).
+set -euo pipefail
+run=$(cd "${1:?usage: orchestrator-status <run-dir> [--json]}" && pwd); mode=${2:-table}
+slug=$(basename "$run"); S=$(cd "$(dirname "$0")" && pwd)
+agents=$(claude agents --json 2>/dev/null || echo '[]')
+ctx() { # context tokens of the session's last assistant message
+  local f; f=$(find "$HOME/.claude/projects" -name "$1.jsonl" -print -quit 2>/dev/null)
+  [ -n "$f" ] || { echo null; return; }
+  tail -n 400 "$f" | jq -R -s -c '[split("\n")[] | fromjson? | select(.type == "assistant" and .message.usage)]
+    | last | if . == null then null else .message.usage
+    | ((.input_tokens // 0) + (.cache_read_input_tokens // 0) + (.cache_creation_input_tokens // 0)) end'
+}
+olive=$(jq -c --arg n "$slug-orchestrator" '[.[] | select(.name == $n)] | last // {}' <<<"$agents")
+osid=$(jq -r '.sessionId // empty' <<<"$olive"); otok=null; [ -n "$osid" ] && otok=$(ctx "$osid")
+rows=$(jq -c --argjson live "$olive" --argjson tok "$otok" --arg n "$slug-orchestrator" -n '[{
+    job: "orchestrator", role: "orchestrator", session_name: $n, session_id: ($live.sessionId // null),
+    state: "-", step: "-", live: ($live.state // "absent"), status: ($live.status // null),
+    waiting_for: ($live.waitingFor // null), pid: ($live.pid // null), ctx_tokens: $tok, age_min: null }]')
+for s in "$run"/jobs/*/status.json; do
+  [ -e "$s" ] || continue
+  sid=$(jq -r '.session_id // empty' "$s")
+  live=$(jq -c --arg sid "$sid" '[.[] | select($sid != "" and .sessionId == $sid)] | last // {}' <<<"$agents")
+  tok=null; [ -n "$sid" ] && tok=$(ctx "$sid")
+  j=$(jq -r '.job // empty' "$s"); plan=null
+  if [[ $j == P-* ]] && [ "$live" != '{}' ]; then
+    plan=$("$S/orchestrator-plan" "$run" "$j" 2>/dev/null | head -1 | cut -d' ' -f1 | jq -R .) || plan=null
+    [ -n "$plan" ] || plan=null
+  fi
+  rows=$(jq -c --slurpfile st "$s" --argjson live "$live" --argjson tok "$tok" --argjson plan "$plan" '. + [ $st[0] + {
+      role: (($st[0].job // "") as $j | if $j | startswith("P-") then "planner"
+             elif ($j | startswith("V-")) or ($j | startswith("PV-")) then "verifier" else "implementer" end),
+      live: ($live.state // (if $live == {} then "absent" else "?" end)),
+      status: ($live.status // null), waiting_for: ($live.waitingFor // null), pid: ($live.pid // null),
+      ctx_tokens: $tok, plan: $plan,
+      age_min: (if $st[0].updated_at then ((now - ($st[0].updated_at | fromdateiso8601)) / 60 | floor) else null end) } ]' <<<"$rows")
+done
+if [ "$mode" = --json ]; then jq . <<<"$rows"; exit 0; fi
+{ printf 'JOB\tSTATE\tLIVE\tWAITING\tCTX\tAGE\tSTEP\n'
+  jq -r '.[] | [.job, .state, .live, (.waiting_for // "-"), (.ctx_tokens // "-" | tostring), (if .age_min == null then "-" else (.age_min | tostring) + "m" end),
+     ((.step // "-") + (if .plan then "  plan:" + .plan else "" end) + (if .needs_input then "  ?? " + .needs_input else "" end))] | @tsv' <<<"$rows"; } | column -t -s$'\t'
