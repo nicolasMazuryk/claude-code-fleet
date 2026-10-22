@@ -39,6 +39,11 @@ Order matters; `[H]` = human step.
    the proxy password is `gost-auth`: `browseruse <password>`, 0400, uid 10001), installs the units and starts
    `cc-egress` once `gost-auth` exists. The cloud cannot read that Vault secret (IAM option B); re-run the install after
    rotating it, then `ssh cloud sudo systemctl restart cc-egress`.
+   The same run writes the browser-router env file `~/.config/browser-router/env` (0600, `KEY=VALUE`: `BROWSER_USE_API_KEY`,
+   `BROWSER_ROUTER_EGRESS_HOST/PORT/USER/PASSWORD`) on cloud (`bin/egress-secrets-push`) and, via `./install.sh mac`, on the Mac.
+   Keychain items: `cc-browser-use-api-key`, `cc-egress-proxy-password`, `cc-egress-public-host` (the core-nlb public IP or DNS
+   name, written at G3: `security add-generic-password -U -s cc-egress-public-host -a "$USER" -w`). The port is 8443 and the user
+   `browseruse`. A missing item skips its key with a log line; re-run both installs after adding it.
 5. Exit node: `browser-router exit-node use <macbook|iphone|cloud|static-ip|none> --for egress` (replaces the old
    `staticipup`/`staticipdown` aliases). A node acting as an exit node cannot use one at the same time.
 - Guard rules: the first rule accepts (and counts) gost's reply packets to clients; the drop rules after it apply to
