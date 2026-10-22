@@ -24,6 +24,32 @@ this repo owns the relay, the cloud install, the drain timer and the settings wi
 - Check what the Mac reports: `ssh cloud 'cat ~/.local/state/agent-events/mac-up'` (fresh = mtime under 45 s).
 - Vault drain by hand: `ssh cloud browser-vault-drain`; logs: `journalctl -u browser-router-vault-drain`.
 
+## Egress gateway (Browser Use through our IP)
+Design: [ADR 0007](../decisions/0007-browser-router-control-plane.md) (exception for TCP 8443). Files: `config/cloud/egress/`
+(`compose.yaml`, `guard.nft`, `guard.sh`, `gost.yaml`), units `cc-egress.service`, `cc-egress-bytes.{service,timer}`.
+Order matters; `[H]` = human step.
+1. `[H]` oci repo, G3: apply foundation then core, `make secret-put` for `core-secret-egress-proxy-password` and
+   `core-secret-browser-use-api-key`, `make host-sync VM=cloud` (opens 8443 on the host, enables IP forwarding and
+   `--advertise-exit-node`).
+2. `[H]` Tailscale admin: apply the updated `config/tailscale/policy.hujson` ([tailscale.md](tailscale.md) §6); create an OAuth
+   client or auth key tagged `tag:egress` for the first join.
+3. `[H]` Mac Keychain, once: `security add-generic-password -U -s cc-egress-proxy-password -a "$USER" -w` (the same password
+   as in Vault) and, for the first join, `security add-generic-password -U -s cc-egress-ts-authkey -a "$USER" -w`.
+4. `./install.sh cloud` delivers both to `cloud:~/.config/egress/` over the Mac-opened ssh (`bin/egress-secrets-push`;
+   the proxy password is `gost-auth`: `browseruse <password>`, 0400, uid 10001), installs the units and starts
+   `cc-egress` once `gost-auth` exists. The cloud cannot read that Vault secret (IAM option B); re-run the install after
+   rotating it, then `ssh cloud sudo systemctl restart cc-egress`.
+5. Exit node: `browser-router exit-node use <macbook|iphone|cloud|static-ip|none> --for egress` (replaces the old
+   `staticipup`/`staticipdown` aliases). A node acting as an exit node cannot use one at the same time.
+- Guard rules: the first rule accepts (and counts) gost's reply packets to clients; the drop rules after it apply to
+  connections gost opens. Without that exemption no response would reach Browser Use.
+- TLS: gost generates a self-signed certificate at start; to serve a real one, add `certFile`/`keyFile` to the
+  listener's `tls` block in `gost.yaml` and mount the files.
+- Daily bytes: `EGRESS_DAILY_BYTES` (default 5 GiB) in `cc-egress-bytes.service`; the alert is a push via `agent-push`, only when you are away.
+- Bought ISP proxy: uncomment the `chains:` block and `chain: upstream` in `gost.yaml`; credentials never go in git.
+- Logs: `docker logs egress-gost-1`; `journalctl -u cc-egress`. If tailscale restarts alone, `sudo systemctl restart cc-egress`
+  (gost and the guard share its namespace).
+
 ## Troubleshooting
 | Symptom | Cause / fix |
 |---|---|
@@ -31,4 +57,6 @@ this repo owns the relay, the cloud install, the drain timer and the settings wi
 | lease `chrome_missing`, `chrome_not_ready`, `forward_failed` | Chrome not installed / profile locked by a running Chrome / ControlMaster socket gone (relay reconnecting) |
 | `no_free_port` | 100 leases held: release stale ones (`~/.local/state/browser-router/relay/leases/`) |
 | `browser-relay-cloud sum` fails | the synced settings lack the `browser-router-relay` group: `./install.sh mac` then `cc-sync-settings` |
+| clients connect but get no reply | the reply-routing rule is missing: `docker exec egress-guard-1 ip rule show` must list `fwmark 0x2/0x2 lookup main`; restart `egress-guard-1` |
+| gost down, guard unhealthy | `docker logs egress-guard-1` (nft error); gost stays down by design (fail closed) |
 | timer not active | browser-router not installed on cloud: `./install.sh cloud` |

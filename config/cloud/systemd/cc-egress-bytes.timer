@@ -1,0 +1,10 @@
+# cc-egress-bytes.timer — every 10 minutes. Enabled by ./install.sh cloud together with cc-egress.service.
+[Unit]
+Description=Egress gateway daily-bytes alert, every 10 minutes (cc-orchestrator)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=10min
+
+[Install]
+WantedBy=timers.target

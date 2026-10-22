@@ -1,0 +1,11 @@
+# cc-egress-bytes — one pass of bin/egress-bytes-alert (daily-bytes alert through agent-push). Fired by cc-egress-bytes.timer.
+[Unit]
+Description=Egress gateway daily-bytes alert (cc-orchestrator)
+After=cc-egress.service
+
+[Service]
+Type=oneshot
+User=agent
+Group=docker
+Environment=HOME=/data/home/agent
+ExecStart=/data/home/agent/.local/bin/egress-bytes-alert

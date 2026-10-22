@@ -80,3 +80,17 @@ evaluated on save. These are rows 1–1d in [verify](verify.md).
   node becomes `cloud-1`), and make sure Vault holds the OAuth client secret (step 2; it does not expire, but check the OAuth client still exists
   in the admin console).
 - The Mac (fresh install): log in to the Tailscale app, then step 4.
+
+## 6. `[H]` Egress node, exit nodes (browser-router)
+`policy.hujson` adds `tag:egress` (tagOwners), `autoApprovers.exitNode` (members: macbook, iPhone, static-ip; `tag:cloud`) and the
+grant `tag:egress → autogroup:internet`. `tag:egress` has no other permission; the policy tests keep both `tag:cloud` and
+`tag:egress` denied on 22/443/60001 to the Mac and iPhone (`tests/tailscale-policy.bats` checks the file; Tailscale re-checks on save).
+1. Merge and apply as in §1 (keep anything live that is not in the file).
+2. Admin console → Settings → Trust credentials → OAuth (Auth Keys: Write, tag `tag:egress`) or a one-off auth key tagged
+   `tag:egress`; store it in the Mac Keychain as `cc-egress-ts-authkey` ([browser.md](browser.md) egress section).
+3. Exit nodes: macbook `tailscale set --advertise-exit-node`; iPhone Tailscale app → Exit Node → **Run as Exit Node**; cloud is
+   advertised by the oci bootstrap; static-ip already is. Auto-approval covers all four.
+4. Switching: `browser-router exit-node use <node|none> [--for self|egress]` replaces the `staticipup`/`staticipdown` aliases
+   (remove them from `~/.zshrc`; `config/mac/zshrc.captured` no longer carries them). A node acting as an exit node cannot use one.
+5. Check: `ssh cloud docker exec egress-tailscale-1 tailscale status` lists the node `egress` with the tag; `tailscale ping --icmp`
+   from it to `macbook` gets no pong.

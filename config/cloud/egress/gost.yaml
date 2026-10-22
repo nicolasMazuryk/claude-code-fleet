@@ -1,0 +1,53 @@
+# gost v3: HTTP proxy over TLS with basic auth, run as uid 10001 (compose.yaml). The nftables guard (guard.nft) is the
+# enforcing layer; the bypass below is the second layer. Upstream chaining (-F) for the bought ISP proxy is wired but
+# disabled: set `chain: upstream` on the handler and fill the node when the credentials exist.
+services:
+- name: egress
+  addr: ":8443"
+  bypass: deny-private
+  limiter: egress-rate
+  handler:
+    type: http
+    auther: auther-0
+    # chain: upstream
+  listener:
+    type: tls      # no cert files: gost generates a self-signed certificate at start
+  metadata:
+    limiter.scope: service
+
+authers:
+- name: auther-0
+  file:
+    path: /run/secrets/gost_auth      # lines: "<user> <password>"
+
+# Denied destinations (second layer): private/loopback/link-local/CGNAT ranges, and every port except 80 and 443.
+bypasses:
+- name: deny-private
+  matchers:
+  - 169.254.0.0/16
+  - 10.0.0.0/8
+  - 172.16.0.0/12
+  - 192.168.0.0/16
+  - 100.64.0.0/10
+  - 127.0.0.0/8
+  - localhost
+  - '*:0-79'
+  - '*:81-442'
+  - '*:444-65535'
+
+# Throughput cap for the whole service ($) and per connection ($$): bytes per second, in then out.
+limiters:
+- name: egress-rate
+  limits:
+  - '$ 12MB 12MB'
+  - '$$ 4MB 4MB'
+
+# chains:
+# - name: upstream
+#   hops:
+#   - name: hop-0
+#     nodes:
+#     - name: isp-pl
+#       addr: HOST:PORT            # bought static residential PL proxy; credentials via the browser-router CLI
+#       connector: {type: http}
+#       dialer: {type: tcp}

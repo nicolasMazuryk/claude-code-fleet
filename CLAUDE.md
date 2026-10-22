@@ -20,7 +20,8 @@ Rebuilding any of them must be "follow this repo".
 2. **The Mac is the source of truth for Claude Code settings.** Flow is Mac → `config/claude/` (capture) →
    Mac (apply) and Mac → cloud (`cc-sync-settings`). Never edit cloud's `~/.claude` by hand; never sync cloud → Mac.
 3. **Cloud is reachable only via Tailscale (`cloud`, `tag:cloud`) or OCI Bastion (break-glass, `make ssh VM=cloud` in
-   `~/Documents/oci-free-tier-platform`).** No public IP, no `0.0.0.0/0` ingress, no port 22 on the internet. mosh is allowed only on
+   `~/Documents/oci-free-tier-platform`).** No public IP, no port 22 on the internet, no `0.0.0.0/0` ingress except TCP 8443 for the egress gateway
+   (TLS + basic auth; the single documented exception, [ADR 0007](docs/decisions/0007-browser-router-control-plane.md)). mosh is allowed only on
    `tailscale0` (UDP 60000–61000).
 4. **Cloud must never reach the Mac or the iPhone.** The tailnet policy has no rule with `src: tag:cloud`. Never put a
    Mac key, Mac credential or Mac address that grants access on cloud. Every Mac↔cloud connection (relay, presence,

@@ -26,7 +26,17 @@ violations() {
          | select(. == "autogroup:internet:*")] == []
      then "members cannot use the exit node (no autogroup:internet:* dst)" else empty end),
     (if [(.tests // [])[] | select(.src == "tag:cloud" and ((.deny // []) | length > 0))] == []
-     then "no policy test denying tag:cloud → members" else empty end)'
+     then "no policy test denying tag:cloud → members" else empty end),
+    (((.acls // [])[], (.grants // [])[])
+       | select(srcs | any(. == "tag:egress")) | select(.dst != ["autogroup:internet"] and .dst != ["autogroup:internet:*"])
+       | "tag:egress may reach more than the internet: \(tojson)"),
+    (if [(.grants // [])[] | select(srcs == ["tag:egress"] and .dst == ["autogroup:internet"])] == []
+     then "no grant tag:egress → autogroup:internet" else empty end),
+    (["macbook","iphone","cloud","static-ip"] as $n | (.autoApprovers.exitNode // []) as $a
+     | if ($a | index("autogroup:member")) and ($a | index("tag:cloud")) then empty
+       else "autoApprovers.exitNode must cover members (macbook, iPhone, static-ip) and tag:cloud" end),
+    (if [(.tests // [])[] | select(.src == "tag:egress" and ((.deny // []) | (index("user@github:22") and index("user@github:443") and index("user@github:60001"))))] == []
+     then "no policy test denying tag:egress on 22/443/60001 to members" else empty end)'
 }
 
 @test "policy.hujson parses as JSON" {
@@ -46,4 +56,21 @@ violations() {
   run violations "$bad"
   [ "$status" -eq 0 ]
   [ "$(grep -c 'sourced from' <<<"$output")" -eq 2 ]
+}
+
+@test "tag:egress is denied on 22, 443 and 60001 to Mac and iPhone, and may only use the internet" {
+  hujson "$POLICY" | jq -e '[.tests[] | select(.src == "tag:egress" and .deny)][0].deny | (index("user@github:22") and index("user@github:443") and index("user@github:60001"))' >/dev/null
+  hujson "$POLICY" | jq -e '.grants | map(select(.src == ["tag:egress"])) | length == 1 and .[0].dst == ["autogroup:internet"]' >/dev/null
+  hujson "$POLICY" | jq -e '.autoApprovers.exitNode | index("autogroup:member") and index("tag:cloud")' >/dev/null
+}
+
+@test "policy test: tag:egress is accepted to autogroup:internet" {
+  hujson "$POLICY" | jq -e '[.tests[] | select(.src == "tag:egress" and .accept)][0].accept | index("autogroup:internet:443") and index("autogroup:internet:80")' >/dev/null
+}
+
+@test "violations() catches tag:egress reaching the tailnet" {
+  bad="$BATS_TEST_TMPDIR/bad.hujson"
+  hujson "$POLICY" | jq '.grants += [{"src": ["tag:egress"], "dst": ["autogroup:member"], "ip": ["*"]}]' > "$bad"
+  run violations "$bad"
+  [[ "$output" == *"tag:egress may reach more than the internet"* ]]
 }
