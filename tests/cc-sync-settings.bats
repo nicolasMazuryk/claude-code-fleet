@@ -95,3 +95,30 @@ sum() { printf %s "$1" | shasum -a 256 | cut -c1-16; }
   grep -qx -- --delete "$BATS_TEST_TMPDIR/rsync.args"
   grep -qx cloud:.claude/ "$BATS_TEST_TMPDIR/rsync.args"
 }
+
+@test "browser-router relay slot is not Mac-only: it reaches cloud unchanged, so the sum matches; CFC env is set" {
+  jq '.hooks.SessionStart += [{matcher: "browser-router-relay", hooks: [{type: "command", command: "~/.local/libexec/cc-orchestrator/browser-relay-handler"}]}]' \
+    "$CC_SYNC_SRC" > "$BATS_TEST_TMPDIR/s2.json"
+  export CC_SYNC_SRC="$BATS_TEST_TMPDIR/s2.json"
+  "$HOME/.local/bin/cc-sync-settings" --print > "$BATS_TEST_TMPDIR/out.json" 2> "$BATS_TEST_TMPDIR/err"
+  grep -qx '4 macOS-only hook handler(s) relayed' "$BATS_TEST_TMPDIR/err"
+  o="$BATS_TEST_TMPDIR/out.json"
+  [ "$(jq -r '.hooks.SessionStart[] | select(.matcher == "browser-router-relay") | .hooks[0].command' "$o")" = "~/.local/libexec/cc-orchestrator/browser-relay-handler" ]
+  [ "$(jq -r .env.CLAUDE_CODE_ENABLE_CFC "$o")" = 1 ]
+  # the hash cloud derives equals the hash agent-relay computes on the Mac
+  BROWSER_RELAY_SETTINGS="$o" run "$REPO/bin/browser-relay-cloud" sum
+  [ "$output" = "$(sum '~/.local/libexec/cc-orchestrator/browser-relay-handler')" ]
+}
+
+@test "sites.yaml is mirrored to cloud with rsync; a dry run passes -n" {
+  mkdir -p "$HOME/.claude"
+  printf '#!/bin/sh\nexit 0\n' > "$HOME/.local/bin/ssh"
+  printf '#!/bin/sh\necho "$*" >> "$HOME/rsync.calls"\ncase "$*" in *sites.yaml*) echo ">f.st...... sites.yaml";; esac\n' > "$HOME/.local/bin/rsync"
+  chmod +x "$HOME/.local/bin/ssh" "$HOME/.local/bin/rsync"
+  printf 'sites: {}\n' > "$BATS_TEST_TMPDIR/sites.yaml"
+  CC_SYNC_SITES="$BATS_TEST_TMPDIR/sites.yaml" run "$HOME/.local/bin/cc-sync-settings" --dry-run
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ "$output" == *"would update cloud:~/.config/browser-router/sites.yaml"* ]]
+  line=$(grep 'sites.yaml' "$HOME/rsync.calls")
+  [[ "$line" == *" -n "* && "$line" == *"cloud:.config/browser-router/sites.yaml" ]]
+}

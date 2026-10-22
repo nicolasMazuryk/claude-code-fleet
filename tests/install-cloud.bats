@@ -142,3 +142,51 @@ local_setup() {
   [ "$status" -ne 0 ]
   [[ "$output" == *"no legacy backup"* ]]
 }
+
+# browser-router on cloud: fake corepack/npm stand in for the build and the agent-browser install
+browser_fakes() {
+  local b="$BATS_TEST_TMPDIR/fakebin"; mkdir -p "$b"
+  printf '#!/bin/sh\ncase "$*" in *build*) mkdir -p dist; printf "#!/bin/sh\\n" > dist/cli.js; chmod +x dist/cli.js ;; esac\n' > "$b/corepack"
+  # shellcheck disable=SC2016
+  printf '#!/bin/sh\nprintf "#!/bin/sh\\n[ \\"\\$1\\" = --version ] && echo \\"agent-browser 0.39.1\\"\\nexit 0\\n" > "$HOME/.local/bin/agent-browser"; chmod +x "$HOME/.local/bin/agent-browser"\necho "$*" >> "$HOME/npm.calls"\n' > "$b/npm"
+  chmod +x "$b/corepack" "$b/npm"
+  export PATH="$b:$HOME/.local/bin:$PATH"
+  export CC_BROWSER_DIR="$BATS_TEST_TMPDIR/browser-router"
+  git init -q "$CC_BROWSER_DIR"
+  git -C "$CC_BROWSER_DIR" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+}
+
+@test "cloud-local: vault drain units are installed; the timer stays off until browser-router exists" {
+  local_setup
+  export CC_INSTALL_NO_BROWSER=1
+  run "$REPO/install.sh" cloud-local
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  cmp "$REPO/config/cloud/systemd/browser-router-vault-drain.service" "$CC_UNIT_DIR/browser-router-vault-drain.service"
+  cmp "$REPO/config/cloud/systemd/browser-router-vault-drain.timer" "$CC_UNIT_DIR/browser-router-vault-drain.timer"
+  [ -z "$(ls "$FAKE_SYSTEMD/enabled" | grep vault-drain || true)" ]
+  # cloud links the cloud-side scripts, not the Mac-only ones
+  [ -L "$HOME/.local/bin/browser-relay-cloud" ] && [ -L "$HOME/.local/bin/browser-vault-drain" ]
+  [ ! -e "$HOME/.local/bin/browser-up" ] && [ ! -e "$HOME/.local/bin/browser-relay-handler" ]
+}
+
+@test "cloud-local: browser-router is built and linked, agent-browser pinned, drain timer enabled; rerun changes nothing" {
+  local_setup; browser_fakes
+  run "$REPO/install.sh" cloud-local
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ -x "$CC_BROWSER_DIR/dist/cli.js" ]
+  [ "$(readlink "$HOME/.local/bin/browser-router")" = "$CC_BROWSER_DIR/dist/cli.js" ]
+  grep -qx 'install -g agent-browser@0.39.1' "$HOME/npm.calls"
+  [ -e "$FAKE_SYSTEMD/enabled/browser-router-vault-drain.timer.service" ]
+  run "$REPO/install.sh" cloud-local
+  [[ "$output" == *"no changes"* ]] || { echo "$output"; return 1; }
+  [ "$(wc -l < "$HOME/npm.calls")" -eq 1 ]
+}
+
+@test "cloud-local --dry-run with browser-router missing writes nothing for it" {
+  local_setup
+  export CC_INSTALL_NO_CLONE=0 CC_DRY_RUN=1 CC_BROWSER_DIR="$BATS_TEST_TMPDIR/absent"
+  run "$REPO/install.sh" cloud-local
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [[ "$output" == *"would clone"*browser-router* ]]
+  [ ! -e "$CC_BROWSER_DIR" ]
+}

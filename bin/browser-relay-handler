@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# browser-relay-handler — Mac only. The handler agent-relay runs for the browser-router events cloud queues
+# (browser-router docs/contracts.md §7). Registered in ~/.claude/settings.json by install.sh mac as the SessionStart
+# group with matcher "browser-router-relay" (a source Claude Code never reports, so it only ever runs from the relay);
+# agent-relay checks its hash like any other relayed handler. Event name in $BROWSER_RELAY_EVENT, JSON payload on stdin.
+#   BrowserLease    {id, site, profile, session_id, ttl_s}  start headed Chrome on ~/.chrome-agent-profiles/<profile>
+#                   with --remote-debugging-port on loopback in 9300–9399, forward it to cloud's loopback over the
+#                   relay's ControlMaster socket (ssh -O forward -R, opened by the Mac), reply "lease-ready <id> <port>"
+#   BrowserRelease  {id}                                    cancel the forward, close the browser, reply "release-ok <id>"
+#   BrowserDispatch {job_id, site, task, cwd, executor}     run `claude -p <task>` here (mac-computer-use only),
+#                   reply "dispatch-ok <job_id>", then "dispatch-done <job_id> <exit>"
+# Cloud names data, never a command: every field is validated, the profile is a bare name under the profiles dir, the
+# port is chosen here, a dispatch cwd is resolved to a repo of the same name under AGENTS_ROOT.
+# Replies are written to the spool; agent-relay sends them up its ssh connection within a second.
+#   browser-relay-handler release-expired <id>   (internal: the ttl watcher)
+# Test switches: BROWSER_RELAY_STATE, AGENT_RELAY_SSH, AGENT_RELAY_HOST, AGENT_RELAY_CM, BROWSER_CHROME_BIN,
+# BROWSER_AGENT_PROFILES, BROWSER_PORT_MIN/MAX, BROWSER_READY_SECS, BROWSER_CLAUDE_BIN, BROWSER_AGENTS_ROOT.
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH:/usr/bin:/bin"
+STATE=${BROWSER_RELAY_STATE:-$HOME/.local/state/browser-router/relay}
+SPOOL=$STATE/out
+LEASES=$STATE/leases
+H=${AGENT_RELAY_HOST:-cloud}
+CM=${AGENT_RELAY_CM:-$HOME/.local/state/agent-relay/cm.sock}
+SSH=${AGENT_RELAY_SSH:-ssh}
+CHROME=${BROWSER_CHROME_BIN:-/Applications/Google Chrome.app/Contents/MacOS/Google Chrome}
+PROFILES=${BROWSER_AGENT_PROFILES:-$HOME/.chrome-agent-profiles}
+PORT_MIN=${BROWSER_PORT_MIN:-9300}
+PORT_MAX=${BROWSER_PORT_MAX:-9399}
+READY_SECS=${BROWSER_READY_SECS:-20}
+CLAUDE=${BROWSER_CLAUDE_BIN:-claude}
+AGENTS_ROOT=${BROWSER_AGENTS_ROOT:-$HOME/Documents}
+mkdir -p "$SPOOL" "$LEASES"
+
+log() { echo "$(date '+%F %T') browser-relay-handler: $*" >&2; }
+reply() { # reply <line>: one file per line, renamed into place so agent-relay never reads half a line
+  local t
+  t=$(mktemp "$SPOOL/.tmp.XXXXXX") || return 1
+  printf '%s\n' "$1" > "$t"
+  mv "$t" "$SPOOL/$(date +%s).$$.$RANDOM.out"
+}
+
+forward_spec() { printf '127.0.0.1:%s:127.0.0.1:%s' "$1" "$1"; }
+ssh_forward() { "$SSH" -S "$CM" -O "$1" -R "$(forward_spec "$2")" "$H"; } # $1 forward|cancel, $2 port
+
+port_in_use() { # a lease holds it, or something already listens on it
+  local f
+  for f in "$LEASES"/*; do [ -f "$f" ] && [ "$(cut -d' ' -f1 "$f")" = "$1" ] && return 0; done
+  (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null
+}
+pick_port() {
+  local p=$PORT_MIN
+  while [ "$p" -le "$PORT_MAX" ]; do port_in_use "$p" || { echo "$p"; return 0; }; p=$((p + 1)); done
+  return 1
+}
+
+valid() { [[ $2 =~ $1 ]]; }
+
+release() { # release <id>: idempotent
+  local f="$LEASES/$1" port pid
+  if [ -f "$f" ]; then
+    read -r port pid _ < "$f"
+    ssh_forward cancel "$port" >/dev/null 2>&1
+    [ -n "$pid" ] && kill "$pid" 2>/dev/null
+    rm -f "$f"
+    log "released $1 (port $port)"
+  fi
+}
+
+lease() {
+  local id=$1 profile=$2 ttl=$3 f port pid i dir
+  f="$LEASES/$id"
+  if [ -f "$f" ]; then read -r port _ < "$f"; reply "lease-ready $id $port"; return 0; fi
+  [ -x "$CHROME" ] || { reply "lease-failed $id chrome_missing"; return 1; }
+  port=$(pick_port) || { reply "lease-failed $id no_free_port"; return 1; }
+  dir="$PROFILES/$profile"; mkdir -p "$dir"
+  nohup "$CHROME" --user-data-dir="$dir" --remote-debugging-port="$port" --remote-debugging-address=127.0.0.1 \
+    --no-first-run --no-default-browser-check about:blank >/dev/null 2>&1 3>&- &
+  pid=$!
+  i=0
+  while ! (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; do
+    i=$((i + 1))
+    if [ "$i" -gt $((READY_SECS * 2)) ] || ! kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null; reply "lease-failed $id chrome_not_ready"; return 1
+    fi
+    sleep 0.5
+  done
+  echo "$port $pid $(($(date +%s) + ttl))" > "$f"
+  if ! ssh_forward forward "$port" >/dev/null 2>&1; then
+    kill "$pid" 2>/dev/null; rm -f "$f"; reply "lease-failed $id forward_failed"; return 1
+  fi
+  nohup "$0" release-expired "$id" "$ttl" >/dev/null 2>&1 3>&- &
+  log "lease $id profile $profile port $port ttl ${ttl}s"
+  reply "lease-ready $id $port"
+}
+
+dispatch() { # dispatch <job_id> <task> <cwd>
+  local job=$1 task=$2 cwd=$3 dir log_f
+  dir=$AGENTS_ROOT/$(basename "$cwd")
+  [ -d "$dir" ] || dir=$HOME
+  log_f=$STATE/dispatch-$job.log
+  reply "dispatch-ok $job"
+  (
+    cd "$dir" && "$CLAUDE" -p "$task" </dev/null >> "$log_f" 2>&1
+    reply "dispatch-done $job $?"
+  ) >/dev/null 2>&1 &
+  log "dispatched $job in $dir"
+}
+
+main() {
+  local ev=${BROWSER_RELAY_EVENT:-} p id profile ttl job task cwd ex
+  if [ "${1:-}" = release-expired ]; then
+    sleep "${3:-900}" & trap 'kill $! 2>/dev/null; exit 0' TERM INT
+    wait $!; release "$2"; exit 0
+  fi
+  p=$(cat)
+  case $ev in
+    BrowserLease)
+      id=$(jq -r '.id // empty' <<<"$p"); profile=$(jq -r '.profile // empty' <<<"$p"); ttl=$(jq -r '.ttl_s // 900' <<<"$p")
+      valid '^[A-Za-z0-9_-]{1,64}$' "$id" || { log "ignored lease: bad id"; exit 0; }
+      valid '^[A-Za-z0-9_][A-Za-z0-9._-]{0,63}$' "$profile" || { reply "lease-failed $id bad_profile"; exit 0; }
+      valid '^[0-9]{1,5}$' "$ttl" && [ "$ttl" -ge 1 ] && [ "$ttl" -le 14400 ] || { reply "lease-failed $id bad_ttl"; exit 0; }
+      lease "$id" "$profile" "$ttl" ;;
+    BrowserRelease)
+      id=$(jq -r '.id // empty' <<<"$p")
+      valid '^[A-Za-z0-9_-]{1,64}$' "$id" || { log "ignored release: bad id"; exit 0; }
+      release "$id"; reply "release-ok $id" ;;
+    BrowserDispatch)
+      job=$(jq -r '.job_id // empty' <<<"$p"); task=$(jq -r '.task // empty' <<<"$p")
+      cwd=$(jq -r '.cwd // empty' <<<"$p"); ex=$(jq -r '.executor // empty' <<<"$p")
+      valid '^[A-Za-z0-9_-]{1,64}$' "$job" || { log "ignored dispatch: bad job id"; exit 0; }
+      if [ "$ex" != mac-computer-use ] || [ -z "$task" ] || [ "${#task}" -gt 8000 ]; then
+        log "refused dispatch $job: executor '$ex' or task invalid"; reply "dispatch-done $job 126"; exit 0
+      fi
+      dispatch "$job" "$task" "$cwd" ;;
+    *) log "ignored event '$ev'" ;;
+  esac
+}
+main "$@"
