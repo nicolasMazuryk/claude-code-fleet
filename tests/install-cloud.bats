@@ -150,6 +150,10 @@ browser_fakes() {
   # shellcheck disable=SC2016
   printf '#!/bin/sh\nprintf "#!/bin/sh\\n[ \\"\\$1\\" = --version ] && echo \\"agent-browser 0.39.1\\"\\nexit 0\\n" > "$HOME/.local/bin/agent-browser"; chmod +x "$HOME/.local/bin/agent-browser"\necho "$*" >> "$HOME/npm.calls"\n' > "$b/npm"
   chmod +x "$b/corepack" "$b/npm"
+  # a stale agent-browser ahead of any real one on PATH (a dev machine may have it under nvm); the fake npm replaces it
+  mkdir -p "$HOME/.local/bin"
+  printf '#!/bin/sh\n[ "$1" = --version ] && echo "agent-browser 0.0.0"\nexit 0\n' > "$HOME/.local/bin/agent-browser"
+  chmod +x "$HOME/.local/bin/agent-browser"
   export PATH="$b:$HOME/.local/bin:$PATH"
   export CC_BROWSER_DIR="$BATS_TEST_TMPDIR/browser-router"
   git init -q "$CC_BROWSER_DIR"
