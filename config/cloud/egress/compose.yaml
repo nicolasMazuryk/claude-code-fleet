@@ -5,6 +5,8 @@
 #   EGRESS_STATE_DIR   tailscale node state (survives restarts, so the node keeps its identity)
 #   EGRESS_SECRETS_DIR holds gost-auth (0400, owner uid 10001: "browseruse <password>") and ts-authkey (0600, may be
 #                      empty once the node has joined). Delivered from the Mac by ./install.sh cloud; never in git.
+#   EGRESS_SECRETS_DIR/tls cert.pem (0444) + key.pem (0400, uid 10001): the public TLS certificate, pushed by the Mac's
+#                      bin/egress-cert-renew; created empty by ./install.sh cloud (gost falls back to self-signed).
 name: egress
 services:
   tailscale:                      # owns the network namespace; gost and the guard share it
@@ -49,9 +51,20 @@ services:
     user: "10001:10001"           # the uid the nftables rules match (guard.nft)
     depends_on:
       guard: {condition: service_healthy}
-    command: ["-C", "/etc/gost/gost.yaml"]
+    # gost exits when certFile is missing, so without a readable certificate the entrypoint drops the `tls:` block and
+    # gost generates a self-signed one (with a warning in `docker logs`)
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        c=/etc/gost/gost.yaml
+        if [ -r /etc/gost/tls/cert.pem ] && [ -r /etc/gost/tls/key.pem ]; then exec /bin/gost -C $$c; fi
+        echo "egress: WARNING no readable TLS certificate in /etc/gost/tls; serving a self-signed one" >&2
+        sed '/^    tls:/,/keyFile/d' $$c > /tmp/gost.yaml
+        exec /bin/gost -C /tmp/gost.yaml
     volumes:
       - ./gost.yaml:/etc/gost/gost.yaml:ro
+      - ${EGRESS_SECRETS_DIR:?set EGRESS_SECRETS_DIR}/tls:/etc/gost/tls:ro   # cert.pem + key.pem (bin/egress-cert-renew)
     secrets:
       - gost_auth
 

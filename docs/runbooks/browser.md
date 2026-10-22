@@ -48,8 +48,20 @@ Order matters; `[H]` = human step.
    `staticipup`/`staticipdown` aliases). A node acting as an exit node cannot use one at the same time.
 - Guard rules: the first rule accepts (and counts) gost's reply packets to clients; the drop rules after it apply to
   connections gost opens. Without that exemption no response would reach Browser Use.
-- TLS: gost generates a self-signed certificate at start; to serve a real one, add `certFile`/`keyFile` to the
-  listener's `tls` block in `gost.yaml` and mount the files.
+- TLS: gost serves a publicly trusted Let's Encrypt certificate for `egress.mazuryktech.com` from
+  `cloud:~/.config/egress/tls/{cert.pem,key.pem}` (mounted at `/etc/gost/tls`). The Mac issues and renews it with
+  `bin/egress-cert-renew` (lego, ACME DNS-01 through Cloudflare; the DNS-edit token never leaves the Mac, cloud only
+  receives the two files) and restarts `egress-gost-1` when the certificate changes. lego renews on the CA's ARI hint,
+  falling back to 1/3 of the lifetime left. The launchd agent `cc-orchestrator.claude.egress-cert` (installed by
+  `./install.sh mac`) runs it daily at 10:30; `/tmp/egress-cert-renew.log` holds its output. Without a readable
+  certificate the gost entrypoint drops the `tls:` block and serves a self-signed one (`docker logs egress-gost-1`
+  and `journalctl -u cc-egress` show a warning); clients that verify certificates then fail until the first issuance.
+  `bin/egress-cert-check` (with `cc-egress-bytes`, every 10 min) pushes through `agent-push` once per certificate when
+  less than 1/3 of its lifetime is left, which means the Mac's renewal stopped working.
+  First issuance `[H]`: create a Cloudflare API token (Zone, DNS, Edit on `mazuryktech.com` only), store it with
+  `security add-generic-password -U -s cc-cf-acme-dns-token -a "$USER" -w`, `brew install lego`, `./install.sh cloud`
+  (creates the `tls` dir), then run `bin/egress-cert-renew` once. Staging dry run:
+  `EGRESS_ACME_SERVER=letsencrypt-staging EGRESS_ACME_DIR=/tmp/acme-staging bin/egress-cert-renew`.
 - Daily bytes: `EGRESS_DAILY_BYTES` (default 5 GiB) in `cc-egress-bytes.service`; the alert is a push via `agent-push`, only when you are away.
 - Bought ISP proxy: uncomment the `chains:` block and `chain: upstream` in `gost.yaml`; credentials never go in git.
 - Logs: `docker logs egress-gost-1`; `journalctl -u cc-egress`. If tailscale restarts alone, `sudo systemctl restart cc-egress`

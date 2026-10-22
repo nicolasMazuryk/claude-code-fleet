@@ -1,0 +1,6 @@
+#!/bin/bash
+# fake lego: records argv + whether the token env was set, writes a cert pair from $FAKE_CERT_DIR into $LEGO_PATH/certificates
+echo "$*" >> "$FAKE_LEGO_LOG"
+[ -n "${CLOUDFLARE_DNS_API_TOKEN:-}" ] && echo "token-env-set" >> "$FAKE_LEGO_LOG"
+d=$LEGO_PATH/certificates; mkdir -p "$d"
+cp "$FAKE_CERT_DIR/cert.pem" "$d/egress.example.test.crt"; cp "$FAKE_CERT_DIR/key.pem" "$d/egress.example.test.key"

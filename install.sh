@@ -19,9 +19,10 @@
 #   zshrc       one sourcing line for the snippet (am, ac); existing aliases untouched
 #   ssh         Host cloud appended to ~/.ssh/config if no Host cloud exists
 #   cmux        ~/.config/cmux/cmux.json if absent or still cmux's all-comments template
-#   relay       copies of bin/agent-relay, agent-present, browser-up, browser-relay-handler in ~/.local/libexec/cc-orchestrator/ (launchd can't
+#   relay       copies of bin/agent-relay, agent-present, browser-up, browser-relay-handler, egress-cert-renew in ~/.local/libexec/cc-orchestrator/ (launchd can't
 #               read ~/Documents, TCC); the relay LaunchAgent is restarted when they change
-#   launchd     cc-orchestrator.claude.agents and .relay (sound relay + presence beacon), bootstrapped
+#   launchd     cc-orchestrator.claude.agents and .relay (sound relay + presence beacon), bootstrapped; .egress-cert runs the
+#               libexec copy of bin/egress-cert-renew daily (lego cert for the egress gateway → cloud ~/.config/egress/tls)
 #
 # cloud, from the Mac (--dry-run: show what would change, write nothing on cloud except a staging copy in ~/.cache):
 #   sync        rsync this checkout (tracked + new files, not gitignored; not tests/ prompts/) → cloud:~/claude-code-fleet
@@ -298,7 +299,7 @@ launchd_load() { # launchd_load <label> <plist> <changed 0|1>
 RELAY_CHANGED=0
 step_relay() { # launchd jobs can't read ~/Documents (TCC: "Operation not permitted"), so the relay runs from copies
   local d="$HOME/.local/libexec/cc-orchestrator" f before=$changes
-  for f in agent-relay agent-present browser-up browser-relay-handler; do
+  for f in agent-relay agent-present browser-up browser-relay-handler egress-cert-renew; do
     if [ -f "$d/$f" ] && cmp -s "$REPO/bin/$f" "$d/$f"; then continue; fi
     mkdir -p "$d"; cp "$REPO/bin/$f" "$d/$f.tmp"; chmod 755 "$d/$f.tmp"; mv "$d/$f.tmp" "$d/$f"
     did relay "copied bin/$f → $d/$f"
@@ -309,13 +310,13 @@ step_relay() { # launchd jobs can't read ~/Documents (TCC: "Operation not permit
 step_launchd() {
   local la="$HOME/Library/LaunchAgents" label tmp dst changed tmux_bin
   tmux_bin=$(command -v tmux || echo /opt/homebrew/bin/tmux)
-  for label in cc-orchestrator.claude.agents cc-orchestrator.claude.relay; do
+  for label in cc-orchestrator.claude.agents cc-orchestrator.claude.relay cc-orchestrator.claude.egress-cert; do
     dst="$la/$label.plist"; tmp=$(mktemp)
     sed "s#@HOME@#$HOME#g; s#@TMUX@#$tmux_bin#g" "$REPO/config/mac/launchd/$label.plist.tmpl" > "$tmp"
     plutil -lint "$tmp" >/dev/null || die "rendered $label plist is invalid"
     changed=0
     cmp -s "$tmp" "$dst" 2>/dev/null || { changed=1; install_file launchd "$tmp" "$dst" 644; }
-    [ "$label" = cc-orchestrator.claude.relay ] && [ "$RELAY_CHANGED" = 1 ] && changed=1
+    case $label in *.relay|*.egress-cert) [ "$RELAY_CHANGED" = 1 ] && changed=1 ;; esac
     rm -f "$tmp"
     if [ "${CC_INSTALL_NO_LAUNCHD:-0}" = 1 ]; then say launchd "not loading $label (CC_INSTALL_NO_LAUNCHD)"; continue; fi
     launchd_load "$label" "$dst" "$changed"
@@ -473,6 +474,7 @@ step_egress() { # the egress gateway stack: runs only once the Mac delivered the
     if [ -d "$u" ]; then continue; fi
     act egress "create $u" sh -c "mkdir -p '$u' && chmod 700 '$u'"
   done
+  if [ ! -d "$d/tls" ]; then act egress "create $d/tls (certificate dir, filled by the Mac's egress-cert-renew)" sh -c "mkdir -p '$d/tls' && chmod 755 '$d/tls'"; fi
   if [ ! -e "$d/ts-authkey" ]; then act egress "create empty $d/ts-authkey" sh -c "umask 077 && : > '$d/ts-authkey'"; fi
   if ! sudo_ test -s "$d/gost-auth" 2>/dev/null; then say egress "gost-auth not delivered: cc-egress stays off (run ./install.sh cloud from the Mac after adding the Keychain item)"; return 0; fi
   for u in cc-egress.service cc-egress-bytes.timer; do
@@ -536,7 +538,7 @@ step_rc() {
 install_cloud_local() {
   [ "$(uname)" = Linux ] || [ "${CC_INSTALL_ANY_OS:-0}" = 1 ] || die "install.sh cloud-local runs on cloud (Linux)"
   LIVE=${CC_CLOUD_REPO:-$REPO}
-  BIN_SKIP="cc-capture cc-sync-settings cc-orchestrator-start agent-relay mac-remote-access browser-up browser-relay-handler egress-secrets-push"   # Mac-only (they read the Mac's ~/.claude / launchd / browsers)
+  BIN_SKIP="cc-capture cc-sync-settings cc-orchestrator-start agent-relay mac-remote-access browser-up browser-relay-handler egress-secrets-push egress-cert-renew"   # Mac-only (they read the Mac's ~/.claude / launchd / browsers)
   echo "install.sh cloud-local: $LIVE → $HOME$([ "$DRY" = 1 ] && echo ' (dry run)')"
   step_claude_bin; step_bin; step_path; step_config_cloud; step_bashrc_snippet; step_tmux
   step_legacy; step_browser; step_units; step_egress; step_linger; step_repos; step_agents; step_rc

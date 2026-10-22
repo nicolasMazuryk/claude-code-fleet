@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# egress-cert-renew — Mac: issue/renew the publicly trusted TLS certificate for the egress gateway and deliver it to cloud.
+# The Mac holds the DNS-edit power; cloud only receives files, so a compromised cloud cannot touch DNS.
+#   lego (ACME DNS-01 via Cloudflare, token from Keychain cc-cf-acme-dns-token: Zone DNS Edit on mazuryktech.com only)
+#   decides when to renew from the CA's ARI (RFC 9773), falling back to 1/3 of the lifetime left; never a day count here.
+#   When the certificate differs from what cloud holds (sha256), it pushes over the Mac-opened ssh, values via stdin:
+#     cloud ~/.config/egress/tls/cert.pem (fullchain, 0444)   key.pem (0400, uid 10001)
+#   then restarts the gost container. Run daily by launchd (cc-orchestrator.claude.egress-cert, install.sh mac).
+# A missing Keychain token or a missing lego binary skips with a log line (exit 0). Idempotent; secrets never on argv.
+# Usage: egress-cert-renew [--dry-run]   (--dry-run: no ACME call, report what would be pushed)
+# Test hooks: EGRESS_CERT_DOMAIN (egress.mazuryktech.com), EGRESS_ACME_DIR, EGRESS_ACME_SERVER (letsencrypt; use
+# letsencrypt-staging for tests), EGRESS_ACME_EMAIL, EGRESS_LEGO (lego), CC_CLOUD_HOST (cloud), EGRESS_GOST_CONTAINER.
+set -euo pipefail
+PATH="$PATH:/opt/homebrew/bin:/usr/local/bin"
+domain=${EGRESS_CERT_DOMAIN:-egress.mazuryktech.com}
+dir=${EGRESS_ACME_DIR:-$HOME/Library/Application Support/claude-code-fleet/acme}
+server=${EGRESS_ACME_SERVER:-letsencrypt}
+email=${EGRESS_ACME_EMAIL:-tripod.dev.engineers@gmail.com}
+lego=${EGRESS_LEGO:-lego}
+h=${CC_CLOUD_HOST:-cloud}
+gost=${EGRESS_GOST_CONTAINER:-egress-gost-1}
+dry=0; [ "${1:-}" = --dry-run ] && dry=1
+say() { printf '  %-9s %s\n' egress-cert "$*"; }
+
+command -v "$lego" >/dev/null 2>&1 || { say "skip: $lego not installed (brew install lego)"; exit 0; }
+token=$(security find-generic-password -s cc-cf-acme-dns-token -a "$USER" -w 2>/dev/null || true)
+if [ -z "$token" ]; then say "skip: no Keychain item cc-cf-acme-dns-token"; exit 0; fi
+
+( umask 077; mkdir -p "$dir" ); chmod 700 "$dir"
+crt="$dir/certificates/$domain.crt"; key="$dir/certificates/$domain.key"
+
+if [ "$dry" = 0 ]; then
+  # lego decides: obtains when absent, renews only when ARI / 1/3 lifetime says so, else exits without changes.
+  CLOUDFLARE_DNS_API_TOKEN=$token LEGO_PATH=$dir "$lego" --log.level info \
+    run --accept-tos --email "$email" --server "$server" --dns cloudflare -d "$domain" >&2 \
+    || { say "ERROR: lego failed for $domain"; exit 1; }
+fi
+unset token
+if [ ! -s "$crt" ] || [ ! -s "$key" ]; then say "no certificate for $domain yet; nothing to deliver"; exit 0; fi
+
+lsum() { shasum -a 256 < "$1" | cut -c1-64; }
+# shellcheck disable=SC2016
+rsum=$(ssh -o BatchMode=yes "$h" 'cd ~/.config/egress/tls 2>/dev/null && for f in cert.pem key.pem; do sudo sha256sum "$f" | cut -c1-64; done' 2>/dev/null | tr '\n' ' ' || true)
+want="$(lsum "$crt") $(lsum "$key") "
+if [ "$rsum" = "$want" ]; then say "ok $h:~/.config/egress/tls (certificate unchanged)"; exit 0; fi
+if [ "$dry" = 1 ]; then say "would deliver the certificate for $domain to $h and restart $gost"; exit 0; fi
+
+push() { # push <local file> <remote file> <owner:group> <mode>; the content goes over stdin
+  # shellcheck disable=SC2016
+  ssh -o BatchMode=yes "$h" "umask 077; d=\$HOME/.config/egress/tls; mkdir -p \"\$d\" && chmod 755 \"\$d\" && sudo tee \"\$d/$2.tmp\" >/dev/null && sudo chown $3 \"\$d/$2.tmp\" && sudo chmod $4 \"\$d/$2.tmp\" && sudo mv \"\$d/$2.tmp\" \"\$d/$2\"" < "$1"
+}
+push "$key" key.pem 10001:10001 0400
+push "$crt" cert.pem agent:agent 0444
+say "delivered cert.pem and key.pem for $domain to $h"
+if ssh -o BatchMode=yes "$h" "docker restart $gost >/dev/null 2>&1"; then say "restarted $gost"
+else say "WARNING: could not restart $gost; run: ssh $h sudo systemctl restart cc-egress"; fi

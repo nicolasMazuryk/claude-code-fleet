@@ -72,5 +72,12 @@ no egress IP list, so the gateway cannot be restricted by source address.
   The Browser Use key (`core-secret-browser-use-api-key`) stays readable by cloud: the cloud brain calls Browser Use.
   Nothing on cloud ever dials the Mac; the new node `egress` has `tag:egress`, whose only permission is the internet
   through an exit node, and the policy tests keep it denied on 22/443/60001 to the Mac and iPhone.
+- **TLS certificate.** The gateway serves a publicly trusted certificate for `egress.mazuryktech.com` (DNS-only record,
+  oci ADR 0006), so Browser Use verifies it (`ignoreCertErrors: false`). The Mac issues and renews it (`bin/egress-cert-renew`,
+  lego, ACME DNS-01 through Cloudflare with a Keychain token scoped to DNS edit on that zone) and pushes `cert.pem` and
+  `key.pem` over the Mac-opened ssh; cloud holds no DNS-edit power and no ACME account. A key on cloud can only impersonate the
+  gateway, which is already exposed there. Renewal follows the CA's ARI hint, falling back to 1/3 of the lifetime left, and
+  cloud alerts through `agent-push` when less than 1/3 is left. DNS-01 is used because port 80 and 443 on the VM are not
+  available to the Mac and the NLB forwards only 8443.
 - **Public ingress is not otherwise reduced:** Cloudflare is not in front of 8443 (raw TCP), so the password and the
   limiter are the controls.
