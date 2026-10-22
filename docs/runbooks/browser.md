@@ -7,13 +7,14 @@ this repo owns the relay, the cloud install, the drain timer and the settings wi
 | | Mac | Cloud |
 |---|---|---|
 | relay | `agent-relay` (LaunchAgent) sends `mac-up` every 15 s, runs `browser-relay-handler` for lease/release/dispatch | `browser-relay-cloud line` (called by the relay's remote script) writes `mac-up` and `replies/<id>` |
-| CLI | – | `~/.local/bin/browser-router` (`~/.local/share/browser-router`) and `agent-browser` |
+| CLI | `agent-browser` (pinned, `npm -g` under the nvm node, plus Chrome for Testing), installed by `install-mac`; browser-router comes from the `~/Documents/browser-router` checkout via a global link | `~/.local/bin/browser-router` (`~/.local/share/browser-router`) and `agent-browser` |
 | queue | – | `browser-router-vault-drain.timer` every 3 min |
 | config | `~/.config/browser-router/sites.yaml` (source) | mirrored by `cc-sync-settings` |
 
 ## Install / update
 1. Mac: `./install.sh mac` (copies `browser-up` + `browser-relay-handler` next to `agent-relay` in `~/.local/libexec/cc-orchestrator/`,
-   registers the guard hooks and the `browser-router-relay` SessionStart slot, restarts the relay).
+   registers the guard hooks and the `browser-router-relay` SessionStart slot, restarts the relay, and installs the pinned
+   `agent-browser@0.39.1` + `agent-browser install`; a rerun prints ok and changes nothing; `CC_INSTALL_NO_BROWSER=1` skips it).
 2. `cc-sync-settings` (mirrors settings with `CLAUDE_CODE_ENABLE_CFC=1`, the relay slot, and `sites.yaml`).
 3. `./install.sh cloud` (human step, pushes the checkout and runs `cloud-local`: clone + build browser-router, install
    agent-browser, units + timer). `CC_INSTALL_NO_BROWSER=1` skips the browser step.
