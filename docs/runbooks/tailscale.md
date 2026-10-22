@@ -26,9 +26,12 @@ The cloud side (install, join, mosh rule) is in the oci repo: `host/cloud/bootst
    - **Keep** anything else that is in the live policy and not in the file: `nodeAttrs`, `autoApprovers` (exit node),
      `groups`, `hosts`, other tags or ssh rules. Add it to `policy.hujson` too, in a commit, so the file stays "as applied".
    - Nothing new may have `src` `tag:cloud` or `*`. `make test` checks this (`tests/tailscale-policy.bats`).
-3. Paste the merged file → **Save**. Tailscale runs the `tests`/`sshTests` blocks on save and rejects the policy if
+3. The file uses the placeholder login `user@github`; substitute the real login when pasting:
+   `sed "s/user@github/<login>/g" config/tailscale/policy.hujson | pbcopy`. Policy tests cannot target autogroups
+   (`autogroup:internet`), so the `tag:egress` → internet grant is checked by `tests/tailscale-policy.bats` only.
+4. Paste the merged file → **Save**. Tailscale runs the `tests`/`sshTests` blocks on save and rejects the policy if
    `tag:cloud` could reach a member device, or members could not SSH to `tag:cloud` as `agent`/`ubuntu`.
-4. Check that the exit node still works on the Mac: `curl -s https://ifconfig.me` → the `static-ip` address.
+5. Check that the exit node still works on the Mac: `curl -s https://ifconfig.me` → the `static-ip` address.
 
 ## 2. `[H]` Create the OAuth client and store its secret in Vault (one time; never rotated)
 
