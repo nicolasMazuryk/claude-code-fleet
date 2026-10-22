@@ -10,8 +10,8 @@ Why, what the outcome is, source plan/task (path or TASK.md), binding rules (use
 e.g. "pushing to default branch authorized by source §0").
 
 ## Settings
-slug: <slug> · run dir: <dir> · orchestrator: opus/medium · implementers+verifiers: sonnet/medium ·
-max sessions: 8 · tick: 3m · compact at: 200k · permission mode: auto
+slug: <slug> · run dir: <dir> · max sessions: 8 · tick: 3m · compact at: 200k · permission mode: auto (planners: plan)
+orchestrator: opus/medium · planner: sonnet/high · implementer: sonnet/medium · verifier: sonnet/medium
 
 ## Dependency graph
 Edges (`A → B` = B needs A done and verified), one per line, with the kind (data / interface / build / knowledge):
@@ -20,14 +20,14 @@ Edges (`A → B` = B needs A done and verified), one per line, with the kind (da
 Critical path: J00 → J01 → J04 → JNN → JZZ.
 
 ## Jobs
-| Job | Scope (source refs) | cwd / isolation | Writes (owned) | Depends on | Parallel with / why safe | Gate | Acceptance checks | Verify | Fan-out hint |
-|---|---|---|---|---|---|---|---|---|---|
-| J00 <name> | … | <dir>, worktree `orchestrator/<slug>/J00` | … | – | – (foundation, runs alone) | – | … | V | … |
-| J01 <name> | … | … | … | J00 | J02: disjoint dirs, no shared ports/DB, both consume frozen J00 contract | – | … | – | … |
+| Job | Scope (source refs) | cwd / isolation | Writes (owned) | Depends on | Parallel with / why safe | Gate | Acceptance checks | Verify | Plan first | Fan-out hint |
+|---|---|---|---|---|---|---|---|---|---|---|
+| J00 <name> | … | <dir>, worktree `orchestrator/<slug>/J00` | … | – | – (foundation, runs alone) | – | … | V | yes+review | … |
+| J01 <name> | … | … | … | J00 | J02: disjoint dirs, no shared ports/DB, both consume frozen J00 contract | – | … | – | yes | … |
 | … |
-| JI1 integrate-S2 | merge S2 branches in order, full suite | | | S2 jobs | – | – | full suite green | – | – |
-| JNN integrate | final merge, full suite | | | all code jobs | – | – | full suite green | – | – |
-| JZZ e2e-verify | whole-task acceptance + REPORT inputs | | read-only | everything | – | – | … | – | per-area |
+| JI1 integrate-S2 | merge S2 branches in order, full suite | | | S2 jobs | – | – | full suite green | – | no | – |
+| JNN integrate | final merge, full suite | | | all code jobs | – | – | full suite green | – | no | – |
+| JZZ e2e-verify | whole-task acceptance + REPORT inputs | | read-only | everything | – | – | … | – | no | per-area |
 
 Queue order when a slot frees: verifiers first, then launchable jobs in critical-path order.
 
@@ -45,6 +45,19 @@ prompt holds that job's dependents.
 
 ## Verification
 Per-job verifiers (what they check, before which risky step or which dependents); final e2e criteria.
+
+## Job plan sections
+Every `jobs/<job>/plan.md` written by a planner contains these sections; the orchestrator's plan check enforces them.
+Target length 2–5k tokens.
+1. Goal and acceptance checks.
+2. Approach and why.
+3. Steps: numbered, each with its files and commands.
+4. Write set: exact paths, branches and remote resources.
+5. Runtime resources: ports, databases, caches, toolchains, paid or rate-limited APIs.
+6. Risks and mitigations.
+7. Test commands.
+8. Deviations from the card: empty, or each one justified.
+9. Open questions.
 ```
 
 ## Job card rules
@@ -58,3 +71,10 @@ Per-job verifiers (what they check, before which risky step or which dependents)
   others build on; the verifier runs *before* that step or before dependents start (the implementer stops at
   `ready_for_verify`).
 - A job that only reads (drafts, research) still owns its output paths.
+- **Plan first** decides whether a plan-mode planner session writes `jobs/<job>/plan.md` before a fresh implementer
+  starts. Planning costs about 5–10 minutes per job.
+  - `no`: small or mechanical jobs (about 5 minutes or less, a few files, or a card that is already step by step),
+    integration jobs and e2e-verify jobs. No planner runs.
+  - `yes`: every other non-trivial job.
+  - `yes+review`: jobs others depend on, and jobs with Verify = V. A plan-review verifier checks the plan before the
+    implementer starts.

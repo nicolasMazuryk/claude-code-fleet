@@ -1,14 +1,20 @@
 ---
 name: orchestrate
-description: Run a big task or an existing Claude Code plan end-to-end with the orchestrator → implementers pattern, the way a principal engineer would. One orchestrator Claude Code session (opus, effort medium) builds a dependency graph, executes the work in correct dependency order, and runs in parallel only the jobs that pass a strict parallel-safety test (up to 8 implementer Claude Code background sessions, sonnet, effort medium; each may use its own sub-agents), sequential wherever that yields a better result. Quality over speed. It monitors sessions every 3 minutes, auto-compacts every session (orchestrator included) at 200k context tokens with run context re-injected after compaction, pauses the session that needs human input and holds everything that depends on it, runs independent verifier sessions, integrates incrementally, and drives the task to verified completion. Use when the user says "orchestrate", "/orchestrate <task|plan.md>", "run this plan with parallel agents/sessions", "orchestrator-implementer", or hands over a large multi-part task to execute autonomously. Not for small single-session tasks.
-argument-hint: "<task text | path/to/plan.md> [--go] [--max N] [--run-dir DIR]   |   run <run-dir>"
+description: Run a big task or an existing Claude Code plan end-to-end with the orchestrator → (planner →) implementers pattern, the way a principal engineer would. One orchestrator Claude Code session (opus, effort medium by default) builds a dependency graph, executes the work in correct dependency order, and runs in parallel only the jobs that pass a strict parallel-safety test (up to 8 background sessions; each may use its own sub-agents), sequential wherever that yields a better result. Non-trivial jobs are first planned by a plan-mode planner session (sonnet, effort high), checked (and optionally reviewed) against their exact write set, then implemented by a fresh implementer session (sonnet, effort medium) from the approved plan. Model and effort are configurable per role (orchestrator, planner, implementer, verifier). Quality over speed. It monitors sessions every 3 minutes, auto-compacts every session (orchestrator included) at 200k context tokens with run context re-injected after compaction, pauses the session that needs human input and holds everything that depends on it, runs independent verifier sessions, integrates incrementally, and drives the task to verified completion. Use when the user says "orchestrate", "/orchestrate <task|plan.md>", "run this plan with parallel agents/sessions", "orchestrator-implementer", or hands over a large multi-part task to execute autonomously. Not for small single-session tasks.
+argument-hint: "<task text | path/to/plan.md> [--go] [--max N] [--run-dir DIR] [--orchestrator M/E] [--planner M/E] [--implementer M/E] [--verifier M/E]   |   run <run-dir>"
 ---
 
-# Orchestrate: orchestrator → implementer sessions
+# Orchestrate: orchestrator → (planner →) implementer sessions
 
-Topology (fixed): **orchestrator session → implementer sessions → (optional) sub-agents inside each implementer**.
-Implementers are separate `claude --bg` sessions, never sub-agents of the orchestrator. The orchestrator never
-implements; implementers never launch other `claude` sessions.
+Topology (fixed): **orchestrator session → (planner session →) implementer sessions → (optional) sub-agents inside each
+implementer**. Planners, implementers and verifiers are separate `claude --bg` sessions, never sub-agents of the
+orchestrator. The orchestrator never implements; no session it launches launches other `claude` sessions.
+
+A plan-first job runs in four steps: (1) a **planner** session explores read-only in real plan mode and ends by calling
+ExitPlanMode; (2) the orchestrator takes the plan from the transcript (`orchestrator-plan`) and stops the planner, which
+rejects the plan; (3) the orchestrator checks the plan's scope and runs the parallel-safety test on the plan's exact
+write set, and a plan-review verifier reviews it when the card asks; (4) a **fresh implementer** session implements
+`jobs/<job>/plan.md`. The fresh launch keeps exploration noise out of the implementer's context.
 
 **Principle: quality > speed.** Execute the task the way a principal engineer would: correct dependency order,
 foundations before consumers, verified at every boundary. Parallelize only what is provably safe to parallelize; that
@@ -17,24 +23,33 @@ yields a better result.
 
 Defaults (the user may override any in the request):
 
-| Setting | Default |
-|---|---|
-| Orchestrator | `--model opus --effort medium` |
-| Implementers / verifiers | `--model sonnet --effort medium` |
-| Max live implementer+verifier sessions | 8 (a ceiling, not a target) |
-| Monitor tick | every 3 min |
-| Compact threshold (all sessions, orchestrator included) | 200k context tokens (`--autocompact 200k`) |
-| Permission mode for all sessions | `auto` |
-| Run dir | `~/Documents/orchestrator-runs/<slug>/` |
-| Session name prefix | `<slug>-` (orchestrator: `<slug>-orchestrator`) |
+| Setting | Default | Override |
+|---|---|---|
+| Orchestrator model/effort | opus / medium | `--orchestrator opus/high` |
+| Planner model/effort | sonnet / high | `--planner sonnet/high` |
+| Implementer model/effort | sonnet / medium | `--implementer sonnet/medium` |
+| Verifier model/effort (code verify + plan review) | sonnet / medium | `--verifier sonnet/medium` |
+| Max live planner+implementer+verifier sessions | 8 (a ceiling, not a target) | `--max N` |
+| Monitor tick | every 3 min | |
+| Compact threshold (all sessions, orchestrator included) | 200k context tokens (`--autocompact 200k`) | |
+| Permission mode | `auto`; planners `plan` | |
+| Run dir | `~/Documents/orchestrator-runs/<slug>/` | `--run-dir DIR` |
+| Session name prefix | `<slug>-` (orchestrator: `<slug>-orchestrator`) | |
+
+Plain-language overrides ("orchestrator opus high", "planners on opus") work too. Valid efforts: low, medium, high,
+xhigh, max. The resolved values go into PLAN.md `## Settings`; every launch reads its role's model/effort from there.
 
 Scripts (in this skill's `scripts/`, call by absolute path `~/.claude/skills/orchestrate/scripts/...`):
-- `orchestrator-launch <run-dir> <job> <cwd> <model> <effort> <prompt> [compact_at]`: start a bg session with
+- `orchestrator-launch [--plan] <run-dir> <job> <cwd> <model> <effort> <prompt> [compact_at]`: start a bg session with
   `--autocompact <compact_at>` (default 200k) and the post-compaction hook, and record it in the job's status.
+  `--plan` starts it in plan mode (planners `P-<job>`); otherwise `auto`.
+- `orchestrator-plan <run-dir> <job>`: read planner `P-<job>`'s transcript. `ready <path>` (ExitPlanMode pending; the
+  plan is written to `jobs/<job>/plan.md`), `asking` + the question (AskUserQuestion pending), or `none`.
 - `orchestrator-set-status <run-dir> <job> <state> "<step>" ["<needs_input>"]`: implementers/verifiers update their status.
-- `orchestrator-status <run-dir> [--json]`: one row for the orchestrator session itself, then one per job: live state,
-  waiting-for, context tokens, job state, minutes since update.
-- `orchestrator-recontext <run-dir> <job|V-job|orchestrator>`: the run context re-injected after compaction (it runs as
+- `orchestrator-status <run-dir> [--json]`: one row for the orchestrator session itself, then one per job: role
+  (planner/implementer/verifier), live state, waiting-for, context tokens, job state, minutes since update, and
+  `plan: ready|asking|none` for live planners.
+- `orchestrator-recontext <run-dir> <job|P-job|V-job|PV-job|orchestrator>`: the run context re-injected after compaction (it runs as
   a SessionStart `compact` hook). `--settings <run-dir> <job>` prints the `--settings` JSON that installs that hook.
 
 Two modes. Read the argument: `run <dir>` → **Run mode**. Anything else → **Plan mode**.
@@ -75,18 +90,22 @@ Goal: turn the task into an approved orchestration plan, then hand it to a backg
      test pairwise. A stage of one job is normal.
    - **Human gates** for anything irreversible or outward-facing the task doesn't explicitly authorize (push, publish,
      deploy, delete, spend money, message people, visibility changes), plus drafts the user asked to review.
+   - **Plan first** (card column, rules in `references/plan-template.md`): `no` for small or mechanical jobs,
+     integration and e2e-verify jobs; `yes` for other non-trivial jobs; `yes+review` for jobs others depend on and
+     jobs with Verify = V.
    - **Verification:** every job has concrete acceptance checks. Every job that changes something outward-facing or
      risky gets an independent **verifier** session before the risky step. Every job others depend on is verified before
      its dependents start. The plan ends with an **e2e verify** job.
+   - **Settings:** resolve each role's model/effort from the defaults and the user's overrides into `## Settings`.
 3. **Write the run dir:** `TASK.md` (verbatim task or a pointer + copy of the plan), `PLAN.md` (the orchestration plan),
    and `IMPLEMENTER.md` + `VERIFIER.md` copied from `references/` with `<RUN_DIR>`/`<SLUG>` filled in and any
    task-specific binding rules appended. If the user asked for the plan to live in a specific file, also write it there.
 4. **Approval.** Show the dependency graph, stages, jobs and gates summary. In plan mode use ExitPlanMode; otherwise ask
    once with AskUserQuestion. Skip only if the user passed `--go` or said to start without asking.
-5. **Launch the orchestrator** (from the run dir):
+5. **Launch the orchestrator** (from the run dir) with the orchestrator model/effort from `## Settings`:
    ```
    S=~/.claude/skills/orchestrate/scripts
-   cd <run-dir> && claude --bg -n <slug>-orchestrator --model opus --effort medium --permission-mode auto \
+   cd <run-dir> && claude --bg -n <slug>-orchestrator --model <model> --effort <effort> --permission-mode auto \
      --autocompact 200k --settings "$($S/orchestrator-recontext --settings <run-dir> orchestrator)" \
      "/orchestrate run <run-dir>"
    ```
@@ -116,6 +135,9 @@ Goal: turn the task into an approved orchestration plan, then hand it to a backg
 
 ### Non-negotiables for the orchestrator
 - Never approve a permission prompt or make a gated decision on the user's behalf. Pause that session.
+- **The orchestrator never approves ExitPlanMode.** Stopping a planner at ExitPlanMode is a rejection, never an
+  approval; the plan is taken from the transcript.
+- A `Plan first = yes*` implementer launches only from an approved `jobs/<job>/plan.md` (state `plan_approved`).
 - **Dependency order is absolute.** A job launches only when every job it depends on is `done` and verified, its stage
   is open, and it passes the parallel-safety test against every live session. When in doubt, wait: an empty slot costs
   time, a wrong parallel launch costs correctness.

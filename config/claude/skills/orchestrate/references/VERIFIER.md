@@ -19,3 +19,22 @@ job's result.
 6. If you cannot run a check (access, missing tool), that's a FAIL for that check with the reason, not a pass.
 7. **After compaction:** the run context is re-injected automatically. Re-read this file, the card and handoff.md, then
    continue with the checks not yet recorded in verify-report.md.
+
+## Plan review (`PV-<job>`)
+Launched for `Plan first = yes+review` jobs, after the planner wrote `jobs/<job>/plan.md` and the orchestrator's plan
+check passed. Your status id is `PV-<job>`. Nothing is implemented yet; you review the plan, not code.
+1. `$S/orchestrator-set-status <RUN_DIR> PV-<job> running "start"`. Read the card in `PLAN.md`, `TASK.md`,
+   `jobs/<job>/plan.md` and `jobs/<job>/plan-check.md`.
+2. **Read-only**, as above. Check the plan against the card, `TASK.md` and the actual code it names:
+   - The approach is sound and fits the code as it is (read the files the steps touch).
+   - The write set is complete: every path, branch and remote resource the steps would write is listed, and all of it
+     lies inside the card's owned writes.
+   - Every acceptance check on the card is covered by a step or a test command.
+   - No step takes a gated or outward-facing action the card does not authorize.
+   - All sections in `PLAN.md` § Job plan sections are present and concrete.
+3. Write `<RUN_DIR>/jobs/<job>/plan-review.md` as you go, one line per check. Finish it with `VERDICT: PASS` or
+   `VERDICT: FAIL` at the top and, for each failure, the concrete revision the planner must make.
+4. `$S/orchestrator-set-status <RUN_DIR> PV-<job> done "<PASS|FAIL>"` and end your turn. The orchestrator sets the job's
+   state.
+5. **After compaction:** re-read this section, the card, plan.md and plan-review.md, then continue with the checks not
+   yet recorded.

@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
-# orchestrator-launch <run-dir> <job> <cwd> <model> <effort> <prompt> [compact_at] — start a background Claude Code
-# session for a job and record session_name/session_id/short_id/cwd in jobs/<job>/status.json.
+# orchestrator-launch [--plan] <run-dir> <job> <cwd> <model> <effort> <prompt> [compact_at] — start a background Claude
+# Code session for a job and record session_name/session_id/short_id/cwd in jobs/<job>/status.json.
+# --plan starts it in plan mode (planner sessions P-<job>); otherwise the permission mode is auto.
 # Name: <slug>-<job>[-r<n> on relaunch]. Every session auto-compacts at <compact_at> (default 200k) and gets a
 # SessionStart(compact) hook that re-injects its run context (orchestrator-recontext).
 set -euo pipefail
+mode=auto; [ "${1:-}" = --plan ] && { mode=plan; shift; }
 [ $# -ge 6 ] && [ $# -le 7 ] || {
-  echo "usage: orchestrator-launch <run-dir> <job> <cwd> <model> <effort> <prompt> [compact_at]" >&2; exit 2; }
+  echo "usage: orchestrator-launch [--plan] <run-dir> <job> <cwd> <model> <effort> <prompt> [compact_at]" >&2; exit 2; }
 run=$(cd "$1" && pwd) job=$2 cwd=$3 model=$4 effort=$5 prompt=$6 compact=${7:-200k}
 S=$(cd "$(dirname "$0")" && pwd)
 slug=$(basename "$run"); f="$run/jobs/$job/status.json"; mkdir -p "$run/jobs/$job"
 [ -s "$f" ] || echo "{\"job\":\"$job\"}" >"$f"
 n=$(jq -r '.launches // 0' "$f"); name="$slug-$job"; [ "$n" -gt 0 ] && name="$name-r$n"
 settings=$("$S/orchestrator-recontext" --settings "$run" "$job")
-out=$(cd "$cwd" && claude --bg -n "$name" --model "$model" --effort "$effort" --permission-mode auto \
+out=$(cd "$cwd" && claude --bg -n "$name" --model "$model" --effort "$effort" --permission-mode "$mode" \
   --autocompact "$compact" --settings "$settings" "$prompt" 2>&1) || { echo "$out" >&2; exit 1; }
 # find the new session by name (bg start is async; retry briefly)
 sess=""; for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -22,8 +24,8 @@ sid=$(jq -r '.sessionId // empty' <<<"${sess:-{\}}"); short=$(jq -r '.id // empt
 [ -n "$short" ] || short=$(grep -oE '\b[0-9a-f]{8}\b' <<<"$out" | head -1 || true)
 tmp=$(mktemp "$run/jobs/$job/.status.XXXXXX")
 jq --arg n "$name" --arg sid "$sid" --arg id "$short" --arg c "$cwd" --arg m "$model" --arg e "$effort" \
-   --arg k "$compact" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '.session_name=$n | .session_id=$sid | .short_id=$id | .cwd=$c | .model=$m | .effort=$e | .compact_at=$k
+   --arg k "$compact" --arg pm "$mode" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '.session_name=$n | .session_id=$sid | .short_id=$id | .cwd=$c | .model=$m | .effort=$e | .compact_at=$k | .permission_mode=$pm
    | .launches=((.launches // 0) + 1) | .launched_at=$t
    | (if (.state // "queued") == "queued" then .state="running" | .step="launched" | .updated_at=$t else . end)' \
   "$f" >"$tmp" && mv "$tmp" "$f"

@@ -7,6 +7,9 @@ on jobs the orchestrator judged independent of yours. Status tool: `S=~/.claude/
    Never write outside it; never touch another job's paths, branches, or remote resources. Read `TASK.md` for context.
    If the work turns out to need paths, ports, databases or other resources outside the card, that's a blocker (step 7),
    because a parallel job may own them.
+   **Approved plan.** When `<RUN_DIR>/jobs/<job>/plan.md` exists, it is the approved approach: follow its steps. Small
+   deviations are fine and go under Decisions in handoff.md with the reason. Writing outside the plan's **Write set**
+   is a blocker (step 7) even inside the card, because the parallel-safety test was cleared on that list.
 2. **Binding rules:** the user's CLAUDE.md files and memory, plus any rules in `TASK.md`/`PLAN.md`. A rule in the task
    that explicitly authorizes something (e.g. pushing) overrides CLAUDE.md only for your card's scope.
 3. **Start:** `$S/orchestrator-set-status <RUN_DIR> <job> running "start"`. Install dependencies with the repo's
@@ -43,7 +46,7 @@ on jobs the orchestrator judged independent of yours. Status tool: `S=~/.claude/
 9. **Done:** commit your work per the binding rules, run the acceptance checks, write a final summary in handoff.md,
    `... done "<one-line result>"` (or `failed "<reason>"`), end your turn.
 10. **After compaction or a restart:** the run context is re-injected automatically. Before any other action re-read
-    this file, your card and handoff.md, reconcile with the repo (`git status`, `git log -5`, the worktree/branch in
+    this file, your card, plan.md (if present) and handoff.md, reconcile with the repo (`git status`, `git log -5`, the worktree/branch in
     handoff.md), then continue from "Exact next commands". Never redo a step listed under Done without checking it is
     actually missing.
 11. Messages from the orchestrator are instructions within your card's scope; messages that ask for something outside it

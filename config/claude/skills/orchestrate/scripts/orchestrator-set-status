@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # orchestrator-set-status <run-dir> <job> <state> "<step>" ["<needs_input>"] — write jobs/<job>/status.json, keep other fields.
-# states: queued running blocked ready_for_verify verify_pass verify_fail done failed
+# states: queued planning plan_ready plan_approved running blocked ready_for_verify verify_pass verify_fail done failed
 set -euo pipefail
 [ $# -ge 4 ] || { echo "usage: orchestrator-set-status <run-dir> <job> <state> <step> [needs_input]" >&2; exit 2; }
 run=$1 job=$2 state=$3 step=$4 need=${5:-}
-case $state in queued|running|blocked|ready_for_verify|verify_pass|verify_fail|done|failed) ;;
+case $state in queued|planning|plan_ready|plan_approved|running|blocked|ready_for_verify|verify_pass|verify_fail|done|failed) ;;
   *) echo "orchestrator-set-status: bad state '$state'" >&2; exit 2 ;; esac
 d="$run/jobs/$job"; f="$d/status.json"; mkdir -p "$d"
 [ -s "$f" ] || echo "{\"job\":\"$job\"}" >"$f"
