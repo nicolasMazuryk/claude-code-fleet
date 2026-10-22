@@ -90,7 +90,8 @@ manual approval. The policy tests keep `tag:cloud` denied on 22/443/60001 to the
 1. Merge and apply as in §1 (keep anything live that is not in the file; delete a leftover `tag:egress` and its grant).
 2. Exit nodes: macbook `tailscale set --advertise-exit-node`; iPhone Tailscale app → Exit Node → **Run as Exit Node**; cloud is
    advertised by the oci bootstrap; static-ip already is.
-3. Switching: `browser-router exit-node use <node|none> --for self` replaces the `staticipup`/`staticipdown` aliases
+3. Switching: `browser-router exit-node use <cloud|none> [--for self]` covers cloud; static-ip, macbook and iPhone are switched in
+   the Tailscale app or with `tailscale set --exit-node=<node>`. It replaces the `staticipup`/`staticipdown` aliases
    (remove them from `~/.zshrc`; `config/mac/zshrc.captured` no longer carries them). A node acting as an exit node cannot use one.
 
 ## 7. Route the Mac or iPhone through cloud
@@ -100,5 +101,5 @@ manual approval. The policy tests keep `tag:cloud` denied on 22/443/60001 to the
 - **Trade-off (Mac):** tailscale refuses an exit node while the Mac advertises itself as one. The command therefore runs one
   `tailscale set --advertise-exit-node=false --exit-node=cloud`, records the suspension, and warns that the
   macbook exit node is unavailable. `use none --for self` restores `--advertise-exit-node=true`.
-  `browser-router exit-node status` shows the self exit node and whether advertising is suspended.
+  `tailscale status` shows the active exit node and whether the Mac still advertises itself.
 - `cloud` is valid only `--for self`.

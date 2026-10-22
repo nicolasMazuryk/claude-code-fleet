@@ -41,7 +41,7 @@ Leased Chrome profiles (`~/.chrome-agent-profiles/<profile>`) are separate from 
 A host with no `sites.yaml` entry matches only `"*"`. The agent classifies the task and routes with `--identity anonymous|personal`.
 - Anonymous (no login, none of the user's own data, read-only public pages): runs on the `"*"` default.
 - Personal (acting as the user or on the user's data or money, or any other risk), or `--identity` missing: `route` is blocked (exit 7) and lists the configuration choices. A human picks one
-  (tier vault|shield, executor, profile, optional `--egress-pin`, `--caps`, `--logged-in`), then
+  (tier vault|shield, executor, profile, optional `--isp-pin`, `--caps`, `--logged-in`), then
   `browser-router site add <host> --tier … --executor …` writes the entry to the registry file the symlink points at
   (`~/Documents/browser-router/config/sites.yaml`). Commit that change in the browser-router repo, run `cc-sync-settings`
   to mirror it to cloud, then route again. Background sessions stop with "needs input: site config for <host>".
@@ -51,14 +51,17 @@ Design: [ADR 0007](../decisions/0007-browser-router-control-plane.md). Browser U
 Polish ISP proxy, so a site sees one stable Polish residential IP. Until that proxy exists, use Browser Use's own `pl`
 residential proxy. There is no self-hosted gateway on cloud and no public ingress.
 1. `[H]` Buy a persistent (static) Polish ISP proxy and note its URL (`scheme://user:pass@host:port`).
-2. `[H]` `browser-router proxy set <url>` on each host that starts Browser Use sessions. The URL is a secret: it is stored by
-   browser-router (never in git, never on argv in logs). The command prompts or reads stdin, per `browser-router proxy --help`.
-3. Check: `browser-router proxy status` (configured, no credentials shown) and `browser-router proxy probe` (exits through
-   the proxy and prints the IP and country; expect a Polish residential IP, the same on every run).
+2. `[H]` On each host that starts Browser Use sessions, enter the URL on stdin: `browser-router proxy set -` (paste the URL,
+   then Ctrl-D). The URL is a secret and `proxy set <url>` would put it on argv (shell history, `ps`), so use `-`. It is stored
+   in browser-router's state (`proxy.json`, 0600), never in git; output never shows credentials. Setting it clears the site pins.
+3. Check: `browser-router proxy status` (the redacted URL; without a proxy it prints
+   `unset (Browser Use residential pl, IP not stable)`) and `browser-router proxy probe` (prints `isp proxy ip <ip>`; the IP
+   must be the same on every run). For a site with `isp_pin`, `browser-router proxy probe --site <host>` records or checks
+   that site's pin (exit 5 on mismatch); a pinned site needs a new `shield login` after the proxy is set.
 4. Browser Use API key: Mac Keychain `cc-browser-use-api-key`; `./install.sh mac` and `./install.sh cloud` write it to
    `~/.config/browser-router/env` (0600, key `BROWSER_USE_API_KEY`) via `bin/browser-router-env-push`. A missing item skips
    the key with a log line; re-run both installs after adding it.
-- Exit nodes for the Mac itself (not for Browser Use): `browser-router exit-node use <macbook|iphone|cloud|static-ip|none> --for self`
+- Exit nodes for the Mac itself (not for Browser Use): `browser-router exit-node use <cloud|none> [--for self]`; macbook, iPhone and static-ip are switched in the Tailscale app or with `tailscale set --exit-node=…`
   ([tailscale.md](tailscale.md) §7).
 
 ## Decommission the egress gateway (human, once; do not script)
