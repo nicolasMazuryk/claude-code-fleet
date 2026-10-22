@@ -46,58 +46,37 @@ A host with no `sites.yaml` entry matches only `"*"`. The agent classifies the t
   (`~/Documents/browser-router/config/sites.yaml`). Commit that change in the browser-router repo, run `cc-sync-settings`
   to mirror it to cloud, then route again. Background sessions stop with "needs input: site config for <host>".
 
-## Egress gateway (Browser Use through our IP)
-Design: [ADR 0007](../decisions/0007-browser-router-control-plane.md) (exception for TCP 8443). Files: `config/cloud/egress/`
-(`compose.yaml`, `guard.nft`, `guard.sh`, `gost.yaml`), units `cc-egress.service`, `cc-egress-bytes.{service,timer}`.
-The egress sidecar runs on cloud only; on the Mac, browser-router reaches it over `ssh cloud docker exec egress tailscale …` (Mac→cloud only; `BROWSER_ROUTER_EGRESS_SSH` overrides, empty forces local).
-Order matters; `[H]` = human step.
-1. `[H]` oci repo, G3: apply foundation then core, `make secret-put` for `core-secret-egress-proxy-password` and
-   `core-secret-browser-use-api-key`, `make host-sync VM=cloud` (opens 8443 on the host, enables IP forwarding and
-   `--advertise-exit-node`).
-2. `[H]` Tailscale admin: apply the updated `config/tailscale/policy.hujson` ([tailscale.md](tailscale.md) §6); create an OAuth
-   client or auth key tagged `tag:egress` for the first join.
-3. `[H]` Mac Keychain, once: `security add-generic-password -U -s cc-egress-proxy-password -a "$USER" -w` (the same password
-   as in Vault) and, for the first join, `security add-generic-password -U -s cc-egress-ts-authkey -a "$USER" -w`.
-4. `./install.sh cloud` delivers both to `cloud:~/.config/egress/` over the Mac-opened ssh (`bin/egress-secrets-push`;
-   the proxy password is `gost-auth`: `browseruse <password>`, 0400, uid 10001), installs the units and starts
-   `cc-egress` once `gost-auth` exists. The cloud cannot read that Vault secret (IAM option B); re-run the install after
-   rotating it, then `ssh cloud sudo systemctl restart cc-egress`.
-   The same run writes the browser-router env file `~/.config/browser-router/env` (0600, `KEY=VALUE`: `BROWSER_USE_API_KEY`,
-   `BROWSER_ROUTER_EGRESS_HOST/PORT/USER/PASSWORD`) on cloud (`bin/egress-secrets-push`) and, via `./install.sh mac`, on the Mac.
-   Keychain items: `cc-browser-use-api-key`, `cc-egress-proxy-password`, `cc-egress-public-host` (the core-nlb public IP or DNS
-   name, written at G3: `security add-generic-password -U -s cc-egress-public-host -a "$USER" -w`). The port is 8443 and the user
-   `browseruse`. A missing item skips its key with a log line; re-run both installs after adding it.
-5. Exit node: `browser-router exit-node use <macbook|iphone|cloud|static-ip|none> --for egress` (replaces the old
-   `staticipup`/`staticipdown` aliases). A node acting as an exit node cannot use one at the same time.
-- Guard rules: the first rule accepts (and counts) gost's reply packets to clients; the drop rules after it apply to
-  connections gost opens. Without that exemption no response would reach Browser Use.
-- TLS: gost serves a publicly trusted Let's Encrypt certificate for `egress.mazuryktech.com` from
-  `cloud:~/.config/egress/tls/{cert.pem,key.pem}` (mounted at `/etc/gost/tls`). The Mac issues and renews it with
-  `bin/egress-cert-renew` (lego, ACME DNS-01 through Cloudflare; the DNS-edit token never leaves the Mac, cloud only
-  receives the two files) and restarts `egress-gost-1` when the certificate changes. lego renews on the CA's ARI hint,
-  falling back to 1/3 of the lifetime left. The launchd agent `cc-orchestrator.claude.egress-cert` (installed by
-  `./install.sh mac`) runs it daily at 10:30; `/tmp/egress-cert-renew.log` holds its output. Without a readable
-  certificate the gost entrypoint drops the `tls:` block and serves a self-signed one (`docker logs egress-gost-1`
-  and `journalctl -u cc-egress` show a warning); clients that verify certificates then fail until the first issuance.
-  `bin/egress-cert-check` (with `cc-egress-bytes`, every 10 min) pushes through `agent-push` once per certificate when
-  less than 1/3 of its lifetime is left, which means the Mac's renewal stopped working.
-  First issuance `[H]`: create a Cloudflare API token (Zone, DNS, Edit on `mazuryktech.com` only), store it with
-  `security add-generic-password -U -s cc-cf-acme-dns-token -a "$USER" -w`, `brew install lego`, `./install.sh cloud`
-  (creates the `tls` dir), then run `bin/egress-cert-renew` once. Staging dry run:
-  `EGRESS_ACME_SERVER=letsencrypt-staging EGRESS_ACME_DIR=/tmp/acme-staging bin/egress-cert-renew`.
-- Daily bytes: `EGRESS_DAILY_BYTES` (default 5 GiB) in `cc-egress-bytes.service`; the alert is a push via `agent-push`, only when you are away.
-- DNS: gost resolves CONNECT targets itself through the `egress-dns` resolver in `gost.yaml` (DNS-over-HTTPS to 1.1.1.1 and
-  9.9.9.9, tcp 443). Docker's embedded resolver (127.0.0.11) is loopback, which the guard drops for uid 10001, and the guard
-  has no loopback exemption. A `lookup … 127.0.0.11:53 … operation not permitted` in `docker logs egress-gost-1` means the
-  service lost its `resolver:` line.
-- lego resolvers: `bin/egress-cert-renew` passes `--dns.resolvers 1.1.1.1:53,8.8.8.8:53` (override with
-  `EGRESS_DNS_RESOLVERS`), because the Mac's MagicDNS (100.100.100.100) times out on the `_acme-challenge` propagation check.
-- Bought ISP proxy: uncomment the `chains:` block and `chain: upstream` in `gost.yaml`; credentials never go in git.
-- Routing: tailscale runs with kernel networking (`TS_USERSPACE=false`), so an exit node (`browser-router exit-node use <n> --for egress`)
-  carries gost's traffic and DoH through table 52. Replies to inbound :8443 clients leave via eth0 (`fwmark 0x2/0x2 lookup main`
-  at priority 5100, before tailscale's rules at 5210-5270); with no exit node selected everything leaves via eth0 (cloud IP).
-- Logs: `docker logs egress-gost-1`; `journalctl -u cc-egress`. If tailscale restarts alone, `sudo systemctl restart cc-egress`
-  (gost and the guard share its namespace).
+## Browser Use proxy (Polish ISP proxy)
+Design: [ADR 0007](../decisions/0007-browser-router-control-plane.md). Browser Use browsers go direct through a persistent
+Polish ISP proxy, so a site sees one stable Polish residential IP. Until that proxy exists, use Browser Use's own `pl`
+residential proxy. There is no self-hosted gateway on cloud and no public ingress.
+1. `[H]` Buy a persistent (static) Polish ISP proxy and note its URL (`scheme://user:pass@host:port`).
+2. `[H]` `browser-router proxy set <url>` on each host that starts Browser Use sessions. The URL is a secret: it is stored by
+   browser-router (never in git, never on argv in logs). The command prompts or reads stdin, per `browser-router proxy --help`.
+3. Check: `browser-router proxy status` (configured, no credentials shown) and `browser-router proxy probe` (exits through
+   the proxy and prints the IP and country; expect a Polish residential IP, the same on every run).
+4. Browser Use API key: Mac Keychain `cc-browser-use-api-key`; `./install.sh mac` and `./install.sh cloud` write it to
+   `~/.config/browser-router/env` (0600, key `BROWSER_USE_API_KEY`) via `bin/browser-router-env-push`. A missing item skips
+   the key with a log line; re-run both installs after adding it.
+- Exit nodes for the Mac itself (not for Browser Use): `browser-router exit-node use <macbook|iphone|cloud|static-ip|none> --for self`
+  ([tailscale.md](tailscale.md) §7).
+
+## Decommission the egress gateway (human, once; do not script)
+The self-hosted egress gateway (gost, nftables guard, tailscale sidecar, Mac certificate renewal) is not used. After this
+change is merged and `./install.sh mac` and `./install.sh cloud` have run, retire the live parts by hand:
+1. Cloud: `ssh cloud 'sudo systemctl disable --now cc-egress.service cc-egress-bytes.timer'`, then
+   `ssh cloud 'docker compose -p egress down'`; optionally remove `/etc/systemd/system/cc-egress*.service`,
+   `cc-egress-bytes.timer`, `sudo systemctl daemon-reload`, and `~/.config/egress`, `~/.local/state/egress`.
+2. Mac: `launchctl bootout gui/$(id -u)/cc-orchestrator.claude.egress-cert`, then delete
+   `~/Library/LaunchAgents/cc-orchestrator.claude.egress-cert.plist` and
+   `~/.local/libexec/cc-orchestrator/egress-cert-renew`; Keychain: delete `cc-egress-proxy-password`,
+   `cc-egress-ts-authkey`, `cc-egress-public-host`, `cc-cf-acme-dns-token`; optionally `brew uninstall lego`.
+3. OCI Vault: remove `core-secret-egress-proxy-password` (and the egress join key if one was stored).
+4. Tailscale admin: apply the updated `config/tailscale/policy.hujson` ([tailscale.md](tailscale.md) §6) and delete the
+   machine `egress`.
+5. `oci-free-tier-platform`: close TCP 8443 (NLB listener, NSG rule, host rule), drop the `egress.mazuryktech.com`
+   record, and revert the IP-forwarding/exit-node bits only if nothing else uses them (cloud stays an exit node for the
+   Mac). That is a terraform change in that repo (job J27, its own PR); apply is human.
 
 ## Troubleshooting
 | Symptom | Cause / fix |
@@ -106,9 +85,5 @@ Order matters; `[H]` = human step.
 | lease `chrome_missing`, `chrome_not_ready`, `forward_failed` | Chrome not installed / profile locked by a running Chrome / ControlMaster socket gone (relay reconnecting) |
 | `no_free_port` | 100 leases held: release stale ones (`~/.local/state/browser-router/relay/leases/`) |
 | `browser-relay-cloud sum` fails | the synced settings lack the `browser-router-relay` group: `./install.sh mac` then `cc-sync-settings` |
-| clients connect but get no reply | the reply-routing rule is missing: `docker exec egress-guard-1 ip rule show` must list `fwmark 0x2/0x2 lookup main`; restart `egress-guard-1` |
-| exit node selected but the probe still shows the cloud IP | tailscale runs in userspace mode: `docker exec egress ip link show tailscale0` must exist and `ip route show table 52` must list a default route (compose sets `TS_USERSPACE: "false"`); with no exit node selected traffic leaves via eth0 (cloud IP) |
-| `exit-node use … --for egress`: `No such container: egress` | the tailscale service is named `egress` (compose `container_name`); `docker ps` must list it, otherwise `sudo systemctl restart cc-egress` |
 | `browser-router: Permission denied` | `dist/cli.js` lost its exec bit: `./install.sh cloud` (step_browser sets it) |
-| gost down, guard unhealthy | `docker logs egress-guard-1` (nft error); gost stays down by design (fail closed) |
 | timer not active | browser-router not installed on cloud: `./install.sh cloud` |

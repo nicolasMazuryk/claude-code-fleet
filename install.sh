@@ -19,17 +19,15 @@
 #   zshrc       one sourcing line for the snippet (am, ac); existing aliases untouched
 #   ssh         Host cloud appended to ~/.ssh/config if no Host cloud exists
 #   cmux        ~/.config/cmux/cmux.json if absent or still cmux's all-comments template
-#   relay       copies of bin/agent-relay, agent-present, browser-up, browser-relay-handler, egress-cert-renew in ~/.local/libexec/cc-orchestrator/ (launchd can't
+#   relay       copies of bin/agent-relay, agent-present, browser-up, browser-relay-handler in ~/.local/libexec/cc-orchestrator/ (launchd can't
 #               read ~/Documents, TCC); the relay LaunchAgent is restarted when they change
-#   launchd     cc-orchestrator.claude.agents and .relay (sound relay + presence beacon), bootstrapped; .egress-cert runs the
-#               libexec copy of bin/egress-cert-renew daily (lego cert for the egress gateway → cloud ~/.config/egress/tls)
+#   launchd     cc-orchestrator.claude.agents and .relay (sound relay + presence beacon), bootstrapped
 #
 # cloud, from the Mac (--dry-run: show what would change, write nothing on cloud except a staging copy in ~/.cache):
 #   sync        rsync this checkout (tracked + new files, not gitignored; not tests/ prompts/) → cloud:~/claude-code-fleet
 #               (--delete)
 #   ntfy        ~/.config/agent-push/topic copied to cloud (0600) when missing or different
-#   egress      bin/egress-secrets-push: Keychain cc-egress-proxy-password / cc-egress-ts-authkey → cloud ~/.config/egress
-#               over ssh stdin (cloud cannot read the proxy password from Vault; ADR 0007)
+#   router-env  bin/browser-router-env-push: Keychain cc-browser-use-api-key → cloud ~/.config/browser-router/env (0600)
 #   cloud-local ~/claude-code-fleet/install.sh cloud-local on cloud (below)
 #   settings    cc-sync-settings (expect "4 macOS-only hook handler(s) relayed")
 # cloud-local (on cloud as agent; sudo is passwordless there):
@@ -40,11 +38,8 @@
 #   legacy      oci's agent@<repo> units stopped + disabled, agent@.service, /usr/local/bin/fleet and the
 #               tmux -L agent-<repo> servers removed (one RC server per folder; ADR 0002)
 #   browser     browser-router cloned + built (~/.local/share/browser-router, linked into ~/.local/bin), agent-browser pinned
-#   units       cc-rc@.service, cc-agents.service, browser-router-vault-drain.{service,timer}, cc-egress.service,
-#               cc-egress-bytes.{service,timer} → /etc/systemd/system (the drain timer is enabled once browser-router is
-#               installed); rsyslog rule → /var/log/core/agent.log
-#   egress      ~/.config/egress (0700) and tailscale state dir; cc-egress.service + cc-egress-bytes.timer enabled only
-#               once ~/.config/egress/gost-auth exists (delivered from the Mac by bin/egress-secrets-push)
+#   units       cc-rc@.service, cc-agents.service, browser-router-vault-drain.{service,timer}
+#               → /etc/systemd/system (the drain timer is enabled once browser-router is installed); rsyslog rule → /var/log/core/agent.log
 #   linger      loginctl enable-linger agent
 #   repos       clone missing config/cloud/repos.txt repos into /data/fleet (gh auth), repo-init --no-trust each
 #   agents      cc-agents.service enabled + started (Agent View, tmux session "fleet")
@@ -239,8 +234,8 @@ step_ntfy() {
 }
 
 step_router_env() { # ~/.config/browser-router/env (0600) from the Keychain; missing items are skipped, never fatal
-  if [ "$DRY" = 1 ]; then "$REPO/bin/egress-secrets-push" --local --dry-run || true; return 0; fi
-  local out; out=$("$REPO/bin/egress-secrets-push" --local) || true
+  if [ "$DRY" = 1 ]; then "$REPO/bin/browser-router-env-push" --local --dry-run || true; return 0; fi
+  local out; out=$("$REPO/bin/browser-router-env-push" --local) || true
   printf '%s\n' "$out"
   grep -q ' wrote ' <<<"$out" && changes=$((changes + 1))
   return 0
@@ -299,7 +294,7 @@ launchd_load() { # launchd_load <label> <plist> <changed 0|1>
 RELAY_CHANGED=0
 step_relay() { # launchd jobs can't read ~/Documents (TCC: "Operation not permitted"), so the relay runs from copies
   local d="$HOME/.local/libexec/cc-orchestrator" f before=$changes
-  for f in agent-relay agent-present browser-up browser-relay-handler egress-cert-renew; do
+  for f in agent-relay agent-present browser-up browser-relay-handler; do
     if [ -f "$d/$f" ] && cmp -s "$REPO/bin/$f" "$d/$f"; then continue; fi
     mkdir -p "$d"; cp "$REPO/bin/$f" "$d/$f.tmp"; chmod 755 "$d/$f.tmp"; mv "$d/$f.tmp" "$d/$f"
     did relay "copied bin/$f → $d/$f"
@@ -310,13 +305,13 @@ step_relay() { # launchd jobs can't read ~/Documents (TCC: "Operation not permit
 step_launchd() {
   local la="$HOME/Library/LaunchAgents" label tmp dst changed tmux_bin
   tmux_bin=$(command -v tmux || echo /opt/homebrew/bin/tmux)
-  for label in cc-orchestrator.claude.agents cc-orchestrator.claude.relay cc-orchestrator.claude.egress-cert; do
+  for label in cc-orchestrator.claude.agents cc-orchestrator.claude.relay; do
     dst="$la/$label.plist"; tmp=$(mktemp)
     sed "s#@HOME@#$HOME#g; s#@TMUX@#$tmux_bin#g" "$REPO/config/mac/launchd/$label.plist.tmpl" > "$tmp"
     plutil -lint "$tmp" >/dev/null || die "rendered $label plist is invalid"
     changed=0
     cmp -s "$tmp" "$dst" 2>/dev/null || { changed=1; install_file launchd "$tmp" "$dst" 644; }
-    case $label in *.relay|*.egress-cert) [ "$RELAY_CHANGED" = 1 ] && changed=1 ;; esac
+    case $label in *.relay) [ "$RELAY_CHANGED" = 1 ] && changed=1 ;; esac
     rm -f "$tmp"
     if [ "${CC_INSTALL_NO_LAUNCHD:-0}" = 1 ]; then say launchd "not loading $label (CC_INSTALL_NO_LAUNCHD)"; continue; fi
     launchd_load "$label" "$dst" "$changed"
@@ -490,8 +485,7 @@ step_browser_chromium() {
 
 step_units() {
   local reload=0 f
-  for f in cc-rc@.service cc-agents.service browser-router-vault-drain.service browser-router-vault-drain.timer \
-           cc-egress.service cc-egress-bytes.service cc-egress-bytes.timer; do
+  for f in cc-rc@.service cc-agents.service browser-router-vault-drain.service browser-router-vault-drain.timer; do
     root_file units "$REPO/config/cloud/systemd/$f" "$UNIT_DIR/$f" && reload=1
   done
   if [ "$reload" = 1 ] || [ "$changes" -gt 0 ]; then act units "systemctl daemon-reload" sudo_ systemctl daemon-reload; fi
@@ -509,21 +503,6 @@ step_units() {
     fi
   fi
   return 0
-}
-
-step_egress() { # the egress gateway stack: runs only once the Mac delivered the proxy password (bin/egress-secrets-push)
-  local d="$HOME/.config/egress" st="$HOME/.local/state/egress" u
-  for u in "$d" "$st" "$st/tailscale"; do
-    if [ -d "$u" ]; then continue; fi
-    act egress "create $u" sh -c "mkdir -p '$u' && chmod 700 '$u'"
-  done
-  if [ ! -d "$d/tls" ]; then act egress "create $d/tls (certificate dir, filled by the Mac's egress-cert-renew)" sh -c "mkdir -p '$d/tls' && chmod 755 '$d/tls'"; fi
-  if [ ! -e "$d/ts-authkey" ]; then act egress "create empty $d/ts-authkey" sh -c "umask 077 && : > '$d/ts-authkey'"; fi
-  if ! sudo_ test -s "$d/gost-auth" 2>/dev/null; then say egress "gost-auth not delivered: cc-egress stays off (run ./install.sh cloud from the Mac after adding the Keychain item)"; return 0; fi
-  for u in cc-egress.service cc-egress-bytes.timer; do
-    if systemctl is-enabled --quiet "$u" 2>/dev/null; then say egress "ok $u"
-    else act egress "enable + start $u" sudo_ systemctl enable --now "$u"; fi
-  done
 }
 
 step_linger() {
@@ -581,10 +560,10 @@ step_rc() {
 install_cloud_local() {
   [ "$(uname)" = Linux ] || [ "${CC_INSTALL_ANY_OS:-0}" = 1 ] || die "install.sh cloud-local runs on cloud (Linux)"
   LIVE=${CC_CLOUD_REPO:-$REPO}
-  BIN_SKIP="cc-capture cc-sync-settings cc-orchestrator-start agent-relay mac-remote-access browser-up browser-relay-handler egress-secrets-push egress-cert-renew"   # Mac-only (they read the Mac's ~/.claude / launchd / browsers)
+  BIN_SKIP="cc-capture cc-sync-settings cc-orchestrator-start agent-relay mac-remote-access browser-up browser-relay-handler browser-router-env-push"   # Mac-only (they read the Mac's ~/.claude / launchd / browsers)
   echo "install.sh cloud-local: $LIVE → $HOME$([ "$DRY" = 1 ] && echo ' (dry run)')"
   step_claude_bin; step_bin; step_path; step_config_cloud; step_bashrc_snippet; step_tmux
-  step_legacy; step_browser; step_units; step_egress; step_linger; step_repos; step_agents; step_rc
+  step_legacy; step_browser; step_units; step_linger; step_repos; step_agents; step_rc
   if [ "$changes" -eq 0 ]; then echo "install.sh cloud-local: no changes"
   else echo "install.sh cloud-local: $changes change(s)$([ "$DRY" = 1 ] && echo ' would be made')"; fi
 }
@@ -648,7 +627,7 @@ install_cloud() {
     fi
   else say ntfy "WARNING: no $topic on the Mac (run ./install.sh mac first); cloud pushes stay off"; fi
 
-  if [ "$dry" = 1 ]; then "$REPO/bin/egress-secrets-push" --dry-run; else "$REPO/bin/egress-secrets-push"; fi
+  if [ "$dry" = 1 ]; then "$REPO/bin/browser-router-env-push" --dry-run; else "$REPO/bin/browser-router-env-push"; fi
 
   if [ "$dry" = 1 ]; then
     ssh -o BatchMode=yes "$h" "CC_DRY_RUN=1 CC_CLOUD_REPO=\$HOME/claude-code-fleet bash ~/$dest/install.sh cloud-local"
