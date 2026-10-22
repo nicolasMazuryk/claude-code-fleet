@@ -237,6 +237,14 @@ step_ntfy() {
   unset v
 }
 
+step_router_env() { # ~/.config/browser-router/env (0600) from the Keychain; missing items are skipped, never fatal
+  if [ "$DRY" = 1 ]; then "$REPO/bin/egress-secrets-push" --local --dry-run || true; return 0; fi
+  local out; out=$("$REPO/bin/egress-secrets-push" --local) || true
+  printf '%s\n' "$out"
+  grep -q ' wrote ' <<<"$out" && changes=$((changes + 1))
+  return 0
+}
+
 ZSHRC_MARK='# cc-orchestrator: am, ac (managed by install.sh mac)'
 step_zshrc() {
   local z="$HOME/.zshrc"
@@ -318,7 +326,7 @@ install_mac() {
   [ "$(uname)" = Darwin ] || die "install.sh mac runs on macOS"
   echo "install.sh mac: $REPO → $HOME"
   step_tools; step_bin; step_config; step_tmux; step_claude; step_settings
-  step_ntfy; step_zshrc; step_ssh; step_cmux; step_relay; step_launchd
+  step_ntfy; step_router_env; step_zshrc; step_ssh; step_cmux; step_relay; step_launchd
   if [ "$changes" -eq 0 ]; then echo "install.sh mac: no changes"; else echo "install.sh mac: $changes change(s)"; fi
 }
 

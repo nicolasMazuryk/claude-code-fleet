@@ -68,6 +68,7 @@ Each phase's PR records the output of its rows. `make doctor` (`bin/cc-doctor`: 
 | 12c | Egress | (also proves gost's replies reach the client: the `ct direction reply` exemption) from a host outside the tailnet: `curl -sx https://browseruse:<pw>@<core-nlb public IP>:8443 -k https://ifconfig.me`; then the same with `http://169.254.169.254/`, `http://10.0.0.1/`, `https://example.com:8080/`; without credentials | the first returns the active exit node's IP; the next three are refused; no credentials → `407` | 7 |
 | 12d | Egress | `ssh cloud 'sudo systemctl start cc-egress-bytes.service; cat ~/.local/state/egress/bytes.state'` with `EGRESS_DAILY_BYTES` lowered | state line `<date> <counter> <today> <alerted>`; past the limit one ntfy push when away | 7 |
 | 12e | Egress | `ssh cloud 'sudo ss -ltn sport = :8443'` and the OCI NSG (oci `make check-iam`) | only 8443 is added to the public side; `check-iam` OK | 7 |
+| 12f | Egress | `stat -f %Lp ~/.config/browser-router/env; cut -d= -f1 ~/.config/browser-router/env; ssh cloud 'stat -c %a ~/.config/browser-router/env; cut -d= -f1 ~/.config/browser-router/env'` (after `./install.sh mac` and `./install.sh cloud`) | both files `600` with keys `BROWSER_USE_API_KEY`, `BROWSER_ROUTER_EGRESS_HOST/PORT/USER/PASSWORD` (a key is absent only when its Keychain item is); re-running either install reports `ok` | 7 |
 
 ## Check once (spec §10)
 

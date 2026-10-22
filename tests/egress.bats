@@ -128,3 +128,58 @@ push_setup() {
 @test "the proxy password is never read from Vault by any egress file" {
   ! grep -rnE 'core-secret-egress-proxy-password|vault_get' "$E" "$REPO/bin/egress-secrets-push" "$REPO/bin/egress-bytes-alert"
 }
+
+# --- browser-router env file (J11) ------------------------------------------------------------------------------------
+env_setup() {
+  push_setup
+  printf 'bu-key-123' > "$FAKE_KEYCHAIN/cc-browser-use-api-key"
+  printf '203.0.113.7' > "$FAKE_KEYCHAIN/cc-egress-public-host"
+  F="$HOME/.config/browser-router/env"
+  mode() { stat -f %Lp "$1" 2>/dev/null || stat -c %a "$1"; }
+}
+
+@test "egress-secrets-push writes the cloud env file 0600 with all keys, then changes nothing" {
+  env_setup
+  run "$REPO/bin/egress-secrets-push"
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  [ "$(mode "$F")" = 600 ]
+  [ "$(sort "$F")" = "$(printf '%s\n' BROWSER_ROUTER_EGRESS_HOST=203.0.113.7 BROWSER_ROUTER_EGRESS_PASSWORD=s3cret-pw BROWSER_ROUTER_EGRESS_PORT=8443 BROWSER_ROUTER_EGRESS_USER=browseruse BROWSER_USE_API_KEY=bu-key-123 | sort)" ]
+  for v in bu-key-123 s3cret-pw 203.0.113.7; do [[ "$output" != *"$v"* ]]; done
+  run "$REPO/bin/egress-secrets-push"
+  [[ "$output" == *"ok cloud browser-router env"* ]] && [[ "$output" != *"wrote cloud"* ]]
+}
+
+@test "egress-secrets-push --local writes the Mac env file 0600; --dry-run writes nothing" {
+  env_setup
+  run "$REPO/bin/egress-secrets-push" --local --dry-run
+  [[ "$output" == *"would write the local"* ]]; [ ! -e "$F" ]
+  run "$REPO/bin/egress-secrets-push" --local
+  [ "$status" -eq 0 ]; [ "$(mode "$F")" = 600 ]
+  grep -qx 'BROWSER_USE_API_KEY=bu-key-123' "$F"
+  [ ! -e "$HOME/.config/egress/gost-auth" ]
+  [[ "$output" != *bu-key-123* ]]
+}
+
+@test "env file: a missing Keychain item skips its key with a log line; no item at all writes no file" {
+  env_setup
+  rm "$FAKE_KEYCHAIN/cc-egress-public-host"
+  run "$REPO/bin/egress-secrets-push" --local
+  [ "$status" -eq 0 ]; [[ "$output" == *"skip BROWSER_ROUTER_EGRESS_HOST"* ]]
+  ! grep -q EGRESS_HOST "$F"; grep -q EGRESS_PASSWORD "$F"
+  rm -f "$F" "$FAKE_KEYCHAIN"/*
+  run "$REPO/bin/egress-secrets-push" --local
+  [ "$status" -eq 0 ]; [ ! -e "$F" ]
+}
+
+@test "env file: no secret value appears on any argv (ssh/security/shasum calls)" {
+  env_setup
+  cat > "$BATS_TEST_TMPDIR/ssh-spy" <<SPY
+#!/bin/bash
+echo "\$*" >> "$BATS_TEST_TMPDIR/argv"
+exec "$REPO/tests/fakes/egress/ssh" "\$@"
+SPY
+  chmod +x "$BATS_TEST_TMPDIR/ssh-spy"; mkdir -p "$BATS_TEST_TMPDIR/spy"; cp "$BATS_TEST_TMPDIR/ssh-spy" "$BATS_TEST_TMPDIR/spy/ssh"
+  PATH="$BATS_TEST_TMPDIR/spy:$PATH" run "$REPO/bin/egress-secrets-push"
+  [ "$status" -eq 0 ]; [ -s "$BATS_TEST_TMPDIR/argv" ]
+  ! grep -E 'bu-key-123|s3cret-pw|203\.0\.113\.7' "$BATS_TEST_TMPDIR/argv"
+}
