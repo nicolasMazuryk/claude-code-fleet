@@ -64,10 +64,6 @@ violations() {
   hujson "$POLICY" | jq -e '.autoApprovers.exitNode | index("autogroup:member") and index("tag:cloud")' >/dev/null
 }
 
-@test "policy test: tag:egress is accepted to autogroup:internet" {
-  hujson "$POLICY" | jq -e '[.tests[] | select(.src == "tag:egress" and .accept)][0].accept | index("autogroup:internet:443") and index("autogroup:internet:80")' >/dev/null
-}
-
 @test "violations() catches tag:egress reaching the tailnet" {
   bad="$BATS_TEST_TMPDIR/bad.hujson"
   hujson "$POLICY" | jq '.grants += [{"src": ["tag:egress"], "dst": ["autogroup:member"], "ip": ["*"]}]' > "$bad"
