@@ -26,8 +26,8 @@ rules() { grep -E '^[[:space:]]*meta skuid' "$E/guard.nft" | sed -E 's/^[[:space
 @test "gost runs as the uid the nftables rules match" {
   uid=$(grep -oE 'user: "[0-9]+' "$E/compose.yaml" | grep -oE '[0-9]+')
   [ "$uid" = 10001 ]
-  [ "$(rules | grep -c "meta skuid $uid ")" -eq 4 ]
-  [ "$(rules | wc -l | tr -d ' ')" -eq 4 ]
+  [ "$(rules | grep -c "meta skuid $uid ")" -eq 5 ]
+  [ "$(rules | wc -l | tr -d ' ')" -eq 5 ]
 }
 
 @test "guard.nft carries the G2 ruleset: exact sets, skuid match, drop" {
@@ -36,12 +36,16 @@ rules() { grep -E '^[[:space:]]*meta skuid' "$E/guard.nft" | sed -E 's/^[[:space
   grep -qxF 'meta skuid 10001 ip6 daddr { ::1, fc00::/7, fe80::/10, ::ffff:0:0/96 } drop' <<<"$r"
   grep -qxF 'meta skuid 10001 tcp dport != { 80, 443 } drop' <<<"$r"
   grep -qxF 'meta skuid 10001 counter name "egress_bytes"' <<<"$r"
+  grep -qxF 'meta skuid 10001 ct direction reply counter name "egress_bytes" accept' <<<"$r"
   # tailscaled's own traffic is never matched: every rule in the output filter chain names the skuid
   [ "$(awk '/chain output \{/{f=1;next} f&&/^\t\}/{f=0} f&&/^\t\t[a-z]/&&!/^\t\ttype /' "$E/guard.nft" | grep -vc 'meta skuid 10001')" -eq 0 ]
 }
 
-@test "guard.nft: the drop rules come before the counter, and the reply-routing marks are in place" {
-  awk '/skuid 10001 counter/{c=NR} /drop$/{d=NR} END{exit !(d && c && d < c)}' "$E/guard.nft"
+@test "guard.nft: replies to inbound connections are accepted before the drops; the open-connection counter follows them" {
+  awk '/ct direction reply .*accept$/{a=NR} /drop$/{if(!d)d=NR; l=NR} /skuid 10001 counter name/{c=NR} END{exit !(a && d && a < d && l < c)}' "$E/guard.nft"
+}
+
+@test "guard.nft: the reply-routing marks are in place" {
   grep -q 'iifname "eth0" tcp dport 8443 ct mark set ct mark | 0x2' "$E/guard.nft"
   grep -q 'ct mark & 0x2 == 0x2 meta mark set meta mark | 0x2' "$E/guard.nft"
   grep -q "fwmark 0x2/0x2 lookup main priority 5100" "$E/guard.sh"

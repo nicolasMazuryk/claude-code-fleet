@@ -41,6 +41,8 @@ Order matters; `[H]` = human step.
    rotating it, then `ssh cloud sudo systemctl restart cc-egress`.
 5. Exit node: `browser-router exit-node use <macbook|iphone|cloud|static-ip|none> --for egress` (replaces the old
    `staticipup`/`staticipdown` aliases). A node acting as an exit node cannot use one at the same time.
+- Guard rules: the first rule accepts (and counts) gost's reply packets to clients; the drop rules after it apply to
+  connections gost opens. Without that exemption no response would reach Browser Use.
 - TLS: gost generates a self-signed certificate at start; to serve a real one, add `certFile`/`keyFile` to the
   listener's `tls` block in `gost.yaml` and mount the files.
 - Daily bytes: `EGRESS_DAILY_BYTES` (default 5 GiB) in `cc-egress-bytes.service`; the alert is a push via `agent-push`, only when you are away.

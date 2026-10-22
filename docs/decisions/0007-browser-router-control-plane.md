@@ -54,7 +54,9 @@ no egress IP list, so the gateway cannot be restricted by source address.
 - **Destination hardening, two layers.** nftables in that namespace drops, for gost's dedicated uid (10001), connections
   to `0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 198.18.0.0/15,
   224.0.0.0/3`, to `::1, fc00::/7, fe80::/10, ::ffff:0:0/96`, and to any TCP port other than 80 and 443. It acts when the
-  connection is opened, on the resolved IP, so hostname tricks do not help, and it leaves tailscaled's traffic alone. A
+  connection is opened, on the resolved IP, so hostname tricks do not help, and it leaves tailscaled's traffic alone.
+  Reply packets of connections a client opened to gost (`ct direction reply`) are accepted before the drop rules: they
+  do not open a connection, and their destination port is the client's ephemeral port, not 80/443. A
   gost bypass denying the same private ranges and every port except 80/443 is the second layer. Further hardening
   (an allow-list of destinations, mTLS) is not part of this design.
 - **Limits and alert.** A gost limiter caps throughput (12 MB/s service, 4 MB/s per connection). An nftables counter

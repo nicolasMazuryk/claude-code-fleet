@@ -49,6 +49,7 @@
 	"tests": [
 		{"src": "user@github", "accept": ["tag:cloud:22", "tag:cloud:60001"]},
 		{"src": "tag:cloud", "deny": ["user@github:22", "user@github:443", "user@github:60001"]},
+		{"src": "tag:egress", "accept": ["autogroup:internet:80", "autogroup:internet:443"]},
 		{"src": "tag:egress", "deny": ["user@github:22", "user@github:443", "user@github:60001", "tag:cloud:22"]},
 	],
 	"sshTests": [

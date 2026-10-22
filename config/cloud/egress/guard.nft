@@ -1,11 +1,14 @@
 # Egress guard, loaded by guard.sh into the egress network namespace. Enforced when the connection is opened, on the
 # resolved IP, so hostname tricks do not help. Only gost's uid (10001) is matched: tailscaled's own traffic is untouched.
-# G2 rules (verbatim from the owner's decision) first, then the byte counter read by bin/egress-bytes-alert.
+# The G2 drop rules (verbatim from the owner's decision) apply when gost opens a connection; replies to inbound client
+# connections are exempt (first rule). Counter egress_bytes feeds bin/egress-bytes-alert.
 table inet egress_guard {
 	counter egress_bytes {}
 
 	chain output {
 		type filter hook output priority 0; policy accept;
+		# Reply packets of connections a client opened to gost do not open a connection: exempt (and count) them.
+		meta skuid 10001 ct direction reply counter name "egress_bytes" accept
 		meta skuid 10001 ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 198.18.0.0/15, 224.0.0.0/3 } drop
 		meta skuid 10001 ip6 daddr { ::1, fc00::/7, fe80::/10, ::ffff:0:0/96 } drop
 		meta skuid 10001 tcp dport != { 80, 443 } drop

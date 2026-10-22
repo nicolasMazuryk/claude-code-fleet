@@ -59,9 +59,13 @@ violations() {
 }
 
 @test "tag:egress is denied on 22, 443 and 60001 to Mac and iPhone, and may only use the internet" {
-  hujson "$POLICY" | jq -e '[.tests[] | select(.src == "tag:egress")][0].deny | (index("user@github:22") and index("user@github:443") and index("user@github:60001"))' >/dev/null
+  hujson "$POLICY" | jq -e '[.tests[] | select(.src == "tag:egress" and .deny)][0].deny | (index("user@github:22") and index("user@github:443") and index("user@github:60001"))' >/dev/null
   hujson "$POLICY" | jq -e '.grants | map(select(.src == ["tag:egress"])) | length == 1 and .[0].dst == ["autogroup:internet"]' >/dev/null
   hujson "$POLICY" | jq -e '.autoApprovers.exitNode | index("autogroup:member") and index("tag:cloud")' >/dev/null
+}
+
+@test "policy test: tag:egress is accepted to autogroup:internet" {
+  hujson "$POLICY" | jq -e '[.tests[] | select(.src == "tag:egress" and .accept)][0].accept | index("autogroup:internet:443") and index("autogroup:internet:80")' >/dev/null
 }
 
 @test "violations() catches tag:egress reaching the tailnet" {
