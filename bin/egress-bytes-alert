@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# egress-bytes-alert — daily-bytes alert for the egress gateway (cloud). Reads the nftables counter egress_bytes in the
+# egress namespace (bytes gost sent), tracks today's total across counter resets (guard restarts), and pushes once per
+# day through agent-push when the total passes EGRESS_DAILY_BYTES (default 5 GiB). Run every 10 min by
+# cc-egress-bytes.timer. Exits 0 unless the counter cannot be read.
+# Test hooks: EGRESS_COUNTER_CMD (prints the counter's byte total), EGRESS_STATE (state file), EGRESS_DAY (date),
+# AGENT_PUSH_HOOK (default ~/.claude/hooks/agent-push.sh).
+set -euo pipefail
+limit=${EGRESS_DAILY_BYTES:-5368709120}
+state=${EGRESS_STATE:-$HOME/.local/state/egress/bytes.state}
+day=${EGRESS_DAY:-$(date +%F)}
+hook=${AGENT_PUSH_HOOK:-$HOME/.claude/hooks/agent-push.sh}
+
+counter() {
+  if [ -n "${EGRESS_COUNTER_CMD:-}" ]; then sh -c "$EGRESS_COUNTER_CMD"; return; fi
+  docker exec egress-guard-1 nft -j list counter inet egress_guard egress_bytes | jq -r '.nftables[] | .counter.bytes // empty'
+}
+now=$(counter) || { echo "egress-bytes-alert: cannot read the counter" >&2; exit 1; }
+case $now in ''|*[!0-9]*) echo "egress-bytes-alert: bad counter value '$now'" >&2; exit 1 ;; esac
+
+s_day=; s_last=0; s_total=0; s_alerted=0
+[ -f "$state" ] && read -r s_day s_last s_total s_alerted < "$state" || true
+if [ "$s_day" != "$day" ]; then s_total=0; s_alerted=0; s_last=$now; fi   # new day: today's bytes start here
+if [ "$now" -ge "$s_last" ]; then s_total=$((s_total + now - s_last)); else s_total=$((s_total + now)); fi   # counter reset
+if [ "$s_total" -gt "$limit" ] && [ "$s_alerted" = 0 ]; then
+  msg="egress gateway sent $((s_total / 1048576)) MiB today (limit $((limit / 1048576)) MiB)"
+  jq -nc --arg m "$msg" '{hook_event_name: "Notification", notification_type: "agent_needs_input", message: $m}' | "$hook" || true
+  s_alerted=1
+  echo "egress-bytes-alert: ALERT $msg"
+fi
+mkdir -p "$(dirname "$state")"
+printf '%s %s %s %s\n' "$day" "$now" "$s_total" "$s_alerted" > "$state.tmp" && mv "$state.tmp" "$state"

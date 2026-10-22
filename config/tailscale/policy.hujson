@@ -9,6 +9,8 @@
 //              repo ~/Documents/static-ip). Must keep working.
 //   cloud      core-vm-cloud, tagged tag:cloud, joined by the oci bootstrap with a reusable tagged auth key.
 //   iPhone     member (Phase 6).
+//   egress     tag:egress, the egress gateway's tailscale sidecar on the cloud VM (config/cloud/egress). Its only
+//              permission is the internet through an exit node; it reaches nothing on the tailnet.
 //
 // Invariant (CLAUDE.md #4): NO rule, grant or ssh entry may have src tag:cloud. The VM must never open a connection
 // to the Mac or the iPhone. The `tests` below fail the save if that is broken (e.g. by a leftover allow-all rule).
@@ -16,7 +18,18 @@
 	// Who may tag a node tag:cloud (needed to create the tagged auth key).
 	"tagOwners": {
 		"tag:cloud": ["autogroup:admin"],
+		"tag:egress": ["autogroup:admin"],
 	},
+
+	// Exit nodes are approved automatically: macbook, iPhone, static-ip (members) and cloud (tag:cloud).
+	"autoApprovers": {
+		"exitNode": ["autogroup:member", "tag:cloud"],
+	},
+
+	// tag:egress may use an exit node and nothing else.
+	"grants": [
+		{"src": ["tag:egress"], "dst": ["autogroup:internet"], "ip": ["*"]},
+	],
 
 	"acls": [
 		// Members' devices (macbook, iPhone, static-ip) reach every node and port, and the internet through the
@@ -36,6 +49,7 @@
 	"tests": [
 		{"src": "user@github", "accept": ["tag:cloud:22", "tag:cloud:60001"]},
 		{"src": "tag:cloud", "deny": ["user@github:22", "user@github:443", "user@github:60001"]},
+		{"src": "tag:egress", "deny": ["user@github:22", "user@github:443", "user@github:60001", "tag:cloud:22"]},
 	],
 	"sshTests": [
 		{"src": "user@github", "dst": ["tag:cloud"], "accept": ["agent", "ubuntu"], "deny": ["root"]},

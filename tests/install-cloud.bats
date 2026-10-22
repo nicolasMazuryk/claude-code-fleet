@@ -190,3 +190,19 @@ browser_fakes() {
   [[ "$output" == *"would clone"*browser-router* ]]
   [ ! -e "$CC_BROWSER_DIR" ]
 }
+
+@test "cloud-local: egress units installed, stack stays off until the Mac delivers gost-auth, then enabled; idempotent" {
+  local_setup
+  run "$REPO/install.sh" cloud-local
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  for u in cc-egress.service cc-egress-bytes.service cc-egress-bytes.timer; do cmp "$REPO/config/cloud/systemd/$u" "$CC_UNIT_DIR/$u"; done
+  [ -d "$HOME/.config/egress" ] && [ -f "$HOME/.config/egress/ts-authkey" ]
+  [ "$(stat -f %Lp "$HOME/.config/egress" 2>/dev/null || stat -c %a "$HOME/.config/egress")" = 700 ]
+  [[ "$output" == *"gost-auth not delivered"* ]]
+  [ ! -e "$FAKE_SYSTEMD/enabled/cc-egress.service" ]
+  printf 'browseruse pw\n' > "$HOME/.config/egress/gost-auth"
+  run "$REPO/install.sh" cloud-local
+  [ -e "$FAKE_SYSTEMD/enabled/cc-egress.service" ] && [ -e "$FAKE_SYSTEMD/enabled/cc-egress-bytes.timer.service" ]  # the fake appends .service
+  run "$REPO/install.sh" cloud-local
+  [[ "$output" == *"no changes"* ]] || { echo "$output"; return 1; }
+}

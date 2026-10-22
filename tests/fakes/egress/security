@@ -1,0 +1,4 @@
+#!/bin/bash
+# fake security find-generic-password -s <svc> …: value from $FAKE_KEYCHAIN/<svc>
+while [ $# -gt 0 ]; do [ "$1" = -s ] && svc=$2; shift; done
+[ -f "$FAKE_KEYCHAIN/$svc" ] && cat "$FAKE_KEYCHAIN/$svc" || exit 44

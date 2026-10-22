@@ -1,0 +1,5 @@
+#!/bin/bash
+# fake ssh: drop "-o X" options and the host, run the remote command locally (HOME is a scratch dir)
+while [ "${1:-}" = -o ]; do shift 2; done
+shift
+exec bash -c "$*"
