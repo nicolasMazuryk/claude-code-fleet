@@ -12,7 +12,7 @@ setup() {
   printf 'alias c=claude\n' > "$HOME/.zshrc"
   printf 'Host *\n  AddKeysToAgent yes\n' > "$HOME/.ssh/config"
   printf '{\n  "$schema": "x",\n  "schemaVersion": 1,\n\n  // "app" : {\n  //   "x" : 1\n  // },\n}\n' > "$HOME/.config/cmux/cmux.json"
-  export CC_INSTALL_NO_BREW=1 CC_INSTALL_NO_LAUNCHD=1 CC_INSTALL_NO_VAULT=1
+  export CC_INSTALL_NO_BREW=1 CC_INSTALL_NO_LAUNCHD=1 CC_INSTALL_NO_VAULT=1 CC_INSTALL_NO_BROWSER=1
 }
 
 @test "first run merges orchestrator keys and appends agent-push once, keeping the 4 sound hooks" {
@@ -122,4 +122,37 @@ setup() {
   for f in browser-up browser-relay-handler; do cmp "$REPO/bin/$f" "$HOME/.local/libexec/cc-orchestrator/$f"; done
   "$REPO/install.sh" mac >/dev/null
   [ "$(jq '[.hooks.PreToolUse[] | select(.matcher == "Bash")] | length' "$s")" -eq 1 ]
+}
+
+# agent-browser on the Mac: fake npm installs a fake binary (no sudo); the fake agent-browser logs its calls
+mac_browser_fakes() {
+  local b="$BATS_TEST_TMPDIR/fakebin"; mkdir -p "$b"
+  # shellcheck disable=SC2016
+  printf '#!/bin/sh\nprintf "#!/bin/sh\\n[ \\"\\$1\\" = --version ] && { echo \\"agent-browser 0.39.1\\"; exit 0; }\\necho \\"\\$*\\" >> \\"\\$HOME/ab.calls\\"\\nexit 0\\n" > "%s/agent-browser"; chmod +x "%s/agent-browser"\necho "$*" >> "$HOME/npm.calls"\n' "$b" "$b" > "$b/npm"
+  chmod +x "$b/npm"
+  export PATH="$b:$PATH" NVM_DIR="$BATS_TEST_TMPDIR/no-nvm"
+  unset CC_INSTALL_NO_BROWSER
+}
+
+@test "agent-browser: pinned npm -g install (no sudo) + agent-browser install; rerun prints ok and changes nothing" {
+  mac_browser_fakes
+  run "$REPO/install.sh" mac
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  grep -qx 'install -g agent-browser@0.39.1' "$HOME/npm.calls"
+  grep -qx 'install' "$HOME/ab.calls"
+  [ ! -e "$HOME/.local/share/browser-router" ]
+  run "$REPO/install.sh" mac
+  [[ "$output" == *"ok agent-browser 0.39.1"* ]] || { echo "$output"; return 1; }
+  [[ "$output" == *"no changes"* ]] || { echo "$output"; return 1; }
+  [ "$(wc -l < "$HOME/npm.calls")" -eq 1 ] && [ "$(wc -l < "$HOME/ab.calls")" -eq 1 ]
+}
+
+@test "agent-browser: AGENT_BROWSER_VERSION overrides the pin; CC_INSTALL_NO_BROWSER=1 skips" {
+  mac_browser_fakes
+  AGENT_BROWSER_VERSION=9.9.9 run "$REPO/install.sh" mac
+  grep -qx 'install -g agent-browser@9.9.9' "$HOME/npm.calls"
+  rm -f "$HOME/npm.calls" "$BATS_TEST_TMPDIR/fakebin/agent-browser"
+  CC_INSTALL_NO_BROWSER=1 run "$REPO/install.sh" mac
+  [[ "$output" == *"skipped (CC_INSTALL_NO_BROWSER set)"* ]]
+  [ ! -e "$HOME/npm.calls" ]
 }

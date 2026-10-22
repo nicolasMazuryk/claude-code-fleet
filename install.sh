@@ -327,7 +327,7 @@ install_mac() {
   [ "$(uname)" = Darwin ] || die "install.sh mac runs on macOS"
   echo "install.sh mac: $REPO → $HOME"
   step_tools; step_bin; step_config; step_tmux; step_claude; step_settings
-  step_ntfy; step_router_env; step_zshrc; step_ssh; step_cmux; step_relay; step_launchd
+  step_agent_browser ''; step_ntfy; step_router_env; step_zshrc; step_ssh; step_cmux; step_relay; step_launchd
   if [ "$changes" -eq 0 ]; then echo "install.sh mac: no changes"; else echo "install.sh mac: $changes change(s)"; fi
 }
 
@@ -420,7 +420,7 @@ step_legacy() { # oci's pre-Phase-4b Claude Code setup (ADR 0002): stop it befor
 
 BROWSER_DIR=${CC_BROWSER_DIR:-$HOME/.local/share/browser-router}
 step_browser() { # browser-router (CLI + vault, github.com/<owner>/browser-router) and agent-browser, both from upstream
-  local url="https://github.com/${GH_OWNER:-nicolasMazuryk}/browser-router.git" d=$BROWSER_DIR sha stamp="$BROWSER_DIR/.built" ab want arm64
+  local url="https://github.com/${GH_OWNER:-nicolasMazuryk}/browser-router.git" d=$BROWSER_DIR sha stamp="$BROWSER_DIR/.built"
   if [ "${CC_INSTALL_NO_BROWSER:-0}" = 1 ]; then say browser "skipped (CC_INSTALL_NO_BROWSER set)"; return 0; fi
   if [ ! -d "$d/.git" ]; then
     if [ "${CC_INSTALL_NO_CLONE:-0}" = 1 ]; then say browser "missing $d (CC_INSTALL_NO_CLONE set)"; return 0; fi
@@ -442,20 +442,33 @@ step_browser() { # browser-router (CLI + vault, github.com/<owner>/browser-route
       act browser "chmod +x $d/dist/cli.js" chmod +x "$d/dist/cli.js"
     fi
   fi
+  step_agent_browser "$SUDO"
+}
+
+# agent-browser, pinned: cloud installs with sudo (system node), the Mac without (npm -g under the user's nvm node).
+step_agent_browser() { # step_agent_browser <sudo-prefix or empty>
+  local sudo=$1 want ab arm64
+  if [ "${CC_INSTALL_NO_BROWSER:-0}" = 1 ]; then say browser "skipped (CC_INSTALL_NO_BROWSER set)"; return 0; fi
   want=${AGENT_BROWSER_VERSION:-0.39.1}
+  if ! command -v npm >/dev/null 2>&1 && [ -s "${NVM_DIR:-$HOME/.nvm}/nvm.sh" ]; then
+    # nvm.sh is not set -u safe
+    set +u
+    # shellcheck disable=SC1091
+    . "${NVM_DIR:-$HOME/.nvm}/nvm.sh" --no-use; nvm use --silent default >/dev/null 2>&1 || true; set -u
+  fi
   ab=$(agent-browser --version 2>/dev/null | head -n1 | awk '{print $NF}' || true)
   arm64=0; [ "$(uname -s)" = Linux ] && case "$(uname -m)" in aarch64|arm64) arm64=1 ;; esac
   if [ "$arm64" = 1 ]; then
     # Chrome for Testing has no Linux ARM64 build, so `agent-browser install` fails there (and Ubuntu's chromium is a snap shim):
     # use Playwright's linux-arm64 Chromium and point agent-browser at it via executablePath.
     if [ "$ab" = "$want" ]; then say browser "ok agent-browser $ab"
-    else act browser "install agent-browser@$want (npm -g)" sh -c "$SUDO npm install -g 'agent-browser@$want' >/dev/null"; fi
+    else act browser "install agent-browser@$want (npm -g)" sh -c "$sudo npm install -g 'agent-browser@$want' >/dev/null"; fi
     step_browser_chromium
     return 0
   fi
   if [ "$ab" = "$want" ]; then say browser "ok agent-browser $ab"; return 0; fi
   act browser "install agent-browser@$want (npm -g) + agent-browser install" \
-    sh -c "$SUDO npm install -g 'agent-browser@$want' >/dev/null && agent-browser install >/dev/null"
+    sh -c "$sudo npm install -g 'agent-browser@$want' >/dev/null && agent-browser install >/dev/null"
 }
 
 # Chromium for agent-browser on Linux ARM64: Playwright's build in a stable dir, its path in ~/.agent-browser/config.json.
