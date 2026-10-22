@@ -95,5 +95,5 @@ grant `tag:egress → autogroup:internet`. `tag:egress` has no other permission;
    advertised by the oci bootstrap; static-ip already is. Auto-approval covers all four.
 4. Switching: `browser-router exit-node use <node|none> [--for self|egress]` replaces the `staticipup`/`staticipdown` aliases
    (remove them from `~/.zshrc`; `config/mac/zshrc.captured` no longer carries them). A node acting as an exit node cannot use one.
-5. Check: `ssh cloud docker exec egress-tailscale-1 tailscale status` lists the node `egress` with the tag; `tailscale ping --icmp`
+5. Check: `ssh cloud docker exec egress tailscale status` lists the node `egress` with the tag; `tailscale ping --icmp`
    from it to `macbook` gets no pong.

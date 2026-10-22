@@ -23,6 +23,16 @@ rules() { grep -E '^[[:space:]]*meta skuid' "$E/guard.nft" | sed -E 's/^[[:space
   jq -e '.services.tailscale.environment.TS_EXTRA_ARGS | test("tag:egress")' <<<"$output"
 }
 
+@test "compose: tailscale uses kernel networking (exit node carries gost traffic) and is named egress" {
+  grep -qE '^      TS_USERSPACE: "false"' "$E/compose.yaml"
+  grep -qE '^    container_name: egress +#|^    container_name: egress$' "$E/compose.yaml"
+  grep -q '/dev/net/tun' "$E/compose.yaml" && grep -q 'net_admin' "$E/compose.yaml"
+  # the guard's reply-routing rule sorts before tailscale's rules (5210+)
+  grep -q 'priority 5100' "$E/guard.sh"
+  run grep -rn 'egress-tailscale-1' "$REPO/docs" "$REPO/bin" "$REPO/install.sh" "$REPO/config"
+  [ "$status" -eq 1 ]
+}
+
 @test "gost runs as the uid the nftables rules match" {
   uid=$(grep -oE 'user: "[0-9]+' "$E/compose.yaml" | grep -oE '[0-9]+')
   [ "$uid" = 10001 ]

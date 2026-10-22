@@ -437,6 +437,10 @@ step_browser() { # browser-router (CLI + vault, github.com/<owner>/browser-route
         sh -c "cd '$d' && corepack pnpm install --frozen-lockfile >/dev/null && corepack pnpm build >/dev/null && echo '$sha' > '$stamp'"
     else say browser "ok browser-router built @ ${sha%"${sha#???????}"}"; fi
     link browser "$d/dist/cli.js" "$HOME/.local/bin/browser-router"
+    # tsc writes dist/cli.js as 0644; the link target must be executable (idempotent: chmod only when it is not)
+    if [ "$DRY" != 1 ] && [ -f "$d/dist/cli.js" ] && [ ! -x "$d/dist/cli.js" ]; then
+      act browser "chmod +x $d/dist/cli.js" chmod +x "$d/dist/cli.js"
+    fi
   fi
   want=${AGENT_BROWSER_VERSION:-0.39.1}
   ab=$(agent-browser --version 2>/dev/null | head -n1 | awk '{print $NF}' || true)
