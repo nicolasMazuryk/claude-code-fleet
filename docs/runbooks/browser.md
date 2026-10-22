@@ -11,6 +11,15 @@ this repo owns the relay, the cloud install, the drain timer and the settings wi
 | queue | – | `browser-router-vault-drain.timer` every 3 min |
 | config | `~/.config/browser-router/sites.yaml` (source) | mirrored by `cc-sync-settings` |
 
+## Browser profiles (Mac)
+| Browser | Profile | Used for |
+|---|---|---|
+| Dia | `vault-extension` | Claude in Chrome; mbank, Google accounts, OCI console, PayPal, podatki |
+| Dia | `vault-screen` | no extensions; LinkedIn via computer use |
+| Chrome | `shield-extension` | Claude in Chrome; github.com |
+
+Leased Chrome profiles (`~/.chrome-agent-profiles/<profile>`) are separate from these.
+
 ## Install / update
 1. Mac: `./install.sh mac` (copies `browser-up` + `browser-relay-handler` next to `agent-relay` in `~/.local/libexec/cc-orchestrator/`,
    registers the guard hooks and the `browser-router-relay` SessionStart slot, restarts the relay).
