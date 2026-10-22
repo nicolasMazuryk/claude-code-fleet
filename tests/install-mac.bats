@@ -124,12 +124,21 @@ setup() {
   [ "$(jq '[.hooks.PreToolUse[] | select(.matcher == "Bash")] | length' "$s")" -eq 1 ]
 }
 
-# agent-browser on the Mac: fake npm installs a fake binary (no sudo); the fake agent-browser logs its calls
+# agent-browser on the Mac, hermetic: the stubs sit first on PATH and shadow any real npm/agent-browser (even under nvm).
+# The stub agent-browser reports the version in $HOME/ab.version (0.0.0 until the stub npm "installs" one) and logs its calls.
 mac_browser_fakes() {
   local b="$BATS_TEST_TMPDIR/fakebin"; mkdir -p "$b"
-  # shellcheck disable=SC2016
-  printf '#!/bin/sh\nprintf "#!/bin/sh\\n[ \\"\\$1\\" = --version ] && { echo \\"agent-browser 0.39.1\\"; exit 0; }\\necho \\"\\$*\\" >> \\"\\$HOME/ab.calls\\"\\nexit 0\\n" > "%s/agent-browser"; chmod +x "%s/agent-browser"\necho "$*" >> "$HOME/npm.calls"\n' "$b" "$b" > "$b/npm"
-  chmod +x "$b/npm"
+  cat > "$b/agent-browser" <<'STUB'
+#!/bin/sh
+[ "$1" = --version ] && { echo "agent-browser $(cat "$HOME/ab.version" 2>/dev/null || echo 0.0.0)"; exit 0; }
+echo "$*" >> "$HOME/ab.calls"
+STUB
+  cat > "$b/npm" <<'STUB'
+#!/bin/sh
+echo "$*" >> "$HOME/npm.calls"
+case "$*" in "install -g agent-browser@"*) echo "${*##*@}" > "$HOME/ab.version" ;; esac
+STUB
+  chmod +x "$b/npm" "$b/agent-browser"
   export PATH="$b:$PATH" NVM_DIR="$BATS_TEST_TMPDIR/no-nvm"
   unset CC_INSTALL_NO_BROWSER
 }
@@ -151,7 +160,7 @@ mac_browser_fakes() {
   mac_browser_fakes
   AGENT_BROWSER_VERSION=9.9.9 run "$REPO/install.sh" mac
   grep -qx 'install -g agent-browser@9.9.9' "$HOME/npm.calls"
-  rm -f "$HOME/npm.calls" "$BATS_TEST_TMPDIR/fakebin/agent-browser"
+  rm -f "$HOME/npm.calls"
   CC_INSTALL_NO_BROWSER=1 run "$REPO/install.sh" mac
   [[ "$output" == *"skipped (CC_INSTALL_NO_BROWSER set)"* ]]
   [ ! -e "$HOME/npm.calls" ]
