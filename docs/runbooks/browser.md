@@ -37,6 +37,20 @@ Leased Chrome profiles (`~/.chrome-agent-profiles/<profile>`) are separate from 
 - Check what the Mac reports: `ssh cloud 'cat ~/.local/state/agent-events/mac-up'` (fresh = mtime under 45 s).
 - Vault drain by hand: `ssh cloud browser-vault-drain`; logs: `journalctl -u browser-router-vault-drain`.
 
+## agent-browser: Chrome and logins
+On the Mac, `agent-browser` drives the installed Google Chrome in the system locale (no `--lang` flag): the route result
+carries `AGENT_BROWSER_EXECUTABLE_PATH` (override the binary with `BROWSER_ROUTER_AGENT_CHROME`) and
+`AGENT_BROWSER_ARGS=--disable-blink-features=AutomationControlled`, which keeps `navigator.webdriver` false in real Chrome.
+Its selftest expects the host system locale unless `BROWSER_ROUTER_EXPECT_LOCALE` is set. Chrome for Testing is not used
+on the Mac: it crashes OLX's login page. Linux keeps agent-browser's default browser. Headed selftest re-run (`[H]`, needs a display):
+`AGENT_BROWSER_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" AGENT_BROWSER_ARGS=--disable-blink-features=AutomationControlled browser-router selftest --executor agent-browser --serve`
+and open the printed probe URL with `agent-browser --headed --executable-path … --args … open <url>`.
+Anti-bot systems block logins in an automated browser, so a human logs in to each `agent-browser` site (nofluffjobs.com,
+indeed.com, allegro.pl, olx.pl) once with plain Chrome on the site's profile:
+1. `[H]` `browser-router login <site>` opens Chrome on `~/.chrome-agent-profiles/<profile>` without automation or a locale flag. Log in, then quit Chrome with Cmd+Q.
+2. agent-browser reuses the cookies from then on. `login` and `route` refuse while a live Chrome holds the profile
+   (`profile <dir> is open in another Chrome (pid N): quit it (Cmd+Q) and retry`) or while a lease holds the site.
+
 ## Unregistered sites
 A host with no `sites.yaml` entry matches only `"*"`. The agent classifies the task and routes with `--identity anonymous|personal`.
 - Anonymous (no login, none of the user's own data, read-only public pages): runs on the `"*"` default.
