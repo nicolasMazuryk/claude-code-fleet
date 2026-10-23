@@ -72,6 +72,14 @@ residential proxy. There is no self-hosted gateway on cloud and no public ingres
    `unset (Browser Use residential pl, IP not stable)`) and `browser-router proxy probe` (prints `isp proxy ip <ip>`; the IP
    must be the same on every run). For a site with `isp_pin`, `browser-router proxy probe --site <host>` records or checks
    that site's pin (exit 5 on mismatch); a pinned site needs a new `shield login` after the proxy is set.
+   **Plan requirements** (a plan that fails them breaks logins with symptoms like booksy's "Request malformed - Hcaptcha"):
+   - Username/password auth with no source-IP whitelist, or a whitelist that covers Browser Use's cloud egress as well as the Mac/cloud host.
+   - No limit on simultaneous CONNECT tunnels/threads at browser scale: a page load opens 30-100 at once. Verify before relying on
+     a plan: `browser-router proxy probe --hosts captcha --concurrency 50` must report `0 refused or failed` on repeated runs
+     (exit 5 and a 403 hint otherwise). Sequential requests passing is not enough.
+   - Every host reachable, including `*.hcaptcha.com` and `ipinfo.io`; the probe prints per-host results.
+   A browser started on a plan that refuses bursts shows `ERR_TUNNEL_CONNECTION_FAILED` on random sub-resources; stop it
+   (`browser-router shield stop <site>`) and change the plan; `isp_pin` sites do not run without the ISP proxy.
 4. Browser Use API key: Mac Keychain `cc-browser-use-api-key`; `./install.sh mac` and `./install.sh cloud` write it to
    `~/.config/browser-router/env` (0600, key `BROWSER_USE_API_KEY`) via `bin/browser-router-env-push`. A missing item skips
    the key with a log line; re-run both installs after adding it.
