@@ -6,9 +6,12 @@ The cloud side (install, join, mosh rule) is in the oci repo: `host/cloud/bootst
 
 ## Facts
 - Tailnet `example.github`, MagicDNS suffix `tailnet-example.ts.net`, login `user@github`.
-- Mac node `macbook` (was `nicolas-macbook`), member. Exit node `static-ip` (Hetzner, member, `~/Documents/static-ip`).
+- Mac node `macbook` (was `nicolas-macbook`), member. It advertises itself as an exit node and accepts routes
+  (`tailscale set --advertise-exit-node --accept-routes`), so the allowlisted domains reach it through cloud's app connector (§7).
 - Cloud node `cloud` = `core-vm-cloud` (OS hostname `cloud` too; was `app` until 2026-10-16), `tag:cloud`, Tailscale SSH on (users `agent`, `ubuntu`), `--accept-dns=false`
-  (the VM keeps OCI's resolver). Its state is on `/data/core/tailscale`, so a restore from backup rejoins as the same node.
+  (the VM keeps OCI's resolver). It is the exit node for the iPhone and browser-router and the app connector
+  (`--advertise-connector`) for the domains in `policy.hujson`; egress IP `193.123.182.227` (OCI reserved `core-pip-natgw`
+  on `core-natgw`, survives a wipe/restore; oci ADR 0007). Peers reach it via DERP (cloud has no public IP). Its state is on `/data/core/tailscale`, so a restore from backup rejoins as the same node.
 - Join credential: Vault `core-secret-tailscale-authkey` holds a **Tailscale OAuth client secret** (scope
   `Auth Keys: Write`, tag `tag:cloud`), stored as `tskey-client-…?ephemeral=false&preauthorized=true`. Unlike an auth
   key it **does not expire**, so it is never rotated or refreshed (owner's decision, 2026-10). `tailscale up` mints a
@@ -30,7 +33,7 @@ The cloud side (install, join, mosh rule) is in the oci repo: `host/cloud/bootst
    `sed "s/user@github/<login>/g" config/tailscale/policy.hujson | pbcopy`.
 4. Paste the merged file → **Save**. Tailscale runs the `tests`/`sshTests` blocks on save and rejects the policy if
    `tag:cloud` could reach a member device, or members could not SSH to `tag:cloud` as `agent`/`ubuntu`.
-5. Check that the exit node still works on the Mac: `curl -s https://ifconfig.me` → the `static-ip` address.
+5. Check the app connector on the Mac (§7): `curl -s https://checkip.amazonaws.com` → `193.123.182.227`.
 
 ## 2. `[H]` Create the OAuth client and store its secret in Vault (one time; never rotated)
 
@@ -56,8 +59,8 @@ Expected: `tailscale joined as cloud.tailnet-example.ts.net.`; `tailscale status
 
 Admin console → Machines → `nicolas-macbook` → **Edit machine name** → `macbook` (turn off auto-generate). The
 CLI alternative (`tailscale set --hostname=macbook`) only applies if the name was never edited in the console.
-The exit node is selected by node ID, so it keeps working. Check: `tailscale status --self --peers=false` shows `macbook`,
-and `curl -s https://ifconfig.me` still returns the `static-ip` address.
+Check: `tailscale status --self --peers=false` shows `macbook`; with `--accept-routes` (§7),
+`curl -s https://checkip.amazonaws.com` returns `193.123.182.227`.
 
 ## 5. Verify (from the Mac)
 
@@ -84,22 +87,35 @@ evaluated on save. These are rows 1–1d in [verify](verify.md).
 - The Mac (fresh install): log in to the Tailscale app, then step 4.
 
 ## 6. `[H]` Exit nodes
-`policy.hujson` has `autoApprovers.exitNode` (members: macbook, iPhone, static-ip; `tag:cloud`), so all four advertise without
+`policy.hujson` has `autoApprovers.exitNode` (members: macbook, iPhone; `tag:cloud`), so all three advertise without
 manual approval. The policy tests keep `tag:cloud` denied on 22/443/60001 to the Mac and iPhone
 (`tests/tailscale-policy.bats` checks the file; Tailscale re-checks on save). There is no `tag:egress`.
 1. Merge and apply as in §1 (keep anything live that is not in the file; delete a leftover `tag:egress` and its grant).
 2. Exit nodes: macbook `tailscale set --advertise-exit-node`; iPhone Tailscale app → Exit Node → **Run as Exit Node**; cloud is
-   advertised by the oci bootstrap; static-ip already is.
-3. Switching: `browser-router exit-node use <cloud|none> [--for self]` covers cloud; static-ip, macbook and iPhone are switched in
+   advertised by the oci bootstrap.
+3. Switching: `browser-router exit-node use <cloud|none> [--for self]` covers cloud; macbook and iPhone are switched in
    the Tailscale app or with `tailscale set --exit-node=<node>`. It replaces the `staticipup`/`staticipdown` aliases
    (remove them from `~/.zshrc`; `config/mac/zshrc.captured` no longer carries them). A node acting as an exit node cannot use one.
 
-## 7. Route the Mac or iPhone through cloud
-`cloud` already advertises `0.0.0.0/0` and `::/0` (approved), and the policy grants members `autogroup:internet:*`, so no policy change is needed.
-- **iPhone:** Tailscale app → Exit Node → `cloud`. Back to normal: Exit Node → None.
-- **Mac:** `browser-router exit-node use cloud --for self` (host override: `BROWSER_ROUTER_EXITNODE_CLOUD`). Undo: `browser-router exit-node use none --for self`.
-- **Trade-off (Mac):** tailscale refuses an exit node while the Mac advertises itself as one. The command therefore runs one
-  `tailscale set --advertise-exit-node=false --exit-node=cloud`, records the suspension, and warns that the
-  macbook exit node is unavailable. `use none --for self` restores `--advertise-exit-node=true`.
-  `tailscale status` shows the active exit node and whether the Mac still advertises itself.
-- `cloud` is valid only `--for self`.
+## 7. Reach allowlisted services from the static IP (app connector on cloud)
+Exchanges and SaaS allowlist `193.123.182.227`. Two paths lead there:
+- **App connector (the Mac's default).** cloud runs `--advertise-connector` (oci bootstrap). `policy.hujson` → `nodeAttrs`
+  `tailscale.com/app-connectors` lists the domains (`static-egress`), and `autoApprovers.routes` admits the /32 routes
+  cloud advertises as it resolves them. Every device that accepts routes sends those domains through cloud, also when it
+  is an exit node itself or uses another exit node. The rest of its traffic stays direct.
+  - Mac: `tailscale set --accept-routes` (macOS app: *Use Tailscale subnets*); it keeps `--advertise-exit-node`.
+  - iPhone: accepts routes by default.
+  - New allowlisted service: add its domains (`example.com`, `*.example.com`) to the list, `make test`, apply as in §1.
+  - Check: `curl -s https://checkip.amazonaws.com` → `193.123.182.227` (the probe domain), while
+    `curl -s https://ifconfig.me` shows the Mac's own address. `tailscale status --json | jq '.Peer[] | select(.HostName=="cloud") | .PrimaryRoutes | length'` > 0 once a listed domain was resolved.
+- **Exit node `cloud` (all traffic).** `cloud` advertises `0.0.0.0/0` and `::/0` (approved), and members have
+  `autogroup:internet:*`.
+  - iPhone: Tailscale app → Exit Node → `cloud`. Back to normal: Exit Node → None.
+  - Mac: `browser-router exit-node use cloud --for self` (host override: `BROWSER_ROUTER_EXITNODE_CLOUD`); undo with
+    `browser-router exit-node use none --for self`. Tailscale refuses an exit node while the Mac advertises itself as
+    one, so the command runs `tailscale set --advertise-exit-node=false --exit-node=cloud`, records the suspension and
+    warns that the macbook exit node is unavailable; `use none --for self` restores `--advertise-exit-node=true`. This
+    is why the app connector is the Mac's default path.
+  - `cloud` is valid only `--for self`.
+- Trust: with `--accept-routes` the Mac takes routes that cloud advertises, and cloud runs agents with sudo. TLS keeps
+  content private; DNS, SNI and metadata of the routed domains are visible to root on cloud (oci ADR 0007).

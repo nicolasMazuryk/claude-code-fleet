@@ -54,7 +54,7 @@ with `browser-router proxy status` / `probe`. Until that proxy exists, Browser U
 - **Secrets.** The proxy URL is stored by browser-router on the host that needs it and never enters git. The Browser Use
   key (`core-secret-browser-use-api-key`) stays readable by cloud: the cloud brain calls Browser Use; the Mac's copy is
   `~/.config/browser-router/env`, written from the Keychain by `bin/browser-router-env-push`.
-- **Tailnet.** Cloud remains an exit node for the Mac (`browser-router exit-node use cloud --for self`, tailscale runbook §7).
+- **Tailnet.** Cloud is an exit node (`browser-router exit-node use cloud --for self`) and the app connector for the allowlisted domains (tailscale runbook §7).
   The policy has no rule with `src: tag:cloud` and no other tag for egress.
 - **Retiring the earlier gateway.** The commands to switch off any previously deployed instance are in
   [browser.md](../runbooks/browser.md) (decommission section); they are human steps.
