@@ -83,8 +83,8 @@ residential proxy. There is no self-hosted gateway on cloud and no public ingres
 4. Browser Use API key: Mac Keychain `cc-browser-use-api-key`; `./install.sh mac` and `./install.sh cloud` write it to
    `~/.config/browser-router/env` (0600, key `BROWSER_USE_API_KEY`) via `bin/browser-router-env-push`. A missing item skips
    the key with a log line; re-run both installs after adding it.
-- Exit nodes for the Mac itself (not for Browser Use): `browser-router exit-node use <cloud|none> [--for self]`; macbook and iPhone are switched in the Tailscale app or with `tailscale set --exit-node=…`
-  ([tailscale.md](tailscale.md) §7).
+- Exit node for the Mac itself (not for Browser Use): `browser-router exit-node use <macbook|iphone|cloud|none> [--for self]`
+  ([tailscale.md](tailscale.md) §6).
 
 ## Decommission the egress gateway (human, once; do not script)
 The self-hosted egress gateway (gost, nftables guard, tailscale sidecar, Mac certificate renewal) is not used. After this

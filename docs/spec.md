@@ -385,8 +385,9 @@ As the original §4.7, plus:
 
 ## 5. Tailscale policy — `config/tailscale/policy.hujson` (Phase 2)
 
-The full policy **as applied**, i.e. the `autoApprovers` (exit nodes: members and `tag:cloud`; routes: `tag:cloud`) and the
-app-connector `nodeAttrs` (domains that leave through `cloud`, oci ADR 0007) merged with:
+The full policy **as applied**, i.e. the `autoApprovers` (exit nodes: members and `tag:cloud`) merged with the block
+below. macbook, iPhone and cloud are all exit nodes; each member device picks the one it uses, or none, and cloud never
+uses one (oci ADR 0007). There is no app connector and no route auto-approval.
 
 ```jsonc
 {
@@ -401,7 +402,7 @@ app-connector `nodeAttrs` (domains that leave through `cloud`, oci ADR 0007) mer
 }
 ```
 
-`autogroup:internet:*` lets members use the exit node `cloud`. The tailnet default allow-all (`src: ["*"]`) must be
+`autogroup:internet:*` lets members use an exit node (`cloud` for the static IP). The tailnet default allow-all (`src: ["*"]`) must be
 removed. The file also has `tests`/`sshTests` blocks, so Tailscale rejects a save that breaks the invariants.
 Applied by a human in the admin console **before** `tailscale up --advertise-tags=tag:cloud`
 ([runbooks/tailscale.md](runbooks/tailscale.md)).
