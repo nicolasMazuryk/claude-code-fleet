@@ -385,7 +385,8 @@ As the original §4.7, plus:
 
 ## 5. Tailscale policy — `config/tailscale/policy.hujson` (Phase 2)
 
-The full policy **as applied**, i.e. the exit-node `autoApprovers` (members and `tag:cloud`) merged with:
+The full policy **as applied**, i.e. the `autoApprovers` (exit nodes: members and `tag:cloud`; routes: `tag:cloud`) and the
+app-connector `nodeAttrs` (domains that leave through `cloud`, oci ADR 0007) merged with:
 
 ```jsonc
 {

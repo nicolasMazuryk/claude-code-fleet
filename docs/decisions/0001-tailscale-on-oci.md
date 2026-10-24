@@ -16,14 +16,14 @@ tagged (since 2026-10 a non-expiring OAuth client secret, see below), stored onl
 `tailscale0` only (UDP 60000–61000), inserted before Ubuntu's REJECT and persisted. Bastion stays as break-glass.
 
 The tailnet policy (`config/tailscale/policy.hujson`) adds `tag:cloud`; members → `*:*`; **no rule with
-`src: tag:cloud`**; Tailscale SSH: members → `tag:cloud` as `agent`, `ubuntu`. Existing rules (exit node `static-ip`)
-are merged, not replaced. The Mac node is renamed `macbook`.
+`src: tag:cloud`**; Tailscale SSH: members → `tag:cloud` as `agent`, `ubuntu`. Rules already live in the
+tailnet are merged, not replaced. The Mac node is renamed `macbook`.
 
 ## Consequences
 - Tailscale is outbound-only (DERP/UDP hole punching): OCI invariants (no public IP, no open ingress) still hold.
 - Login to cloud is by tailnet identity; no SSH keys for cloud on the Mac or phone.
 - Cloud cannot initiate anything toward the Mac/iPhone; everything is Mac-initiated.
-- A compromised tailnet admin account now also reaches cloud (acceptable; same account already controls the exit node).
+- A compromised tailnet admin account now also reaches cloud (acceptable; the same account already controls every node).
 
 ## Implementation notes (Phase 2)
 - The key is passed as `--auth-key=file:<0600 tmp>`, never on argv. It is read only when the node has no state.

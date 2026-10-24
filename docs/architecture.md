@@ -28,7 +28,7 @@ Adapted from `prompts/prompt.md` §1 for the real machines. Details and code: [s
 │ cmux · fleet ═══════════════════┼═►│ claude agents --json, systemctl       │
 └─────────────────────────────────┘  └───────────────────────────────────────┘
   Tailscale (tailnet-example): members → *:* (+ internet via exit node cloud) ; no rule with src tag:cloud → cloud can't reach Mac/iPhone.
-  Exit node cloud: egress IP 193.123.182.227 (OCI reserved, survives wipe/restore). Break-glass into cloud: OCI Bastion (oci repo, `make ssh VM=cloud`).
+  cloud = exit node + app connector (allowlisted domains): egress IP 193.123.182.227 (OCI reserved, survives wipe/restore); macbook stays an exit node. Break-glass into cloud: OCI Bastion (oci repo, `make ssh VM=cloud`).
 ```
 
 ## Components and owners

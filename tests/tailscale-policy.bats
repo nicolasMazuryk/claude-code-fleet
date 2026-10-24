@@ -51,6 +51,14 @@ violations() {
   [ "$(grep -c 'sourced from' <<<"$output")" -eq 2 ]
 }
 
+@test "cloud is the app connector for the static-egress domains, with its routes auto-approved" {
+  hujson "$POLICY" | jq -e '
+    ([.nodeAttrs[]?.app["tailscale.com/app-connectors"][]? | select(.connectors == ["tag:cloud"])] | first) as $c
+    | $c != null
+      and ($c.domains | index("checkip.amazonaws.com"))
+      and (.autoApprovers.routes["0.0.0.0/0"] | index("tag:cloud"))' >/dev/null
+}
+
 @test "cloud stays an approved exit node for the Mac and no tag:egress remains" {
   hujson "$POLICY" | jq -e '.autoApprovers.exitNode | index("autogroup:member") and index("tag:cloud")' >/dev/null
   run grep -c 'tag:egress' "$POLICY"
