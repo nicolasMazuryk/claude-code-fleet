@@ -27,9 +27,9 @@ violations() {
      then "members cannot use the exit node (no autogroup:internet:* dst)" else empty end),
     (if [(.tests // [])[] | select(.src == "tag:cloud" and ((.deny // []) | length > 0))] == []
      then "no policy test denying tag:cloud → members" else empty end),
-    (["macbook","iphone","cloud","static-ip"] as $n | (.autoApprovers.exitNode // []) as $a
+    (["macbook","iphone","cloud"] as $n | (.autoApprovers.exitNode // []) as $a
      | if ($a | index("autogroup:member")) and ($a | index("tag:cloud")) then empty
-       else "autoApprovers.exitNode must cover members (macbook, iPhone, static-ip) and tag:cloud" end)'
+       else "autoApprovers.exitNode must cover members (macbook, iPhone) and tag:cloud" end)'
 }
 
 @test "policy.hujson parses as JSON" {
