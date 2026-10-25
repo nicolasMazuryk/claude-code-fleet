@@ -182,3 +182,19 @@ STUB
   [[ "$output" == *"skipped (CC_INSTALL_NO_BROWSER set)"* ]]
   [ ! -e "$HOME/npm.calls" ]
 }
+
+@test "vault drain LaunchAgent: 180 s interval, runs the libexec copy, logs to /tmp, idempotent" {
+  run "$REPO/install.sh" mac
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  p="$HOME/Library/LaunchAgents/cc-orchestrator.claude.vault-drain.plist"
+  plutil -lint "$p" >/dev/null
+  cmp "$REPO/bin/browser-vault-drain" "$HOME/.local/libexec/cc-orchestrator/browser-vault-drain"
+  [ -x "$HOME/.local/libexec/cc-orchestrator/browser-vault-drain" ]
+  [ "$(plutil -extract Label raw "$p")" = cc-orchestrator.claude.vault-drain ]
+  [ "$(plutil -extract StartInterval raw "$p")" = 180 ]
+  [ "$(plutil -extract ProgramArguments.0 raw "$p")" = "$HOME/.local/libexec/cc-orchestrator/browser-vault-drain" ]
+  [ "$(plutil -extract StandardErrorPath raw "$p")" = /tmp/browser-vault-drain.log ]
+  ! grep -q '@HOME@' "$p"
+  run "$REPO/install.sh" mac
+  [[ "$output" == *"install.sh mac: no changes"* ]] || { echo "$output"; return 1; }
+}

@@ -19,9 +19,11 @@
 #   zshrc       one sourcing line for the snippet (am, ac); existing aliases untouched
 #   ssh         Host cloud appended to ~/.ssh/config if no Host cloud exists
 #   cmux        ~/.config/cmux/cmux.json if absent or still cmux's all-comments template
-#   relay       copies of bin/agent-relay, agent-present, browser-up, browser-relay-handler in ~/.local/libexec/cc-orchestrator/ (launchd can't
-#               read ~/Documents, TCC); the relay LaunchAgent is restarted when they change
-#   launchd     cc-orchestrator.claude.agents and .relay (sound relay + presence beacon), bootstrapped
+#   relay       copies of bin/agent-relay, agent-present, browser-up, browser-relay-handler, browser-vault-drain in
+#               ~/.local/libexec/cc-orchestrator/ (launchd can't read ~/Documents, TCC); the relay and vault-drain
+#               LaunchAgents are restarted when they change
+#   launchd     cc-orchestrator.claude.agents, .relay (sound relay + presence beacon) and .vault-drain (browser-router
+#               vault queue, every 180 s), bootstrapped
 #
 # cloud, from the Mac (--dry-run: show what would change, write nothing on cloud except a staging copy in ~/.cache):
 #   sync        rsync this checkout (tracked + new files, not gitignored; not tests/ prompts/) → cloud:~/claude-code-fleet
@@ -307,7 +309,7 @@ launchd_load() { # launchd_load <label> <plist> <changed 0|1>
 RELAY_CHANGED=0
 step_relay() { # launchd jobs can't read ~/Documents (TCC: "Operation not permitted"), so the relay runs from copies
   local d="$HOME/.local/libexec/cc-orchestrator" f before=$changes
-  for f in agent-relay agent-present browser-up browser-relay-handler; do
+  for f in agent-relay agent-present browser-up browser-relay-handler browser-vault-drain; do
     if [ -f "$d/$f" ] && cmp -s "$REPO/bin/$f" "$d/$f"; then continue; fi
     mkdir -p "$d"; cp "$REPO/bin/$f" "$d/$f.tmp"; chmod 755 "$d/$f.tmp"; mv "$d/$f.tmp" "$d/$f"
     did relay "copied bin/$f → $d/$f"
@@ -318,13 +320,13 @@ step_relay() { # launchd jobs can't read ~/Documents (TCC: "Operation not permit
 step_launchd() {
   local la="$HOME/Library/LaunchAgents" label tmp dst changed tmux_bin
   tmux_bin=$(command -v tmux || echo /opt/homebrew/bin/tmux)
-  for label in cc-orchestrator.claude.agents cc-orchestrator.claude.relay; do
+  for label in cc-orchestrator.claude.agents cc-orchestrator.claude.relay cc-orchestrator.claude.vault-drain; do
     dst="$la/$label.plist"; tmp=$(mktemp)
     sed "s#@HOME@#$HOME#g; s#@TMUX@#$tmux_bin#g" "$REPO/config/mac/launchd/$label.plist.tmpl" > "$tmp"
     plutil -lint "$tmp" >/dev/null || die "rendered $label plist is invalid"
     changed=0
     cmp -s "$tmp" "$dst" 2>/dev/null || { changed=1; install_file launchd "$tmp" "$dst" 644; }
-    case $label in *.relay) [ "$RELAY_CHANGED" = 1 ] && changed=1 ;; esac
+    case $label in *.relay|*.vault-drain) [ "$RELAY_CHANGED" = 1 ] && changed=1 ;; esac
     rm -f "$tmp"
     if [ "${CC_INSTALL_NO_LAUNCHD:-0}" = 1 ]; then say launchd "not loading $label (CC_INSTALL_NO_LAUNCHD)"; continue; fi
     launchd_load "$label" "$dst" "$changed"

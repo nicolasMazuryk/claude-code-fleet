@@ -26,8 +26,10 @@ Use). The Mac must stay unreachable from cloud (invariant 4).
 - **Dispatch.** A `BrowserDispatch` for `mac-computer-use` runs `claude -p <task>` on the Mac, in the repo of the same
   name under `AGENTS_ROOT` (else `$HOME`), with the Mac's own permission settings; the task is one argv, never shell text.
   `dispatch-done` makes cloud run `browser-router vault finish`, freeing the global lock.
-- **Vault queue.** `browser-router-vault-drain.timer` (every 3 min) starts at most one runnable job. It runs only once
-  browser-router is installed. `CLAUDE_CODE_ENABLE_CFC=1` is set in cloud's settings env so `claude -p --chrome` works.
+- **Vault queue.** Queue state is per host, so each host drains its own: `browser-router-vault-drain.timer` on cloud (every
+  3 min) and the LaunchAgent `cc-orchestrator.claude.vault-drain` on the Mac (every 180 s), both running `bin/browser-vault-drain`,
+  which starts at most one runnable job. One script serves both hosts rather than a Mac wrapper: it only differs by the relay sum
+  (cloud) and by locating browser-router without PATH (launchd). Cloud runs it only once browser-router is installed. `CLAUDE_CODE_ENABLE_CFC=1` is set in cloud's settings env so `claude -p --chrome` works.
 - **Install.** `install.sh cloud-local` clones browser-router to `~/.local/share/browser-router` (fast-forward, built by
   `pnpm install --frozen-lockfile && pnpm build`, linked to `~/.local/bin/browser-router`) and installs agent-browser pinned
   (`AGENT_BROWSER_VERSION`, 0.39.1) with `npm -g` + `agent-browser install`.

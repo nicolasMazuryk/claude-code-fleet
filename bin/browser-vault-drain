@@ -1,9 +1,31 @@
 #!/usr/bin/env bash
-# browser-vault-drain — cloud only. What browser-router-vault-drain.service runs every 3 min: `browser-router vault drain`
-# (starts at most one runnable vault job) with BROWSER_ROUTER_RELAY_SUM set, so a dispatch event for the Mac carries the
-# hash agent-relay expects. Without a synced relay handler the sum stays unset and mac-chrome jobs still drain.
-# CLAUDE_CODE_ENABLE_CFC=1 lets the `claude -p --chrome` job drain starts use the Mac's browser.
-export PATH="$HOME/.local/bin:/usr/local/bin:$PATH:/usr/bin:/bin"
+# browser-vault-drain — one pass of the vault queue on either host: `browser-router vault drain` starts at most one
+# runnable vault job. Cloud: browser-router-vault-drain.service (systemd timer, 3 min). Mac: LaunchAgent
+# cc-orchestrator.claude.vault-drain (StartInterval 180), running the copy in ~/.local/libexec/cc-orchestrator.
+# The queue state is per host, so each host drains its own.
+# browser-router is located without relying on PATH (launchd's PATH lacks the nvm bin dir): $BROWSER_ROUTER_BIN,
+# command -v, ~/.local/bin, newest ~/.nvm node, Homebrew. Its dir goes first on PATH (a node-shebang CLI needs the
+# sibling node). Cloud only: BROWSER_ROUTER_RELAY_SUM, so a dispatch event for the Mac carries the hash agent-relay
+# expects (unset without a synced relay handler; mac-chrome jobs still drain).
+# CLAUDE_CODE_ENABLE_CFC=1 lets the `claude -p --chrome` job starts use the Mac's browser.
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH:/usr/bin:/bin"
 export CLAUDE_CODE_ENABLE_CFC=1
-sum=$(browser-relay-cloud sum 2>/dev/null) && export BROWSER_ROUTER_RELAY_SUM=$sum
-exec browser-router vault drain "$@"
+
+find_router() {
+  local c
+  if [ -n "${BROWSER_ROUTER_BIN:-}" ] && [ -x "$BROWSER_ROUTER_BIN" ]; then printf %s "$BROWSER_ROUTER_BIN"; return; fi
+  c=$(command -v browser-router 2>/dev/null) && [ -x "$c" ] && { printf %s "$c"; return; }
+  c=$(for c in "$HOME/.nvm"/versions/node/*/bin/browser-router; do [ -x "$c" ] && echo "$c"; done | sort -V | tail -n1)
+  [ -n "$c" ] && { printf %s "$c"; return; }
+  [ -x /opt/homebrew/bin/browser-router ] && printf %s /opt/homebrew/bin/browser-router
+  return 0
+}
+
+router=$(find_router)
+[ -n "$router" ] || { echo "browser-vault-drain: browser-router not found" >&2; exit 127; }
+export PATH="${router%/*}:$PATH"
+
+if [ "$(uname)" != Darwin ]; then
+  sum=$(browser-relay-cloud sum 2>/dev/null) && export BROWSER_ROUTER_RELAY_SUM=$sum
+fi
+exec "$router" vault drain "$@"
