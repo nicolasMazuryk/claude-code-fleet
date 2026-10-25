@@ -5,7 +5,7 @@ Status: all steps runnable; dry-run drill 2026-10-17 (Phase 7, see `docs/progres
 ## Facts
 - User `nicolas`; repos in `~/Documents`; node via nvm (`~/.nvm`, default alias v24.x), pnpm via corepack.
 - `jq` is `/usr/bin/jq`; gh, rsync in `/opt/homebrew/bin`; cmux and Ghostty installed.
-- Tailscale node name **`macbook`** (tailnet `tailnet-example`; was `nicolas-macbook`). Advertises itself as an exit node and accepts routes; the allowlisted domains leave through cloud's app connector (egress IP `193.123.182.227`).
+- Tailscale node name **`macbook`** (tailnet `tailnet-example`; was `nicolas-macbook`). An exit node like iPhone and cloud; it advertises while it uses none and picks one with `browser-router exit-node use` (`cloud` = egress IP `193.123.182.227`).
 - macOS hostname **`nicolas-macbook`**: ComputerName, LocalHostName and HostName, so it is also the Remote Control
   device name. `[H]` on a new Mac (sudo prompts):
   `for k in ComputerName LocalHostName HostName; do sudo scutil --set $k nicolas-macbook; done`.
@@ -15,7 +15,7 @@ Status: all steps runnable; dry-run drill 2026-10-17 (Phase 7, see `docs/progres
 1. Homebrew; `brew install tmux mosh shellcheck bats-core gh rsync` (mosh installed in Phase 2); install cmux + Ghostty; nvm + `nvm install 24 && nvm alias default 24 && corepack enable`.
 2. `[H]` Tailscale app, log in, rename the machine to `macbook`: admin console → machine → Edit machine name (turn
    off auto-generate); `tailscale set --hostname=macbook` only works if it was never renamed in the console. Then
-   `tailscale set --advertise-exit-node --accept-routes`. Details: [tailscale](tailscale.md) §4, §6, §7.
+   `tailscale set --advertise-exit-node`. Details: [tailscale](tailscale.md) §4, §6.
 2a. `[H]` macOS Application Firewall (on, stealth mode): allow mosh, else mosh to cloud (and later phone → Mac) gets
    no UDP. The rule is per binary, on the Homebrew **Cellar** realpath (sudo prompts):
    ```bash

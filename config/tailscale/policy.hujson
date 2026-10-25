@@ -2,14 +2,14 @@
 // Source of truth: this file. Apply by hand (human): admin console → Access controls → JSON editor → replace all
 // → Save. Procedure, merge rules and checks: docs/runbooks/tailscale.md. ADR: docs/decisions/0001-tailscale-on-oci.md.
 //
-// Nodes (2026-10):
+// Nodes (2026-10): all three are exit nodes, and each member device picks the exit node it uses, or none (a device
+// that uses one offers none meanwhile). The static egress IP means picking `cloud` (oci ADR 0007).
 //   macbook    the Mac, user-owned (member). Renamed from `nicolas-macbook` (admin console → machine → Edit
-//              name, or `tailscale set --hostname=macbook`). Advertises itself as an exit node and reaches the
-//              allowlisted domains through the app connector on cloud (`tailscale set --accept-routes`).
+//              name, or `tailscale set --hostname=macbook`). Picks its exit node with `browser-router exit-node use`.
 //   cloud      core-vm-cloud, tagged tag:cloud, joined by the oci bootstrap with a reusable tagged auth key.
-//              Exit node for the iPhone and browser-router, and app connector for the allowlisted domains below;
-//              egress IP 193.123.182.227 (OCI reserved core-pip-natgw, survives an OCI wipe/restore).
-//   iPhone     member (Phase 6).
+//              Always an exit node and never a client: egress IP 193.123.182.227 (OCI reserved core-pip-natgw,
+//              survives an OCI wipe/restore).
+//   iPhone     member. Picks its exit node in the Tailscale app.
 //
 // Invariant (CLAUDE.md #4): NO rule, grant or ssh entry may have src tag:cloud. The VM must never open a connection
 // to the Mac or the iPhone. The `tests` below fail the save if that is broken (e.g. by a leftover allow-all rule).
@@ -20,50 +20,9 @@
 	},
 
 	// Exit nodes are approved automatically: macbook, iPhone (members) and cloud (tag:cloud).
-	// routes: the app connector on cloud advertises /32s for the domains below as it resolves them; custom app
-	// connectors always need this approver.
 	"autoApprovers": {
 		"exitNode": ["autogroup:member", "tag:cloud"],
-		"routes": {
-			"0.0.0.0/0": ["tag:cloud"],
-			"::/0":      ["tag:cloud"],
-		},
 	},
-
-	// App connector: these domains leave through cloud, i.e. from the allowlisted static IP 193.123.182.227, for every
-	// device that accepts routes, including the Mac while it is itself an exit node (oci ADR 0007). A new allowlisted
-	// service is added here. checkip.amazonaws.com is the probe: `curl -s https://checkip.amazonaws.com` on the Mac
-	// must print 193.123.182.227.
-	"nodeAttrs": [
-		{
-			"target": ["*"],
-			"app": {
-				"tailscale.com/app-connectors": [
-					{
-						"name":       "static-egress",
-						"connectors": ["tag:cloud"],
-						"domains": [
-							"checkip.amazonaws.com",
-							"binance.com", "*.binance.com",
-							"coinbase.com", "*.coinbase.com",
-							"okx.com", "*.okx.com",
-							"bybit.com", "*.bybit.com", "bytick.com", "*.bytick.com",
-							"bitget.com", "*.bitget.com",
-							"gate.io", "*.gate.io", "gate.com", "*.gate.com", "gateio.ws", "*.gateio.ws",
-							"kucoin.com", "*.kucoin.com",
-							"mexc.com", "*.mexc.com",
-							"htx.com", "*.htx.com", "huobi.pro", "*.huobi.pro", "hbdm.com", "*.hbdm.com",
-							"bingx.com", "*.bingx.com",
-							"kraken.com", "*.kraken.com",
-							"bitmart.com", "*.bitmart.com",
-							"lbank.com", "*.lbank.com", "lbkex.com", "*.lbkex.com",
-							"xt.com", "*.xt.com",
-						],
-					},
-				],
-			},
-		},
-	],
 
 	"acls": [
 		// Members' devices (macbook, iPhone) reach every node and port, and the internet through the
