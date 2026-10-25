@@ -2,12 +2,14 @@
 # browser-up — Mac only. Prints one line of compact JSON, the MacUp payload (browser-router docs/contracts.md §7)
 # that agent-relay sends to cloud with every beacon: which browsers run, their versions, which executors are up.
 #   {"schema":1,"ts":<epoch s>,"dia_running":bool,"chrome_running":bool,
-#    "versions":{"dia","chrome","claude_in_chrome","agent_browser"},"executors":{<executor>:"ok"|"untrusted"|"down"|"not built"}}
+#    "versions":{"dia","chrome","claude_in_chrome","agent_browser"},"executors":{<executor>:"ok"|"untrusted"|"down"|"not built"},
+#    "tz":"<Mac IANA zone>"}   (tz optional: cloud br resolves `tz: local` from it, else Europe/Warsaw)
 # mac-computer-use is always "not built" (browser-router #24: not a built executor; stored selftest records are ignored).
 # Any other executor is "ok" only when it is up and the Mac's selftest record (selftest.json) is passing for the versions read here;
 # up without such a record is "untrusted" (cloud trusts executors from this payload alone); not up is "down".
 # A version that cannot be read is left out of "versions". Reads only: Info.plists, extension manifests, pgrep.
-# Test switches: BROWSER_UP_DIA_APP, BROWSER_UP_CHROME_APP, BROWSER_UP_PGREP (command taking -x <name>),
+# tz comes from the /etc/localtime symlink (zoneinfo/<zone>); left out when underivable (systemsetup -gettimezone needs root).
+# Test switches: BROWSER_UP_TZ (zone, overrides the symlink; empty = underivable), BROWSER_UP_LOCALTIME, BROWSER_UP_DIA_APP, BROWSER_UP_CHROME_APP, BROWSER_UP_PGREP (command taking -x <name>),
 # BROWSER_UP_EXT_DIRS (colon-separated dirs holding <version>/manifest.json), BROWSER_UP_NOW,
 # BROWSER_ROUTER_STATE (dir holding selftest.json; default ~/.local/state/browser-router).
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH:/usr/bin:/bin"
@@ -35,6 +37,15 @@ ext_version() { # highest manifest version across the listed extension dirs
   printf %s "$best"
 }
 
+mac_tz() { # IANA zone of the Mac, or nothing
+  local z
+  if [ -n "${BROWSER_UP_TZ+x}" ]; then z=$BROWSER_UP_TZ
+  else z=$(readlink "${BROWSER_UP_LOCALTIME:-/etc/localtime}" 2>/dev/null); z=${z#*zoneinfo/}; fi
+  case "$z" in */*|UTC|GMT) ;; *) return 0 ;; esac
+  case "$z" in *[!A-Za-z0-9_+/-]*|/*|*..*) return 0 ;; esac
+  printf %s "$z"
+}
+
 dia_running=false; running Dia && dia_running=true
 chrome_running=false; running "Google Chrome" && chrome_running=true
 ab=$(agent-browser --version 2>/dev/null | head -n1 | awk '{print $NF}')
@@ -44,7 +55,7 @@ selftest=$(jq -c 'select(.schema == 1) | .executors // {}' "$SELFTEST" 2>/dev/nu
 
 jq -nc --argjson ts "${BROWSER_UP_NOW:-$(date +%s)}" --argjson dia "$dia_running" --argjson chrome "$chrome_running" \
   --arg vdia "$(plist_version "$DIA")" --arg vchrome "$(plist_version "$CHROME")" --arg vext "$(ext_version)" \
-  --arg vab "$ab" --argjson st "$selftest" '
+  --arg vab "$ab" --arg tz "$(mac_tz)" --argjson st "$selftest" '
   ({dia: $vdia, chrome: $vchrome, claude_in_chrome: $vext, agent_browser: $vab} | with_entries(select(.value != ""))) as $ver
   # trusted: a passing record whose recorded versions equal every version read now (mirrors browser-router executorTrust)
   | def trusted($ex): ($st[$ex] // null) as $r
@@ -53,4 +64,5 @@ jq -nc --argjson ts "${BROWSER_UP_NOW:-$(date +%s)}" --argjson dia "$dia_running
   {schema: 1, ts: $ts, dia_running: $dia, chrome_running: $chrome, versions: $ver,
    executors: {"mac-chrome": state($dia; "mac-chrome"),
                "mac-computer-use": "not built",
-               "agent-browser": state($vab != ""; "agent-browser")}}'
+               "agent-browser": state($vab != ""; "agent-browser")}}
+  + (if $tz != "" then {tz: $tz} else {} end)'

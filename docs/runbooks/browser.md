@@ -6,7 +6,7 @@ this repo owns the relay, the cloud install, the drain timer and the settings wi
 ## What runs where
 | | Mac | Cloud |
 |---|---|---|
-| relay | `agent-relay` (LaunchAgent) sends `mac-up` every 15 s, runs `browser-relay-handler` for lease/release/dispatch | `browser-relay-cloud line` (called by the relay's remote script) writes `mac-up` and `replies/<id>` |
+| relay | `agent-relay` (LaunchAgent) sends `mac-up` (incl. the Mac's IANA `tz`, read from `/etc/localtime`; omitted when underivable) every 15 s, runs `browser-relay-handler` for lease/release/dispatch | `browser-relay-cloud line` (called by the relay's remote script) writes `mac-up` and `replies/<id>` |
 | CLI | `agent-browser` (pinned, `npm -g` under the nvm node, plus Chrome for Testing), installed by `install-mac`; browser-router comes from the `~/Documents/browser-router` checkout via a global link | `~/.local/bin/browser-router` (`~/.local/share/browser-router`) and `agent-browser` |
 | queue | – | `browser-router-vault-drain.timer` every 3 min |
 | config | `~/.config/browser-router/sites.yaml` (source) | mirrored by `cc-sync-settings` |

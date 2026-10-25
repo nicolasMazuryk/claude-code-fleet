@@ -224,9 +224,23 @@ seed_selftest() { # seed_selftest <status> <executor>... : selftest.json recorde
 }
 up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   printf '#!/bin/sh\n[ "$1" = -x ] && grep -qxF "$2" "%s"\n' "$T/running" > "$T/fake/pgrep"; chmod +x "$T/fake/pgrep"
-  BROWSER_UP_PGREP="$T/fake/pgrep" BROWSER_UP_NOW=1000 BROWSER_ROUTER_STATE="$T/state" \
+  BROWSER_UP_LOCALTIME="${BROWSER_UP_LOCALTIME-$T/no-localtime}" BROWSER_UP_PGREP="$T/fake/pgrep" BROWSER_UP_NOW=1000 BROWSER_ROUTER_STATE="$T/state" \
     BROWSER_UP_DIA_APP="$T/Dia.app" BROWSER_UP_CHROME_APP="$T/Chrome.app" BROWSER_UP_EXT_DIRS="$T/ext1:$T/ext2" \
     "$REPO/bin/browser-up"
+}
+
+@test "browser-up: tz is the Mac's IANA zone, from BROWSER_UP_TZ or the /etc/localtime symlink, omitted when underivable" {
+  fixture_app "$T/Dia.app" 1.53.0; fixture_app "$T/Chrome.app" 155.0.8059.85
+  : > "$T/running"
+  [ "$(BROWSER_UP_TZ=Europe/Warsaw up | jq -c .tz)" = '"Europe/Warsaw"' ]
+  ln -s /var/db/timezone/zoneinfo/America/Argentina/Buenos_Aires "$T/localtime"
+  [ "$(BROWSER_UP_LOCALTIME="$T/localtime" up | jq -c .tz)" = '"America/Argentina/Buenos_Aires"' ]
+  [ "$(BROWSER_UP_TZ=UTC up | jq -c .tz)" = '"UTC"' ]
+  # underivable or malformed: field left out, rest of the payload intact
+  [ "$(BROWSER_UP_TZ= up | jq -c 'has("tz")')" = false ]
+  [ "$(BROWSER_UP_TZ='Bad Zone/x' up | jq -c 'has("tz")')" = false ]
+  [ "$(BROWSER_UP_TZ=../etc/passwd up | jq -c 'has("tz")')" = false ]
+  [ "$(BROWSER_UP_LOCALTIME="$T/nonexistent" up | jq -c '.schema')" = 1 ]
 }
 
 @test "browser-up: running state, versions (highest extension version) and executors" {

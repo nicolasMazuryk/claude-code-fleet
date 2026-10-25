@@ -11,7 +11,7 @@ Use). The Mac must stay unreachable from cloud (invariant 4).
 - **One connection, still opened by the Mac.** `agent-relay`'s ssh to `cloud` is also the ControlMaster
   (`~/.local/state/agent-relay/cm.sock`, dir 0700). Nothing on cloud ever dials the Mac.
 - **Upstream (Mac → cloud), same ssh:** a `mac-up <json>` line every beacon (`bin/browser-up`: Dia/Chrome running,
-  versions, executors; `mac-computer-use` is always `not built`) which cloud writes to `~/.local/state/agent-events/mac-up` (stale after 45 s), and one-line replies
+  versions, executors, and the Mac's IANA `tz` for `tz: local`; `mac-computer-use` is always `not built`) which cloud writes to `~/.local/state/agent-events/mac-up` (stale after 45 s), and one-line replies
   (`lease-ready`, `lease-failed`, `release-ok`, `dispatch-ok`, `dispatch-done`) spooled by the handler and flushed each
   second. `bin/browser-relay-cloud line` validates every line; port must be 9300–9399; ids are `[A-Za-z0-9_-]`.
 - **Downstream (cloud → Mac), same event stream as the hook relay:** `BrowserLease`, `BrowserRelease`, `BrowserDispatch`
