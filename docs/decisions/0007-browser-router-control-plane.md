@@ -32,7 +32,9 @@ Use). The Mac must stay unreachable from cloud (invariant 4).
   `pnpm install --frozen-lockfile && pnpm build`, linked to `~/.local/bin/browser-router`) and installs agent-browser pinned
   (`AGENT_BROWSER_VERSION`, 0.39.1) with `npm -g` + `agent-browser install`.
 - **Hooks.** `~/.claude/hooks/browser-guard` (shipped by browser-router) is registered as PreToolUse for
-  `mcp__claude-in-chrome__.*`, `mcp__computer-use__.*` and `Bash` (agent-browser) on the Mac; the settings sync carries it to cloud.
+  `mcp__claude-in-chrome__.*`, `mcp__computer-use__.*` and `Bash` (agent-browser) on the Mac. The same script is also registered as PostToolUse for
+  `mcp__claude-in-chrome__(tabs_create_mcp|tabs_close_mcp|tabs_context_mcp|navigate)` and as a Stop hook (its own group beside
+  agent-push.sh). `install.sh mac` adds each once; the settings sync carries them to cloud.
 - **sites.yaml.** `~/.config/browser-router/sites.yaml` on the Mac is mirrored to cloud by `cc-sync-settings`.
 
 ## Consequences

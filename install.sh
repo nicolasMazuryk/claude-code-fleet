@@ -13,8 +13,8 @@
 #               baseline files from config/claude/ only where missing (sounds, skills, claude-hud, ccstatusline,
 #               profile/*, memory/<dir> → ~/.claude/projects/<dir>/memory)
 #   settings    ~/.claude/settings.json: seeded from settings.mac.json if absent; settings.orchestrator.json
-#               deep-merged; one agent-push.sh group appended to Notification and Stop (once); one session-env.sh SessionStart group (once); browser-guard PreToolUse
-#               groups and the browser-router-relay SessionStart slot (once each). Backup first.
+#               deep-merged; one agent-push.sh group appended to Notification and Stop (once); one session-env.sh SessionStart group (once); browser-guard PreToolUse,
+#               PostToolUse (Chrome tab tools) and Stop groups and the browser-router-relay SessionStart slot (once each). Backup first.
 #   ntfy        ~/.config/agent-push/topic (0600): kept if present, else Vault core-secret-ntfy-topic, else new
 #   zshrc       one sourcing line for the snippet (am, ac); existing aliases untouched
 #   ssh         Host cloud appended to ~/.ssh/config if no Host cloud exists
@@ -179,6 +179,11 @@ SETTINGS_JQ='
     .hooks.PreToolUse = ((.hooks.PreToolUse // []) as $g
       | if any($g[]?; .matcher == $m and any(.hooks[]?; (.command // "") | test("browser-guard"))) then $g
         else $g + [{matcher: $m, hooks: [{type: "command", command: "~/.claude/hooks/browser-guard"}]}] end);
+  # PostToolUse (Chrome tab tools) and Stop run the same guard; Stop is a separate group beside agent-push.sh
+  def addguardev($ev; $m):
+    .hooks[$ev] = ((.hooks[$ev] // []) as $g
+      | if any($g[]?; .matcher == $m and any(.hooks[]?; (.command // "") | test("browser-guard"))) then $g
+        else $g + [(if $m == null then {} else {matcher: $m} end) + {hooks: [{type: "command", command: "~/.claude/hooks/browser-guard"}]}] end);
   def addrelay:
     .hooks.SessionStart = ((.hooks.SessionStart // []) as $g
       | if any($g[]?; .matcher == "browser-router-relay") then $g
@@ -189,7 +194,9 @@ SETTINGS_JQ='
       | if any($g[]?.hooks[]?; (.command // "") | test("session-env\\.sh")) then $g
         else $g + [{hooks: [{type: "command", command: "~/.claude/hooks/session-env.sh"}]}] end);
   (.[0] * .[1]) | addpush("Notification") | addpush("Stop") | addsessionenv
-  | addguard("mcp__claude-in-chrome__.*") | addguard("mcp__computer-use__.*") | addguard("Bash") | addrelay'
+  | addguard("mcp__claude-in-chrome__.*") | addguard("mcp__computer-use__.*") | addguard("Bash")
+  | addguardev("PostToolUse"; "mcp__claude-in-chrome__(tabs_create_mcp|tabs_close_mcp|tabs_context_mcp|navigate)")
+  | addguardev("Stop"; null) | addrelay'
 
 step_settings() {
   local s="$HOME/.claude/settings.json" new

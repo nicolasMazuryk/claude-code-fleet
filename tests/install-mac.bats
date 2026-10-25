@@ -29,7 +29,7 @@ setup() {
   # appended after the existing groups (relay positions unchanged)
   [ "$(jq -r '.hooks.Notification[-1].hooks[0].command' "$s")" = "~/.claude/hooks/agent-push.sh" ]
   [ "$(jq -r '.hooks.Stop[0].hooks[0].command' "$s")" != "~/.claude/hooks/agent-push.sh" ]
-  [ "$(jq -r '.hooks.Stop[-1].hooks[0].async' "$s")" = true ]
+  [ "$(jq -r '[.hooks.Stop[].hooks[] | select(.command | test("agent-push"))][0].async' "$s")" = true ]
   ls "$s".bak.* >/dev/null
 }
 
@@ -117,11 +117,17 @@ setup() {
   for m in 'mcp__claude-in-chrome__.*' 'mcp__computer-use__.*' Bash; do
     [ "$(jq --arg m "$m" '[.hooks.PreToolUse[] | select(.matcher == $m) | .hooks[] | select(.command == "~/.claude/hooks/browser-guard")] | length' "$s")" -eq 1 ]
   done
+  pm='mcp__claude-in-chrome__(tabs_create_mcp|tabs_close_mcp|tabs_context_mcp|navigate)'
+  [ "$(jq --arg m "$pm" '[.hooks.PostToolUse[] | select(.matcher == $m) | .hooks[] | select(.command == "~/.claude/hooks/browser-guard")] | length' "$s")" -eq 1 ]
+  [ "$(jq '[.hooks.Stop[] | select(.matcher == null) | .hooks[] | select(.command == "~/.claude/hooks/browser-guard")] | length' "$s")" -eq 1 ]
+  [ "$(jq '[.hooks.Stop[].hooks[] | select(.command | test("agent-push"))] | length' "$s")" -eq 1 ]
   [ "$(jq -r '[.hooks.SessionStart[] | select(.matcher == "browser-router-relay")] | length' "$s")" -eq 1 ]
   [ "$(jq -r '.hooks.SessionStart[] | select(.matcher == "browser-router-relay") | .hooks[0].command' "$s")" = "~/.local/libexec/cc-orchestrator/browser-relay-handler" ]
   for f in browser-up browser-relay-handler; do cmp "$REPO/bin/$f" "$HOME/.local/libexec/cc-orchestrator/$f"; done
   "$REPO/install.sh" mac >/dev/null
   [ "$(jq '[.hooks.PreToolUse[] | select(.matcher == "Bash")] | length' "$s")" -eq 1 ]
+  [ "$(jq --arg m "$pm" '[.hooks.PostToolUse[] | select(.matcher == $m)] | length' "$s")" -eq 1 ]
+  [ "$(jq '[.hooks.Stop[].hooks[] | select(.command | test("browser-guard"))] | length' "$s")" -eq 1 ]
 }
 
 @test "session-env: hook installed and registered once on SessionStart (all sources)" {
