@@ -124,6 +124,17 @@ setup() {
   [ "$(jq '[.hooks.PreToolUse[] | select(.matcher == "Bash")] | length' "$s")" -eq 1 ]
 }
 
+@test "session-env: hook installed and registered once on SessionStart (all sources)" {
+  run "$REPO/install.sh" mac
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  s="$HOME/.claude/settings.json"
+  cmp "$REPO/hooks/session-env.sh" "$HOME/.claude/hooks/session-env.sh"
+  [ -x "$HOME/.claude/hooks/session-env.sh" ]
+  [ "$(jq '[.hooks.SessionStart[] | select(.matcher == null) | .hooks[] | select(.command == "~/.claude/hooks/session-env.sh")] | length' "$s")" -eq 1 ]
+  "$REPO/install.sh" mac >/dev/null
+  [ "$(jq '[.hooks.SessionStart[].hooks[] | select(.command | test("session-env"))] | length' "$s")" -eq 1 ]
+}
+
 # agent-browser on the Mac, hermetic: the stubs sit first on PATH and shadow any real npm/agent-browser (even under nvm).
 # The stub agent-browser reports the version in $HOME/ab.version (0.0.0 until the stub npm "installs" one) and logs its calls.
 mac_browser_fakes() {
