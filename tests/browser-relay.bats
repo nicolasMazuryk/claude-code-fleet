@@ -278,14 +278,24 @@ up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   [ "$(up | jq -c '[.executors["mac-chrome"], .executors["agent-browser"]]')" = '["down","ok"]' ]
 }
 
-@test "browser-up: a recorded version that differs from the current one makes every executor untrusted" {
+@test "browser-up: only an executor's relevant versions stale its record" {
   fixture_app "$T/Dia.app" 1.53.0; fixture_app "$T/Chrome.app" 155.0.8059.85
   fixture_ext "$T/ext1" 1.0.101
-  printf '#!/bin/sh\necho "agent-browser 0.39.2"\n' > "$HOME/.local/bin/agent-browser"; chmod +x "$HOME/.local/bin/agent-browser"
   printf 'Dia\n' > "$T/running"
-  seed_selftest ok mac-chrome mac-computer-use agent-browser   # recorded agent_browser 0.39.1, now 0.39.2
-  # any version change stales every record, as in browser-router's executorTrust
-  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","agent-browser":"untrusted"}' ]
+  seed_selftest ok mac-chrome mac-computer-use agent-browser   # recorded agent_browser 0.39.1
+  # agent_browser change: only agent-browser
+  printf '#!/bin/sh\necho "agent-browser 0.39.2"\n' > "$HOME/.local/bin/agent-browser"; chmod +x "$HOME/.local/bin/agent-browser"
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"ok","mac-computer-use":"not built","agent-browser":"untrusted"}' ]
+  # chrome change: agent-browser, not mac-chrome
+  printf '#!/bin/sh\necho "agent-browser 0.39.1"\n' > "$HOME/.local/bin/agent-browser"
+  fixture_app "$T/Chrome.app" 156.0.0.1
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"ok","mac-computer-use":"not built","agent-browser":"untrusted"}' ]
+  # dia change: mac-chrome only
+  fixture_app "$T/Chrome.app" 155.0.8059.85; fixture_app "$T/Dia.app" 1.54.0
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","agent-browser":"ok"}' ]
+  # claude_in_chrome change: mac-chrome only
+  fixture_app "$T/Dia.app" 1.53.0; fixture_ext "$T/ext2" 1.0.102
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","agent-browser":"ok"}' ]
 }
 
 @test "browser-up: unreadable versions are left out, nothing running -> executors down" {

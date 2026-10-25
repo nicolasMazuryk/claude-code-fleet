@@ -49,6 +49,7 @@ mirrors the script and the registration to cloud. Check in a new session: `echo 
 On the Mac, `agent-browser` drives the installed Google Chrome in the system locale (no `--lang` flag): the route result
 carries `AGENT_BROWSER_EXECUTABLE_PATH` (override the binary with `BROWSER_ROUTER_AGENT_CHROME`) and
 `AGENT_BROWSER_ARGS=--disable-blink-features=AutomationControlled`, which keeps `navigator.webdriver` false in real Chrome.
+A selftest record goes stale only for its own executor's versions: `dia` or `claude_in_chrome` changes stale mac-chrome; `chrome` or `agent_browser` changes stale agent-browser.
 Its selftest expects the host system locale unless `BROWSER_ROUTER_EXPECT_LOCALE` is set. Chrome for Testing is not used
 on the Mac: it crashes OLX's login page. Linux keeps agent-browser's default browser. Headed selftest re-run (`[H]`, needs a display):
 `AGENT_BROWSER_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" AGENT_BROWSER_ARGS=--disable-blink-features=AutomationControlled browser-router selftest --executor agent-browser --serve`
