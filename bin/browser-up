@@ -5,7 +5,8 @@
 #    "versions":{"dia","chrome","claude_in_chrome","agent_browser"},"executors":{<executor>:"ok"|"untrusted"|"down"|"not built"},
 #    "tz":"<Mac IANA zone>"}   (tz optional: cloud br resolves `tz: local` from it, else Europe/Warsaw)
 # mac-computer-use is always "not built" (browser-router #24: not a built executor; stored selftest records are ignored).
-# Any other executor is "ok" only when it is up and the Mac's selftest record (selftest.json) is passing for the versions read here;
+# Any other executor is "ok" only when it is up and the Mac's selftest record (selftest.json) is passing for the relevant versions read here
+# (mac-chrome: dia, claude_in_chrome; agent-browser: chrome, agent_browser);
 # up without such a record is "untrusted" (cloud trusts executors from this payload alone); not up is "down".
 # A version that cannot be read is left out of "versions". Reads only: Info.plists, extension manifests, pgrep.
 # tz comes from the /etc/localtime symlink (zoneinfo/<zone>); left out when underivable (systemsetup -gettimezone needs root).
@@ -57,9 +58,11 @@ jq -nc --argjson ts "${BROWSER_UP_NOW:-$(date +%s)}" --argjson dia "$dia_running
   --arg vdia "$(plist_version "$DIA")" --arg vchrome "$(plist_version "$CHROME")" --arg vext "$(ext_version)" \
   --arg vab "$ab" --arg tz "$(mac_tz)" --argjson st "$selftest" '
   ({dia: $vdia, chrome: $vchrome, claude_in_chrome: $vext, agent_browser: $vab} | with_entries(select(.value != ""))) as $ver
-  # trusted: a passing record whose recorded versions equal every version read now (mirrors browser-router executorTrust)
+  | {"mac-chrome": ["dia", "claude_in_chrome"], "agent-browser": ["chrome", "agent_browser"]} as $rel
+  # trusted: a passing record whose recorded versions equal the relevant versions of that executor read now (mirrors browser-router executorTrust)
   | def trusted($ex): ($st[$ex] // null) as $r
-      | $r != null and $r.status == "ok" and ($ver | to_entries | all(.value == ($r.versions[.key] // null)));
+      | $r != null and $r.status == "ok"
+        and ($ver | to_entries | map(select(.key as $k | ($rel[$ex] // []) | index($k))) | all(.value == ($r.versions[.key] // null)));
     def state($up; $ex): if ($up | not) then "down" elif trusted($ex) then "ok" else "untrusted" end;
   {schema: 1, ts: $ts, dia_running: $dia, chrome_running: $chrome, versions: $ver,
    executors: {"mac-chrome": state($dia; "mac-chrome"),
