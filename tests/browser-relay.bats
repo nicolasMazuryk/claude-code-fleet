@@ -298,6 +298,24 @@ up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","agent-browser":"ok"}' ]
 }
 
+@test "browser-up: finds agent-browser in the newest nvm node dir with a minimal PATH (launchd)" {
+  fixture_app "$T/Dia.app" 1.53.0; fixture_app "$T/Chrome.app" 155.0.8059.85
+  for v in v20.9.0 v22.10.0; do
+    mkdir -p "$HOME/.nvm/versions/node/$v/bin"
+    printf '#!/bin/sh\necho "agent-browser %s"\n' "${v#v}" > "$HOME/.nvm/versions/node/$v/bin/agent-browser"
+    chmod +x "$HOME/.nvm/versions/node/$v/bin/agent-browser"
+  done
+  rm -f "$HOME/.local/bin/agent-browser"
+  : > "$T/running"
+  out=$(export PATH=/usr/bin:/bin; up)
+  [ "$(jq -r .versions.agent_browser <<<"$out")" = 22.10.0 ]
+  [ "$(jq -r '.executors["agent-browser"]' <<<"$out")" = untrusted ]
+  # $AGENT_BROWSER_BIN wins over the nvm scan
+  printf '#!/bin/sh\necho "agent-browser 9.9.9"\n' > "$T/ab"; chmod +x "$T/ab"
+  out=$(export PATH=/usr/bin:/bin AGENT_BROWSER_BIN="$T/ab"; up)
+  [ "$(jq -r .versions.agent_browser <<<"$out")" = 9.9.9 ]
+}
+
 @test "browser-up: unreadable versions are left out, nothing running -> executors down" {
   : > "$T/running"
   PATH="$T/fake:/usr/bin:/bin:/usr/sbin" out=$(up)

@@ -10,6 +10,7 @@
 # up without such a record is "untrusted" (cloud trusts executors from this payload alone); not up is "down".
 # A version that cannot be read is left out of "versions". Reads only: Info.plists, extension manifests, pgrep.
 # tz comes from the /etc/localtime symlink (zoneinfo/<zone>); left out when underivable (systemsetup -gettimezone needs root).
+# agent-browser is located without relying on PATH (command -v, $AGENT_BROWSER_BIN, newest ~/.nvm node, /opt/homebrew/bin); "up" = its version is readable.
 # Test switches: BROWSER_UP_TZ (zone, overrides the symlink; empty = underivable), BROWSER_UP_LOCALTIME, BROWSER_UP_DIA_APP, BROWSER_UP_CHROME_APP, BROWSER_UP_PGREP (command taking -x <name>),
 # BROWSER_UP_EXT_DIRS (colon-separated dirs holding <version>/manifest.json), BROWSER_UP_NOW,
 # BROWSER_ROUTER_STATE (dir holding selftest.json; default ~/.local/state/browser-router).
@@ -49,7 +50,20 @@ mac_tz() { # IANA zone of the Mac, or nothing
 
 dia_running=false; running Dia && dia_running=true
 chrome_running=false; running "Google Chrome" && chrome_running=true
-ab=$(agent-browser --version 2>/dev/null | head -n1 | awk '{print $NF}')
+find_agent_browser() { # PATH-independent (launchd's PATH lacks the nvm bin dir): command -v, $AGENT_BROWSER_BIN, newest nvm node, Homebrew
+  local c
+  c=$(command -v agent-browser 2>/dev/null) && [ -x "$c" ] && { printf %s "$c"; return; }
+  [ -n "${AGENT_BROWSER_BIN:-}" ] && [ -x "$AGENT_BROWSER_BIN" ] && { printf %s "$AGENT_BROWSER_BIN"; return; }
+  c=$(for c in "$HOME/.nvm"/versions/node/*/bin/agent-browser; do [ -x "$c" ] && echo "$c"; done | sort -V | tail -n1)
+  [ -n "$c" ] && [ -x "$c" ] && { printf %s "$c"; return; }
+  [ -x /opt/homebrew/bin/agent-browser ] && printf %s /opt/homebrew/bin/agent-browser
+  return 0
+}
+AB_BIN=$(find_agent_browser)
+ab=''
+if [ -n "$AB_BIN" ]; then # its dir first on PATH: a node-shebang script needs the sibling node
+  ab=$(PATH="${AB_BIN%/*}:$PATH" "$AB_BIN" --version 2>/dev/null | head -n1 | awk '{print $NF}')
+fi
 
 selftest=$(jq -c 'select(.schema == 1) | .executors // {}' "$SELFTEST" 2>/dev/null)
 [ -n "$selftest" ] || selftest='{}'
