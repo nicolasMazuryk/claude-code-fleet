@@ -239,7 +239,7 @@ up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   [ "$(wc -l <<<"$out" | tr -d ' ')" -eq 1 ]
   [ "$(jq -S . <<<"$out")" = "$(jq -S . <<<'{"schema":1,"ts":1000,"dia_running":true,"chrome_running":false,
     "versions":{"dia":"1.53.0","chrome":"155.0.8059.85","claude_in_chrome":"1.0.101","agent_browser":"0.39.1"},
-    "executors":{"mac-chrome":"ok","mac-computer-use":"ok","agent-browser":"ok"}}')" ]
+    "executors":{"mac-chrome":"ok","mac-computer-use":"not built","agent-browser":"ok"}}')" ]
   printf 'Google Chrome\n' > "$T/running"
   out=$(up)
   [ "$(jq -c '[.dia_running, .chrome_running, .executors["mac-chrome"], .executors["agent-browser"]]' <<<"$out")" = '[false,true,"down","ok"]' ]
@@ -251,10 +251,10 @@ up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   printf '#!/bin/sh\necho "agent-browser 0.39.1"\n' > "$HOME/.local/bin/agent-browser"; chmod +x "$HOME/.local/bin/agent-browser"
   printf 'Dia\n' > "$T/running"
   # no record at all
-  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"untrusted","agent-browser":"untrusted"}' ]
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","agent-browser":"untrusted"}' ]
   # failed record for one, passing for another, none for the third
   seed_selftest untrusted mac-chrome; jq '.executors["agent-browser"] = .executors["mac-chrome"] | .executors["agent-browser"].status = "ok"' "$T/state/selftest.json" > "$T/s" && mv "$T/s" "$T/state/selftest.json"
-  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"untrusted","agent-browser":"ok"}' ]
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","agent-browser":"ok"}' ]
   # unreadable record
   echo 'not json' > "$T/state/selftest.json"
   [ "$(up | jq -c '.executors["agent-browser"]')" = '"untrusted"' ]
@@ -271,14 +271,14 @@ up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   printf 'Dia\n' > "$T/running"
   seed_selftest ok mac-chrome mac-computer-use agent-browser   # recorded agent_browser 0.39.1, now 0.39.2
   # any version change stales every record, as in browser-router's executorTrust
-  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"untrusted","agent-browser":"untrusted"}' ]
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","agent-browser":"untrusted"}' ]
 }
 
 @test "browser-up: unreadable versions are left out, nothing running -> executors down" {
   : > "$T/running"
   PATH="$T/fake:/usr/bin:/bin:/usr/sbin" out=$(up)
   [ "$(jq -S . <<<"$out")" = "$(jq -S . <<<'{"schema":1,"ts":1000,"dia_running":false,"chrome_running":false,
-    "versions":{},"executors":{"mac-chrome":"down","mac-computer-use":"down","agent-browser":"down"}}')" ]
+    "versions":{},"executors":{"mac-chrome":"down","mac-computer-use":"not built","agent-browser":"down"}}')" ]
 }
 
 # --------------------------------------------------------------------------------------- cloud side

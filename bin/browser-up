@@ -2,8 +2,9 @@
 # browser-up — Mac only. Prints one line of compact JSON, the MacUp payload (browser-router docs/contracts.md §7)
 # that agent-relay sends to cloud with every beacon: which browsers run, their versions, which executors are up.
 #   {"schema":1,"ts":<epoch s>,"dia_running":bool,"chrome_running":bool,
-#    "versions":{"dia","chrome","claude_in_chrome","agent_browser"},"executors":{<executor>:"ok"|"untrusted"|"down"}}
-# An executor is "ok" only when it is up and the Mac's selftest record (selftest.json) is passing for the versions read here;
+#    "versions":{"dia","chrome","claude_in_chrome","agent_browser"},"executors":{<executor>:"ok"|"untrusted"|"down"|"not built"}}
+# mac-computer-use is always "not built" (browser-router #24: not a built executor; stored selftest records are ignored).
+# Any other executor is "ok" only when it is up and the Mac's selftest record (selftest.json) is passing for the versions read here;
 # up without such a record is "untrusted" (cloud trusts executors from this payload alone); not up is "down".
 # A version that cannot be read is left out of "versions". Reads only: Info.plists, extension manifests, pgrep.
 # Test switches: BROWSER_UP_DIA_APP, BROWSER_UP_CHROME_APP, BROWSER_UP_PGREP (command taking -x <name>),
@@ -51,5 +52,5 @@ jq -nc --argjson ts "${BROWSER_UP_NOW:-$(date +%s)}" --argjson dia "$dia_running
     def state($up; $ex): if ($up | not) then "down" elif trusted($ex) then "ok" else "untrusted" end;
   {schema: 1, ts: $ts, dia_running: $dia, chrome_running: $chrome, versions: $ver,
    executors: {"mac-chrome": state($dia; "mac-chrome"),
-               "mac-computer-use": state($dia; "mac-computer-use"),
+               "mac-computer-use": "not built",
                "agent-browser": state($vab != ""; "agent-browser")}}'
