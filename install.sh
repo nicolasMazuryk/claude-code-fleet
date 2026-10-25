@@ -9,11 +9,11 @@
 #   bin         ~/.local/bin/<script> → <repo>/bin/<script> (symlinks; editing the repo changes what runs)
 #   config      ~/.config/cc-orchestrator/config (from config/mac/config.tmpl), zshrc.snippet copy
 #   tmux        ~/.tmux.conf
-#   claude      ~/.claude/CLAUDE.md, statusline-combined.sh (node path fix), hooks/agent-push.sh;
+#   claude      ~/.claude/CLAUDE.md, statusline-combined.sh (node path fix), hooks/agent-push.sh, hooks/session-env.sh;
 #               baseline files from config/claude/ only where missing (sounds, skills, claude-hud, ccstatusline,
 #               profile/*, memory/<dir> → ~/.claude/projects/<dir>/memory)
 #   settings    ~/.claude/settings.json: seeded from settings.mac.json if absent; settings.orchestrator.json
-#               deep-merged; one agent-push.sh group appended to Notification and Stop (once); browser-guard PreToolUse
+#               deep-merged; one agent-push.sh group appended to Notification and Stop (once); one session-env.sh SessionStart group (once); browser-guard PreToolUse
 #               groups and the browser-router-relay SessionStart slot (once each). Backup first.
 #   ntfy        ~/.config/agent-push/topic (0600): kept if present, else Vault core-secret-ntfy-topic, else new
 #   zshrc       one sourcing line for the snippet (am, ac); existing aliases untouched
@@ -148,6 +148,7 @@ step_claude() {
   install_file claude "$c/CLAUDE.md" "$d/CLAUDE.md" 644
   install_file claude "$c/statusline-combined.sh" "$d/statusline-combined.sh" 755
   install_file claude "$REPO/hooks/agent-push.sh" "$d/hooks/agent-push.sh" 755
+  install_file claude "$REPO/hooks/session-env.sh" "$d/hooks/session-env.sh" 755
   # baseline (Phase 1 capture): restore only what is missing, never overwrite Mac state
   install_missing claude "$c/statusline-sys.sh" "$d/statusline-sys.sh"
   install_missing claude "$c/sounds" "$d/sounds"
@@ -182,7 +183,12 @@ SETTINGS_JQ='
     .hooks.SessionStart = ((.hooks.SessionStart // []) as $g
       | if any($g[]?; .matcher == "browser-router-relay") then $g
         else $g + [{matcher: "browser-router-relay", hooks: [{type: "command", command: "~/.local/libexec/cc-orchestrator/browser-relay-handler"}]}] end);
-  (.[0] * .[1]) | addpush("Notification") | addpush("Stop")
+  # session-env.sh: SessionStart (every source) exports CLAUDE_SESSION_ID into later Bash calls
+  def addsessionenv:
+    .hooks.SessionStart = ((.hooks.SessionStart // []) as $g
+      | if any($g[]?.hooks[]?; (.command // "") | test("session-env\\.sh")) then $g
+        else $g + [{hooks: [{type: "command", command: "~/.claude/hooks/session-env.sh"}]}] end);
+  (.[0] * .[1]) | addpush("Notification") | addpush("Stop") | addsessionenv
   | addguard("mcp__claude-in-chrome__.*") | addguard("mcp__computer-use__.*") | addguard("Bash") | addrelay'
 
 step_settings() {

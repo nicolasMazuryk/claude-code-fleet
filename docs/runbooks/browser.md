@@ -31,6 +31,14 @@ Leased Chrome profiles (`~/.chrome-agent-profiles/<profile>`) are separate from 
    (`playwright@1.63.0 install-deps chromium`, then `install chromium` into `~/.cache/ms-playwright`) and sets
    `executablePath` in `~/.agent-browser/config.json`; a rerun changes nothing. macOS runs `agent-browser install` as before.
 
+## Session id in Bash
+Claude Code provides no session-id environment variable to Bash; only the hook payload carries `session_id`. browser-router's
+`route`, `lease` and `shield` read `--session` or `CLAUDE_SESSION_ID`, and its guard hook matches on the payload `session_id`.
+`hooks/session-env.sh` is a SessionStart hook (no matcher, so startup, resume, clear, compact and fork all fire it) that appends
+`export CLAUDE_SESSION_ID=<id>` to `$CLAUDE_ENV_FILE`; Claude Code runs that file before every later Bash command. The id is
+written only if it matches `[A-Za-z0-9-]+`. `install.sh mac` installs the script and registers it once; `cc-sync-settings`
+mirrors the script and the registration to cloud. Check in a new session: `echo $CLAUDE_SESSION_ID`.
+
 ## Use
 - Lease a Mac Chrome profile from cloud: `browser-relay-cloud lease <site> <profile> [--session <sid>] [--ttl 900]` prints `<id> <port>`
   (CDP on cloud's `127.0.0.1:<port>`); `browser-relay-cloud release <id>` ends it. Exit 5: Mac down, refused, or no answer.
