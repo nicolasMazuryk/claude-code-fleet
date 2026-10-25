@@ -8,7 +8,7 @@ this repo owns the relay, the cloud install, the drain timer and the settings wi
 |---|---|---|
 | relay | `agent-relay` (LaunchAgent) sends `mac-up` (incl. the Mac's IANA `tz`, read from `/etc/localtime`; omitted when underivable) every 15 s, runs `browser-relay-handler` for lease/release/dispatch | `browser-relay-cloud line` (called by the relay's remote script) writes `mac-up` and `replies/<id>` |
 | CLI | `agent-browser` (pinned, `npm -g` under the nvm node, plus Chrome for Testing), installed by `install-mac`; browser-router comes from the `~/Documents/browser-router` checkout via a global link | `~/.local/bin/browser-router` (`~/.local/share/browser-router`) and `agent-browser` |
-| queue | – | `browser-router-vault-drain.timer` every 3 min |
+| queue | LaunchAgent `cc-orchestrator.claude.vault-drain` every 180 s (`~/.local/libexec/cc-orchestrator/browser-vault-drain`, log `/tmp/browser-vault-drain.log`) | `browser-router-vault-drain.timer` every 3 min |
 | config | `~/.config/browser-router/sites.yaml` (source) | mirrored by `cc-sync-settings` |
 
 ## Browser profiles (Mac)
@@ -43,7 +43,7 @@ mirrors the script and the registration to cloud. Check in a new session: `echo 
 - Lease a Mac Chrome profile from cloud: `browser-relay-cloud lease <site> <profile> [--session <sid>] [--ttl 900]` prints `<id> <port>`
   (CDP on cloud's `127.0.0.1:<port>`); `browser-relay-cloud release <id>` ends it. Exit 5: Mac down, refused, or no answer.
 - Check what the Mac reports: `ssh cloud 'cat ~/.local/state/agent-events/mac-up'` (fresh = mtime under 45 s).
-- Vault drain by hand: `ssh cloud browser-vault-drain`; logs: `journalctl -u browser-router-vault-drain`.
+- Vault drain by hand: `ssh cloud browser-vault-drain`; logs: `journalctl -u browser-router-vault-drain`. On the Mac: `launchctl kickstart gui/$(id -u)/cc-orchestrator.claude.vault-drain`; log `/tmp/browser-vault-drain.log`. Queue state is per host, so each host drains the jobs queued on it (a `vault submit` exit 3 on the Mac brain is drained by the Mac agent). `install.sh mac` renders and loads the agent; `bin/browser-vault-drain` is one script for both hosts (it finds browser-router without relying on PATH, and sets `BROWSER_ROUTER_RELAY_SUM` only on cloud).
 
 ## agent-browser: Chrome and logins
 On the Mac, `agent-browser` drives the installed Google Chrome in the system locale (no `--lang` flag): the route result
