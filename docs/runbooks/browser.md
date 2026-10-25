@@ -60,16 +60,19 @@ A host with no `sites.yaml` entry matches only `"*"`. The agent classifies the t
   (`~/Documents/browser-router/config/sites.yaml`). Commit that change in the browser-router repo, run `cc-sync-settings`
   to mirror it to cloud, then route again. Background sessions stop with "needs input: site config for <host>".
 
-## Browser Use proxy (Polish ISP proxy)
-Design: [ADR 0007](../decisions/0007-browser-router-control-plane.md). Browser Use browsers go direct through a persistent
-Polish ISP proxy, so a site sees one stable Polish residential IP. Until that proxy exists, use Browser Use's own `pl`
-residential proxy. There is no self-hosted gateway on cloud and no public ingress.
+## Browser Use proxy (mode `browseruse` or `isp`)
+Design: [ADR 0007](../decisions/0007-browser-router-control-plane.md). The proxy mode is `browseruse` by default: Browser Use
+browsers go through Browser Use's own `pl` residential proxy (IP not stable; `isp_pin` is not enforced and prints a warning).
+Mode `isp` sends them through a persistent Polish ISP proxy, so a site sees one stable Polish residential IP, and enforces
+`isp_pin`. `browser-router proxy mode [browseruse|isp]` shows or sets the mode; the ISP URL stays stored when the mode is
+`browseruse`. There is no self-hosted gateway on cloud and no public ingress.
+0. `browser-router proxy mode` prints the effective mode and whether it is the default.
 1. `[H]` Buy a persistent (static) Polish ISP proxy and note its URL (`scheme://user:pass@host:port`).
 2. `[H]` On each host that starts Browser Use sessions, enter the URL on stdin: `browser-router proxy set -` (paste the URL,
    then Ctrl-D). The URL is a secret and `proxy set <url>` would put it on argv (shell history, `ps`), so use `-`. It is stored
    in browser-router's state (`proxy.json`, 0600), never in git; output never shows credentials. Setting it clears the site pins.
-3. Check: `browser-router proxy status` (the redacted URL; without a proxy it prints
-   `unset (Browser Use residential pl, IP not stable)`) and `browser-router proxy probe` (prints `isp proxy ip <ip>`; the IP
+   Then `browser-router proxy mode isp` activates it.
+3. Check: `browser-router proxy status` (the mode and the redacted URL, `unset` without a proxy) and `browser-router proxy probe` (prints `isp proxy ip <ip>`; the IP
    must be the same on every run). For a site with `isp_pin`, `browser-router proxy probe --site <host>` records or checks
    that site's pin (exit 5 on mismatch); a pinned site needs a new `shield login` after the proxy is set.
    **Plan requirements** (a plan that fails them breaks logins with symptoms like booksy's "Request malformed - Hcaptcha"):
@@ -79,7 +82,7 @@ residential proxy. There is no self-hosted gateway on cloud and no public ingres
      (exit 5 and a 403 hint otherwise). Sequential requests passing is not enough.
    - Every host reachable, including `*.hcaptcha.com` and `ipinfo.io`; the probe prints per-host results.
    A browser started on a plan that refuses bursts shows `ERR_TUNNEL_CONNECTION_FAILED` on random sub-resources; stop it
-   (`browser-router shield stop <site>`) and change the plan; `isp_pin` sites do not run without the ISP proxy.
+   (`browser-router shield stop <site>`) and change the plan; in mode `isp`, `isp_pin` sites do not run without the ISP proxy.
 4. Browser Use API key: Mac Keychain `cc-browser-use-api-key`; `./install.sh mac` and `./install.sh cloud` write it to
    `~/.config/browser-router/env` (0600, key `BROWSER_USE_API_KEY`) via `bin/browser-router-env-push`. A missing item skips
    the key with a log line; re-run both installs after adding it.
