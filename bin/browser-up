@@ -2,11 +2,13 @@
 # browser-up — Mac only. Prints one line of compact JSON, the MacUp payload (browser-router docs/contracts.md §7)
 # that agent-relay sends to cloud with every beacon: which browsers run, their versions, which executors are up.
 #   {"schema":1,"ts":<epoch s>,"dia_running":bool,"chrome_running":bool,
-#    "versions":{"dia","chrome","claude_in_chrome","agent_browser"},"executors":{<executor>:"ok"|"down"}}
-# Trust (untrusted) is decided on cloud from selftest.json and these versions; this script only reports facts.
+#    "versions":{"dia","chrome","claude_in_chrome","agent_browser"},"executors":{<executor>:"ok"|"untrusted"|"down"}}
+# An executor is "ok" only when it is up and the Mac's selftest record (selftest.json) is passing for the versions read here;
+# up without such a record is "untrusted" (cloud trusts executors from this payload alone); not up is "down".
 # A version that cannot be read is left out of "versions". Reads only: Info.plists, extension manifests, pgrep.
 # Test switches: BROWSER_UP_DIA_APP, BROWSER_UP_CHROME_APP, BROWSER_UP_PGREP (command taking -x <name>),
-# BROWSER_UP_EXT_DIRS (colon-separated dirs holding <version>/manifest.json), BROWSER_UP_NOW.
+# BROWSER_UP_EXT_DIRS (colon-separated dirs holding <version>/manifest.json), BROWSER_UP_NOW,
+# BROWSER_ROUTER_STATE (dir holding selftest.json; default ~/.local/state/browser-router).
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH:/usr/bin:/bin"
 DIA=${BROWSER_UP_DIA_APP:-/Applications/Dia.app}
 CHROME=${BROWSER_UP_CHROME_APP:-/Applications/Google Chrome.app}
@@ -15,6 +17,7 @@ EXT_ID=fcoeoabgfenejglbffodgkkbkcdhcgfn
 EXT_DIRS=${BROWSER_UP_EXT_DIRS:-"$HOME/Library/Application Support/Dia/User Data/Default/Extensions/$EXT_ID:$HOME/Library/Application Support/Google/Chrome/Default/Extensions/$EXT_ID"}
 
 plist_version() { plutil -extract CFBundleShortVersionString raw -o - "$1/Contents/Info.plist" 2>/dev/null; }
+SELFTEST=${BROWSER_ROUTER_STATE:-$HOME/.local/state/browser-router}/selftest.json
 running() { "$PGREP" -x "$1" >/dev/null 2>&1; }
 
 ext_version() { # highest manifest version across the listed extension dirs
@@ -35,12 +38,18 @@ dia_running=false; running Dia && dia_running=true
 chrome_running=false; running "Google Chrome" && chrome_running=true
 ab=$(agent-browser --version 2>/dev/null | head -n1 | awk '{print $NF}')
 
+selftest=$(jq -c 'select(.schema == 1) | .executors // {}' "$SELFTEST" 2>/dev/null)
+[ -n "$selftest" ] || selftest='{}'
+
 jq -nc --argjson ts "${BROWSER_UP_NOW:-$(date +%s)}" --argjson dia "$dia_running" --argjson chrome "$chrome_running" \
   --arg vdia "$(plist_version "$DIA")" --arg vchrome "$(plist_version "$CHROME")" --arg vext "$(ext_version)" \
-  --arg vab "$ab" '
-  {schema: 1, ts: $ts, dia_running: $dia, chrome_running: $chrome,
-   versions: ({dia: $vdia, chrome: $vchrome, claude_in_chrome: $vext, agent_browser: $vab}
-              | with_entries(select(.value != ""))),
-   executors: ({"mac-chrome": (if $dia then "ok" else "down" end),
-                "mac-computer-use": (if $dia then "ok" else "down" end),
-                "agent-browser": (if $vab != "" then "ok" else "down" end)})}'
+  --arg vab "$ab" --argjson st "$selftest" '
+  ({dia: $vdia, chrome: $vchrome, claude_in_chrome: $vext, agent_browser: $vab} | with_entries(select(.value != ""))) as $ver
+  # trusted: a passing record whose recorded versions equal every version read now (mirrors browser-router executorTrust)
+  | def trusted($ex): ($st[$ex] // null) as $r
+      | $r != null and $r.status == "ok" and ($ver | to_entries | all(.value == ($r.versions[.key] // null)));
+    def state($up; $ex): if ($up | not) then "down" elif trusted($ex) then "ok" else "untrusted" end;
+  {schema: 1, ts: $ts, dia_running: $dia, chrome_running: $chrome, versions: $ver,
+   executors: {"mac-chrome": state($dia; "mac-chrome"),
+               "mac-computer-use": state($dia; "mac-computer-use"),
+               "agent-browser": state($vab != ""; "agent-browser")}}'

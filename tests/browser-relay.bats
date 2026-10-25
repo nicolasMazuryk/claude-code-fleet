@@ -215,9 +215,16 @@ fixture_app() { # fixture_app <dir.app> <version>
 fixture_ext() { # fixture_ext <dir> <version>
   mkdir -p "$1/$2"; printf '{"version":"%s"}' "$2" > "$1/$2/manifest.json"
 }
+seed_selftest() { # seed_selftest <status> <executor>... : selftest.json recorded at the fixture versions
+  local st=$1; shift
+  mkdir -p "$T/state"
+  printf '%s\n' "$@" | jq -Rn --arg st "$st" '{schema: 1, executors: ([inputs] | map({key: ., value: {status: $st, ran_at: 1, failed: [],
+    versions: {dia: "1.53.0", chrome: "155.0.8059.85", claude_in_chrome: "1.0.101", agent_browser: "0.39.1"}}}) | from_entries)}' \
+    > "$T/state/selftest.json"
+}
 up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   printf '#!/bin/sh\n[ "$1" = -x ] && grep -qxF "$2" "%s"\n' "$T/running" > "$T/fake/pgrep"; chmod +x "$T/fake/pgrep"
-  BROWSER_UP_PGREP="$T/fake/pgrep" BROWSER_UP_NOW=1000 \
+  BROWSER_UP_PGREP="$T/fake/pgrep" BROWSER_UP_NOW=1000 BROWSER_ROUTER_STATE="$T/state" \
     BROWSER_UP_DIA_APP="$T/Dia.app" BROWSER_UP_CHROME_APP="$T/Chrome.app" BROWSER_UP_EXT_DIRS="$T/ext1:$T/ext2" \
     "$REPO/bin/browser-up"
 }
@@ -227,6 +234,7 @@ up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   fixture_ext "$T/ext1" 1.0.99; fixture_ext "$T/ext1" 1.0.101; fixture_ext "$T/ext2" 1.0.100
   printf '#!/bin/sh\necho "agent-browser 0.39.1"\n' > "$HOME/.local/bin/agent-browser"; chmod +x "$HOME/.local/bin/agent-browser"
   printf 'Dia\n' > "$T/running"
+  seed_selftest ok mac-chrome mac-computer-use agent-browser
   out=$(up)
   [ "$(wc -l <<<"$out" | tr -d ' ')" -eq 1 ]
   [ "$(jq -S . <<<"$out")" = "$(jq -S . <<<'{"schema":1,"ts":1000,"dia_running":true,"chrome_running":false,
@@ -235,6 +243,35 @@ up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   printf 'Google Chrome\n' > "$T/running"
   out=$(up)
   [ "$(jq -c '[.dia_running, .chrome_running, .executors["mac-chrome"], .executors["agent-browser"]]' <<<"$out")" = '[false,true,"down","ok"]' ]
+}
+
+@test "browser-up: up executors without a passing selftest are untrusted, down stays down" {
+  fixture_app "$T/Dia.app" 1.53.0; fixture_app "$T/Chrome.app" 155.0.8059.85
+  fixture_ext "$T/ext1" 1.0.101
+  printf '#!/bin/sh\necho "agent-browser 0.39.1"\n' > "$HOME/.local/bin/agent-browser"; chmod +x "$HOME/.local/bin/agent-browser"
+  printf 'Dia\n' > "$T/running"
+  # no record at all
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"untrusted","agent-browser":"untrusted"}' ]
+  # failed record for one, passing for another, none for the third
+  seed_selftest untrusted mac-chrome; jq '.executors["agent-browser"] = .executors["mac-chrome"] | .executors["agent-browser"].status = "ok"' "$T/state/selftest.json" > "$T/s" && mv "$T/s" "$T/state/selftest.json"
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"untrusted","agent-browser":"ok"}' ]
+  # unreadable record
+  echo 'not json' > "$T/state/selftest.json"
+  [ "$(up | jq -c '.executors["agent-browser"]')" = '"untrusted"' ]
+  # Dia not running: down regardless of the record
+  seed_selftest ok mac-chrome mac-computer-use agent-browser
+  : > "$T/running"
+  [ "$(up | jq -c '[.executors["mac-chrome"], .executors["agent-browser"]]')" = '["down","ok"]' ]
+}
+
+@test "browser-up: a recorded version that differs from the current one makes every executor untrusted" {
+  fixture_app "$T/Dia.app" 1.53.0; fixture_app "$T/Chrome.app" 155.0.8059.85
+  fixture_ext "$T/ext1" 1.0.101
+  printf '#!/bin/sh\necho "agent-browser 0.39.2"\n' > "$HOME/.local/bin/agent-browser"; chmod +x "$HOME/.local/bin/agent-browser"
+  printf 'Dia\n' > "$T/running"
+  seed_selftest ok mac-chrome mac-computer-use agent-browser   # recorded agent_browser 0.39.1, now 0.39.2
+  # any version change stales every record, as in browser-router's executorTrust
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"untrusted","agent-browser":"untrusted"}' ]
 }
 
 @test "browser-up: unreadable versions are left out, nothing running -> executors down" {
