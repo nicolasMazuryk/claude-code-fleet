@@ -1,0 +1,1 @@
+- [PR merge in auto mode](pr-merge-blocked-in-auto-mode.md) — `gh pr merge` is allow-listed; merge yourself when the user asks

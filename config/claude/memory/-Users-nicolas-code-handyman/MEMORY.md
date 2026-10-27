@@ -1,0 +1,1 @@
+- [e2e tiers](e2e-tiers.md) — smoke <10 min per verify, full <30 min once; Chromium+WebKit only (handyman only)
