@@ -11,8 +11,6 @@
       "Bash(gh repo create:*)",
       "Bash(gh repo edit:*)",
       "Bash(gh repo rename:*)",
-      "Bash(git -C * merge *)",
-      "Bash(git -C * push *)",
       "Bash(git merge:*)",
       "Bash(git push:*)",
       "Bash(make apply-*)",
@@ -25,7 +23,8 @@
       "mcp__plugin_playwright_playwright__*",
       "Read(//Users/nicolas/code/orchestrator-runs/**)",
       "Edit(//Users/nicolas/code/orchestrator-runs/**)"
-    ]
+    ],
+    "defaultMode": "auto"
   },
   "model": "opus",
   "hooks": {
@@ -35,6 +34,14 @@
           {
             "type": "command",
             "command": "jq -e '((.background_tasks // []) + (.session_crons // [])) | length == 0' >/dev/null && afplay ~/.claude/sounds/choo-choo.mp3 || true"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/browser-guard"
           }
         ]
       }
@@ -112,7 +119,18 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/computer-use-enable"
+            "command": "~/.claude/hooks/session-env.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__claude-in-chrome__(tabs_create_mcp|tabs_close_mcp|tabs_context_mcp|navigate)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/browser-guard"
           }
         ]
       }
@@ -140,6 +158,7 @@
       }
     }
   },
+  "outputStyle": "Proactive",
   "feedbackDrafts": "notify",
   "modelSettings": {
     "claude-opus-5-5": {
@@ -160,6 +179,5 @@
   "autoCompactEnabled": true,
   "remoteControlAtStartup": true,
   "inputNeededNotifEnabled": false,
-  "agentPushNotifEnabled": false,
-  "outputStyle": "Proactive"
+  "agentPushNotifEnabled": false
 }

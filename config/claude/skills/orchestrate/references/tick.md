@@ -12,7 +12,7 @@
    - Do not approve or answer it yourself. `claude stop <id>` that session (frees the slot; conversation kept).
    - Set its state to `blocked` (if not already) with the question in `needs_input`.
    - Add it to "Pending decisions" in `ORCHESTRATOR.md`, mark every job downstream of it in the dependency graph as
-     held, and notify the user: PushNotification (load via ToolSearch if deferred) plus a line in your output:
+     held, and notify the user with a line in your output (Agent View turns it into a presence-gated ntfy push; never use PushNotification):
      `needs input: <job>: <question> | options: … | recommend: …`.
    - Independent jobs continue and may launch per step 5; held jobs do not (SKILL.md "Blocking escalation").
    - When the user answers (in this session, or by writing `answer.md`): write/keep the answer verbatim in
