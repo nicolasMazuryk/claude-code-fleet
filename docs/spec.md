@@ -376,8 +376,8 @@ all-comments template, so settings made in cmux are never overwritten.
 
 As the original §4.7, plus:
 - home rewrite `/Users/nicolas` → `/data/home/agent` (the original's `$HOME` → remote `$HOME` already does this);
-- drop Mac-only keys: `statusLine` (unless the script is portable, then copy it too), `enabledPlugins["warp@…"]`,
-  `preferredNotifChannel`;
+- drop Mac-only keys: `statusLine` (unless the script is portable, then copy it too), `preferredNotifChannel`, and the
+  plugins and permission rules in `config/claude/mac-only.json` (with each plugin's marketplace and `mcp__plugin_<name>_*` rules);
 - overrides from `config/claude/cloud-settings.json`;
 - list plugins enabled on the Mac but missing on cloud and print the `claude plugin install …` commands (or run them
   with `--install-plugins`), never silently;

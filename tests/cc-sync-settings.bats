@@ -56,6 +56,42 @@ sum() { printf %s "$1" | shasum -a 256 | cut -c1-16; }
   ! grep -q ghp_notreal "$o"
 }
 
+@test "Mac-only plugins lose their entry, marketplace and permission rules; the rest is kept" {
+  jq '.enabledPlugins["mac-control-router@mac-control-router"] = true
+      | .enabledPlugins["other@shared-mkt"] = true | .enabledPlugins["warp@shared-mkt"] = true
+      | .extraKnownMarketplaces["mac-control-router"] = {source: {source: "directory", path: "/Users/x/mcr"}}
+      | .extraKnownMarketplaces["shared-mkt"] = {source: {source: "github", repo: "o/r"}}
+      | .permissions.allow += ["mcp__plugin_mac-control-router_peekaboo__*", "Bash(osascript *)", "Bash(peekaboo *)",
+                               "Bash(make keep*)", "mcp__plugin_mac-control-router-x_y__*"]
+      | .permissions.deny = ["Bash(sudo *)", "mcp__computer-use", "Bash(peekaboo agent *)"]' \
+    "$CC_SYNC_SRC" > "$BATS_TEST_TMPDIR/src.json"
+  CC_SYNC_SRC="$BATS_TEST_TMPDIR/src.json" "$HOME/.local/bin/cc-sync-settings" --print > "$BATS_TEST_TMPDIR/out.json" 2>/dev/null
+  o="$BATS_TEST_TMPDIR/out.json"
+  [ "$(jq '.enabledPlugins | has("mac-control-router@mac-control-router")' "$o")" = false ]
+  [ "$(jq '.enabledPlugins | has("warp@shared-mkt")' "$o")" = false ]
+  [ "$(jq -r '.enabledPlugins["other@shared-mkt"]' "$o")" = true ]
+  [ "$(jq '.extraKnownMarketplaces | has("mac-control-router")' "$o")" = false ]
+  [ "$(jq -r '.extraKnownMarketplaces["shared-mkt"].source.repo' "$o")" = o/r ]
+  ! grep -qE 'mcp__plugin_mac-control-router_|osascript|peekaboo|sudo|computer-use' "$o"
+  [ "$(jq '.permissions.allow | index("Bash(make keep*)") != null' "$o")" = true ]
+  [ "$(jq '.permissions.allow | index("mcp__plugin_mac-control-router-x_y__*") != null' "$o")" = true ]
+  [ "$(jq '.permissions | has("deny")' "$o")" = false ]
+}
+
+@test "Mac-only plugins are not offered for install on cloud" {
+  mkdir -p "$HOME/.claude"
+  jq '.enabledPlugins["mac-control-router@mac-control-router"] = true' "$CC_SYNC_SRC" > "$BATS_TEST_TMPDIR/src.json"
+  # fake ssh (cloud has no plugins) and rsync; agent-env puts ~/.local/bin first on PATH
+  b="$HOME/.local/bin"
+  printf '#!/bin/sh\nexit 0\n' > "$b/ssh"
+  printf '#!/bin/sh\nexit 0\n' > "$b/rsync"
+  chmod +x "$b/ssh" "$b/rsync"
+  CC_SYNC_SRC="$BATS_TEST_TMPDIR/src.json" run "$HOME/.local/bin/cc-sync-settings" --dry-run
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"plugins   missing on cloud: claude-hud@claude-hud"* ]]
+  [[ "$output" != *mac-control-router* ]]
+}
+
 @test "the transform is deterministic (a second sync is a no-op)" {
   a=$("$HOME/.local/bin/cc-sync-settings" --print 2>/dev/null)
   b=$("$HOME/.local/bin/cc-sync-settings" --print 2>/dev/null)
