@@ -14,3 +14,15 @@ ssh cloud 'git -C /data/fleet/<repo> worktree list; git -C /data/fleet/<repo> st
 ssh cloud 'rm -rf /data/fleet/<repo>'          # or on the Mac: rm -rf ~/code/<repo>
 ```
 Agent View's `@` list drops it automatically.
+
+## Tidy merged worktrees and branches (all your repos)
+`/cleanup-all-repositories-state` (skill, no arguments) shows the dry-run plan, asks once, merges any branches you pick
+through PRs, then runs `repo-tidy --apply`. The script alone:
+```bash
+repo-tidy           # dry run: your repos under $AGENTS_ROOT (recursive) + repos Claude Code uses; would/decide/keep per item
+repo-tidy --apply   # ff default checkouts; remove merged clean worktrees, merged local + origin branches; archive stale Claude state
+```
+Only repos whose origin is `github.com/$GH_OWNER` (nicolasMazuryk) are handled; organization and remote-less repos are
+listed as excluded. It keeps dirty, locked, in-use and unmerged work, origin branches with an open PR, and skips repos
+mid-merge/rebase or whose fetch fails. Every deleted ref is bundled to `~/.local/state/repo-tidy/<ts>/`
+(`<repo>.refs` → `git fetch <bundle> <ref>:<ref>`). `--no-remote` / `--no-claude-state` narrow it.

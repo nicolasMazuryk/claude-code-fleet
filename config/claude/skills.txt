@@ -6,6 +6,7 @@
 browser-router	link	→ /Users/nicolas/code/browser-router/skill
 built-in-browser	synced	claude.ai
 chrome-browser	synced	claude.ai
+cleanup-all-repositories-state	local	config/claude/skills/cleanup-all-repositories-state/
 computer-use	synced	claude.ai
 deep-research	synced	claude.ai
 docs	synced	claude.ai

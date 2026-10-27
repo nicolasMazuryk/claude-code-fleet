@@ -1,0 +1,253 @@
+#!/usr/bin/env bash
+# repo-tidy [--apply] [--no-remote] [--no-claude-state] [--no-fetch] [REPO|PATH ...] — sync default branches and remove
+# merged worktrees, branches and stale Claude state in your own repos. Dry run unless --apply.
+# Repos: every git repo under $AGENTS_ROOT (recursive), every repo a Claude Code project or running session uses
+# (~/.claude.json, `claude agents`), or the named ones. Only repos whose origin is github.com/$REPO_TIDY_OWNER
+# (default $GH_OWNER, nicolasMazuryk) are handled; organization repos and repos without that origin are excluded.
+#   --apply            fast-forward clean default checkouts; remove merged clean worktrees, prune missing ones; delete
+#                      merged local and origin branches (never the default, never one with an open PR); archive Claude
+#                      project dirs and drop ~/.claude.json keys of worktrees that no longer exist. Every deleted ref is
+#                      bundled first into $REPO_TIDY_STATE/<ts>/.
+#   --no-remote        leave origin's branches alone      --no-claude-state  leave Claude state alone
+#   --no-fetch         use the current remote-tracking refs (nothing is deleted from a repo whose fetch fails)
+# Never touches: dirty or locked worktrees, worktrees a process has as cwd, unmerged commits, a repo mid-merge/rebase.
+# "Merged" = tip is an ancestor of origin/<default>, every commit is patch-equivalent there, merging it would not change
+# origin/<default>'s tree, or GitHub reports a merged PR whose head is exactly the tip.
+# Output: one line per finding (repo, item, state, action); exit 1 if any action failed.
+set -uo pipefail
+if [ -z "${AGENTS_ROOT:-}" ] && [ -r "$HOME/.local/bin/agent-env" ]; then
+  # shellcheck source=bin/agent-env
+  . "$HOME/.local/bin/agent-env"
+fi
+apply=0; remote=1; cstate=1; fetch=1; repos=()
+for a in "$@"; do
+  case $a in
+    --apply) apply=1 ;;
+    --no-remote) remote=0 ;;
+    --no-claude-state) cstate=0 ;;
+    --no-fetch) fetch=0 ;;
+    -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -*) echo "repo-tidy: unknown option $a" >&2; exit 2 ;;
+    *) repos+=("$a") ;;
+  esac
+done
+OWNER=${REPO_TIDY_OWNER:-${GH_OWNER:-nicolasMazuryk}}
+ORIGIN_RE=${REPO_TIDY_ORIGIN_RE:-github\.com[:/]$OWNER/}
+CLAUDE_JSON=${REPO_TIDY_CLAUDE_JSON:-$HOME/.claude.json}
+if [ ${#repos[@]} -eq 0 ]; then
+  # candidates: .git under $AGENTS_ROOT, Claude Code project paths, running sessions' cwds → main checkouts, deduped
+  while IFS= read -r r; do repos+=("$r"); done < <(
+    {
+      [ -n "${AGENTS_ROOT:-}" ] && [ -d "$AGENTS_ROOT" ] &&
+        find "$AGENTS_ROOT" \( -name node_modules -o -path '*/.claude/worktrees' \) -prune -o -name .git -prune -print 2>/dev/null |
+        sed 's#/\.git$##'
+      [ -f "$CLAUDE_JSON" ] && python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1])).get("projects",{})))' "$CLAUDE_JSON" 2>/dev/null
+      [ "${REPO_TIDY_NO_AGENTS:-0}" = 1 ] || ! command -v claude >/dev/null ||
+        claude agents --json 2>/dev/null | python3 -c 'import json,sys; [print(a["cwd"]) for a in json.load(sys.stdin)]' 2>/dev/null
+    } | while IFS= read -r p; do
+      [ -d "$p" ] || continue
+      g=$(git -C "$p" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || continue
+      [ "${g%/.git}" != "$g" ] && echo "${g%/.git}"
+    done | sort -u)
+fi
+[ ${#repos[@]} -gt 0 ] || { echo "repo-tidy: no repos found (AGENTS_ROOT=${AGENTS_ROOT:-unset})" >&2; exit 2; }
+
+STATE=${REPO_TIDY_STATE:-$HOME/.local/state/repo-tidy}
+BK="$STATE/$(date +%Y%m%d-%H%M%S)"
+CLAUDE_DIR=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
+DISPOSABLE='(^|/)(node_modules|dist|build|out|\.next|\.turbo|\.cache|coverage|__pycache__|\.pytest_cache|\.venv|venv|target|\.DS_Store|[^/]*\.log)/?$'
+fail=0; mode=plan; [ $apply = 1 ] && mode=apply
+mkdir -p "$STATE"
+lock="$STATE/.lock"
+if [ $apply = 1 ]; then
+  mkdir "$lock" 2>/dev/null || { echo "repo-tidy: another --apply is running ($lock)" >&2; exit 1; }
+  trap 'rmdir "$lock" 2>/dev/null' EXIT
+fi
+
+say() { printf '%-28s %-44s %-34s %s\n' "$1" "$2" "$3" "$4"; }
+enc() { printf '%s' "$1" | tr '/.' '--'; }
+# cwds of every running process, so a worktree someone is working in is never removed
+CWDS=$(lsof -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' || true)
+in_use() { printf '%s\n' "$CWDS" | grep -qxF "$1" || printf '%s\n' "$CWDS" | grep -qF "$1/"; }
+
+# merged REF BASE: prints how REF is contained in BASE, or fails
+merged() {
+  local tip; tip=$(git rev-parse -q --verify "$1^{commit}") || return 1
+  if git merge-base --is-ancestor "$tip" "$2"; then echo ancestor; return 0; fi
+  [ "$(git rev-list --count "$2..$tip")" -le "${REPO_TIDY_MAX_AHEAD:-100}" ] || return 1   # long-lived: treat as unmerged
+  if ! git cherry "$2" "$tip" | grep -q '^+'; then echo patch-equal; return 0; fi
+  local t; t=$(git merge-tree --write-tree "$2" "$tip" 2>/dev/null) &&
+    [ "$(printf '%s\n' "$t" | head -n1)" = "$(git rev-parse "$2^{tree}")" ] && { echo content-in-base; return 0; }
+  if [ "$gh_ok" = 1 ]; then
+    local name=${1#refs/heads/}; name=${name#refs/remotes/origin/}
+    gh pr list --head "$name" --state merged --json headRefOid -q '.[].headRefOid' 2>/dev/null | grep -qx "$tip" &&
+      { echo pr-merged; return 0; }
+  fi
+  return 1
+}
+busy() { local g; g=$(git -C "$1" rev-parse --absolute-git-dir 2>/dev/null) || return 1
+  [ -e "$g/MERGE_HEAD" ] || [ -d "$g/rebase-merge" ] || [ -d "$g/rebase-apply" ] || [ -e "$g/CHERRY_PICK_HEAD" ] || [ -e "$g/REVERT_HEAD" ]; }
+# ignored files in worktree $1 that are neither disposable build output nor identical to the main checkout's copy ($2)
+ignored_unique() {
+  git -C "$1" ls-files --others --ignored --exclude-standard --directory 2>/dev/null | while IFS= read -r f; do
+    printf '%s\n' "$f" | grep -qE "$DISPOSABLE" && continue
+    [ -f "$1/$f" ] && [ -f "$2/$f" ] && cmp -s "$1/$f" "$2/$f" && continue
+    echo "$f"
+  done
+}
+# backup REPO NAME REF...: bundle the refs and record "sha ref" lines; fails if the bundle can't be written
+backup() {
+  local repo=$1 name=$2; shift 2
+  mkdir -p "$BK" || return 1
+  local n; n=$(printf '%s' "$name" | tr '/' '_')
+  local b; b="$BK/$n.$(printf '%s' "$1" | tr '/' '_').bundle"
+  git -C "$repo" bundle create -q "$b" "$@" 2>/dev/null || return 1
+  for r in "$@"; do echo "$(git -C "$repo" rev-parse "$r") $r $b"; done >> "$BK/$n.refs"
+}
+act() {  # act REPO ITEM STATE DESCRIPTION CMD...
+  local r=$1 i=$2 s=$3 d=$4; shift 4
+  if [ $apply = 1 ]; then
+    if "$@" >/dev/null 2>"$STATE/.err"; then say "$r" "$i" "$s" "done: $d"
+    else say "$r" "$i" "$s" "FAILED: $d ($(tr '\n' ' ' < "$STATE/.err" | cut -c1-120))"; fail=1; return 1; fi
+  else say "$r" "$i" "$s" "would: $d"; fi
+}
+# shellcheck disable=SC2329  # called through act
+archive_dir() { mkdir -p "$BK/claude-projects" && mv "$1" "$BK/claude-projects/"; }
+# shellcheck disable=SC2329  # called through act
+drop_key() {  # drop_key PATH: remove one ~/.claude.json projects key (atomic; the first call backs the file up)
+  mkdir -p "$BK" && { [ -f "$BK/claude.json" ] || cp "$CLAUDE_JSON" "$BK/claude.json"; } &&
+    python3 -c 'import json,os,sys
+p,k=sys.argv[1],sys.argv[2]; d=json.load(open(p)); d["projects"].pop(k,None)
+json.dump(d,open(p+".tmp","w"),indent=2); os.replace(p+".tmp",p)' "$CLAUDE_JSON" "$1"
+}
+claude_archive() {  # claude_archive WORKTREE_PATH: archive its Claude project dir (transcripts are kept, not deleted)
+  [ $cstate = 1 ] || return 0
+  local p; p="$CLAUDE_DIR/projects/$(enc "$1")"
+  [ -d "$p" ] || return 0
+  act "$name" "claude:$(basename "$p")" stale-project "archive to $BK/claude-projects" \
+    archive_dir "$p"
+}
+
+say REPO ITEM STATE ACTION
+excluded=; ROOT_REAL=$(cd "${AGENTS_ROOT:-/}" 2>/dev/null && pwd -P)
+for repo in ${repos[@]+"${repos[@]}"}; do
+  case $repo in /*) ;; *) [ -d "$repo" ] || repo="${AGENTS_ROOT:-.}/$repo" ;; esac
+  repo=$(cd "$repo" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) || { say "$repo" - not-a-repo skip; continue; }
+  name=${repo#"$ROOT_REAL"/}; name=${name#"$HOME"/}
+  [ "$(git -C "$repo" rev-parse --git-common-dir)" = .git ] || { say "$name" - is-a-linked-worktree skip; continue; }
+  if ! git -C "$repo" remote get-url origin 2>/dev/null | grep -qE "$ORIGIN_RE"; then excluded="$excluded $name"; continue; fi
+  cd "$repo" || continue
+  if busy "$repo"; then say "$name" - merge/rebase-in-progress "skip repo"; continue; fi
+  has_origin=0; git remote get-url origin >/dev/null 2>&1 && has_origin=1
+  fetched=1
+  if [ $has_origin = 1 ] && [ $fetch = 1 ]; then
+    git fetch --prune --quiet origin 2>/dev/null || { fetched=0; say "$name" origin fetch-failed "report only"; }
+  fi
+  gh_ok=0
+  [ $has_origin = 1 ] && command -v gh >/dev/null && git remote get-url origin | grep -q 'github\.com' && gh_ok=1
+  if [ $has_origin = 1 ]; then
+    def=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null); def=${def#origin/}
+    [ -n "$def" ] || for c in main master; do git rev-parse -q --verify "refs/remotes/origin/$c" >/dev/null && { def=$c; break; }; done
+    base="refs/remotes/origin/$def"
+  else
+    def=$(git symbolic-ref -q --short HEAD); base="refs/heads/$def"
+  fi
+  if [ -z "${def:-}" ] || ! git rev-parse -q --verify "$base" >/dev/null; then say "$name" - no-default-branch skip; continue; fi
+  safe=$fetched   # deletions only on fresh refs
+
+  # default checkout
+  cur=$(git symbolic-ref -q --short HEAD || echo DETACHED)
+  dirty=$(git status --porcelain | wc -l | tr -d ' ')
+  if [ "$cur" != "$def" ]; then say "$name" "checkout:$cur" "not-on-$def" "decide: switch to $def"
+  elif [ "$dirty" != 0 ]; then say "$name" "checkout:$def" "dirty($dirty)" keep
+  elif [ $has_origin = 1 ]; then
+    ahead=$(git rev-list --count "$base..HEAD"); behind=$(git rev-list --count "HEAD..$base")
+    if [ "$ahead" != 0 ]; then say "$name" "checkout:$def" "ahead($ahead) of origin" "decide: push via PR or drop"
+    elif [ "$behind" != 0 ]; then act "$name" "checkout:$def" "behind($behind)" "pull --ff-only" git merge --ff-only -q "$base"
+    fi
+  fi
+
+  # linked worktrees
+  wt=; wbr=; wlocked=0; wprunable=0
+  flush_wt() {
+    [ -n "$wt" ] && [ "$wt" != "$repo" ] || return 0
+    local item="worktree:${wt#"$repo"/}"
+    if [ $wprunable = 1 ] || [ ! -d "$wt" ]; then
+      act "$name" "$item" missing-dir "git worktree prune" git worktree prune && claude_archive "$wt"; return 0; fi
+    [ $wlocked = 1 ] && { say "$name" "$item" locked keep; return 0; }
+    in_use "$wt" && { say "$name" "$item" in-use-by-a-process keep; return 0; }
+    busy "$wt" && { say "$name" "$item" merge/rebase-in-progress keep; return 0; }
+    local d; d=$(git -C "$wt" status --porcelain | wc -l | tr -d ' ')
+    [ "$d" != 0 ] && { say "$name" "$item" "dirty($d)" keep; return 0; }
+    local ig; ig=$(ignored_unique "$wt" "$repo" | head -n3 | tr '\n' ' ')
+    [ -n "$ig" ] && { say "$name" "$item" "unique ignored files: $ig" keep; return 0; }
+    local how; how=$(merged "$(git -C "$wt" rev-parse HEAD)" "$base") || { say "$name" "$item" "unmerged (${wbr:-detached})" keep; return 0; }
+    [ $safe = 1 ] || { say "$name" "$item" "merged ($how), stale refs" keep; return 0; }
+    if [ -n "$wbr" ] && [ $apply = 1 ]; then backup "$repo" "$name" "refs/heads/$wbr" || { say "$name" "$item" "merged ($how)" "FAILED: backup"; fail=1; return 0; }; fi
+    act "$name" "$item" "merged ($how)" "git worktree remove" git worktree remove "$wt" && claude_archive "$wt"
+  }
+  while IFS= read -r l; do
+    case $l in
+      "worktree "*) flush_wt; wt=${l#worktree }; wbr=; wlocked=0; wprunable=0 ;;
+      "branch refs/heads/"*) wbr=${l#branch refs/heads/} ;;
+      locked*) wlocked=1 ;;
+      prunable*) wprunable=1 ;;
+    esac
+  done < <(git worktree list --porcelain)
+  flush_wt
+
+  # local branches (after worktree removal, so freed branches are handled too)
+  checked_out=$(git worktree list --porcelain | sed -n 's#^branch refs/heads/##p')   # first = the default checkout's
+  for br in $(git for-each-ref --format='%(refname:short)' refs/heads); do
+    [ "$br" = "$def" ] && continue
+    [ "$br" = "$cur" ] && continue   # reported with the default checkout above
+    printf '%s\n' "$checked_out" | grep -qxF "$br" && { [ $apply = 1 ] || say "$name" "branch:$br" in-a-worktree "(see worktree)"; continue; }
+    if how=$(merged "refs/heads/$br" "$base"); then
+      [ $safe = 1 ] || { say "$name" "branch:$br" "merged ($how), stale refs" keep; continue; }
+      if [ $apply = 1 ] && ! backup "$repo" "$name" "refs/heads/$br"; then say "$name" "branch:$br" "merged ($how)" "FAILED: backup"; fail=1; continue; fi
+      act "$name" "branch:$br" "merged ($how)" "git branch -D (bundled)" git branch -D -q "$br"
+    else
+      n=$(git rev-list --count "$base..refs/heads/$br")
+      up=$(git for-each-ref --format='%(upstream:short) %(upstream:track)' "refs/heads/$br")
+      say "$name" "branch:$br" "unmerged($n) ${up:-no-upstream}" "decide: merge via PR or keep"
+    fi
+  done
+
+  # origin's branches
+  if [ $has_origin = 1 ] && [ $remote = 1 ]; then
+    for rb in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin); do
+      b=${rb#origin/}; [ "$b" = "$def" ] || [ "$b" = HEAD ] || [ "$rb" = origin ] && continue
+      how=$(merged "refs/remotes/$rb" "$base") || { say "$name" "remote:$b" unmerged keep; continue; }
+      [ $safe = 1 ] || { say "$name" "remote:$b" "merged ($how), stale refs" keep; continue; }
+      if [ "$gh_ok" = 1 ] && [ -n "$(gh pr list --head "$b" --state open --json number -q '.[].number' 2>/dev/null)" ]; then
+        say "$name" "remote:$b" "merged ($how), open PR" keep; continue; fi
+      if [ $apply = 1 ] && ! backup "$repo" "$name" "refs/remotes/$rb"; then say "$name" "remote:$b" merged "FAILED: backup"; fail=1; continue; fi
+      act "$name" "remote:$b" "merged ($how)" "git push origin --delete (bundled)" git push -q origin --delete "$b"
+    done
+  fi
+
+  # Claude state of worktrees that are gone (dirs and ~/.claude.json keys)
+  if [ $cstate = 1 ]; then
+    live=$(git worktree list --porcelain | sed -n 's/^worktree //p')
+    for p in "$CLAUDE_DIR/projects/$(enc "$repo")"--claude-worktrees-*; do
+      [ -d "$p" ] || continue
+      keep=0; for w in $live; do [ "$CLAUDE_DIR/projects/$(enc "$w")" = "$p" ] && keep=1; done
+      [ $keep = 1 ] || act "$name" "claude:$(basename "$p")" stale-project "archive to $BK/claude-projects" \
+        archive_dir "$p"
+    done
+    if [ -f "$CLAUDE_JSON" ]; then
+      keys=$(python3 -c 'import json,os,sys
+d=json.load(open(sys.argv[1])); r=sys.argv[2]+"/.claude/worktrees/"
+print("\n".join(k for k in d.get("projects",{}) if k.startswith(r) and not os.path.isdir(k)))' "$CLAUDE_JSON" "$repo")
+      for k in $keys; do
+        act "$name" "claude.json:${k#"$repo"/}" stale-key "drop key (backup in $BK)" drop_key "$k"
+      done
+    fi
+  fi
+  [ $apply = 1 ] && git worktree prune
+done
+rm -f "$STATE/.err"
+[ -n "$excluded" ] && echo "excluded (origin not github.com/$OWNER):$excluded"
+[ -d "$BK" ] && echo "backups: $BK (restore a ref: git fetch <bundle> <ref>:<ref>; see *.refs)"
+echo "repo-tidy: $mode done$([ $fail = 1 ] && echo ', with failures')"
+exit $fail
