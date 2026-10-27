@@ -1,7 +1,8 @@
 # Captured from ~/.zshrc by cc-capture (blocks: # Claude Code, # Tailscale…). Reference, not sourced.
 
-# Tailscale exit node: `browser-router exit-node use <cloud|none> [--for self]`
-# (replaces the former staticipup/staticipdown aliases)
+# Tailscale static IP (Hetzner exit node)
+alias staticipup="tailscale set --exit-node=100.102.221.87 --exit-node-allow-lan-access"
+alias staticipdown="tailscale set --exit-node="
 
 # Claude Code
 alias c='claude'

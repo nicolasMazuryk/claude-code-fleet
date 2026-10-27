@@ -5,12 +5,26 @@
   },
   "permissions": {
     "allow": [
+      "Bash(gh pr create:*)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh pr ready:*)",
       "Bash(gh repo create:*)",
       "Bash(gh repo edit:*)",
       "Bash(gh repo rename:*)",
-      "Bash(git -C * push:*)",
+      "Bash(git -C * merge *)",
+      "Bash(git -C * push *)",
+      "Bash(git merge:*)",
       "Bash(git push:*)",
-      "mcp__plugin_playwright_playwright__*"
+      "Bash(make apply-*)",
+      "Bash(make host-sync*)",
+      "mcp__ccd_session_mgmt__export_transcript",
+      "mcp__ccd_session_mgmt__get_session",
+      "mcp__ccd_session_mgmt__list_events",
+      "mcp__ccd_session_mgmt__list_sessions",
+      "mcp__ccd_session_mgmt__search_session_transcripts",
+      "mcp__plugin_playwright_playwright__*",
+      "Read(//Users/nicolas/Documents/orchestrator-runs/**)",
+      "Edit(//Users/nicolas/Documents/orchestrator-runs/**)"
     ]
   },
   "model": "opus",
@@ -45,6 +59,33 @@
             "command": "afplay ~/.claude/sounds/choo-choo.mp3"
           }
         ]
+      },
+      {
+        "matcher": "mcp__claude-in-chrome__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/browser-guard"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__computer-use__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/browser-guard"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/browser-guard"
+          }
+        ]
       }
     ],
     "StopFailure": [
@@ -53,6 +94,25 @@
           {
             "type": "command",
             "command": "afplay ~/.claude/sounds/choo-choo.mp3"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "browser-router-relay",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.local/libexec/cc-orchestrator/browser-relay-handler"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/computer-use-enable"
           }
         ]
       }

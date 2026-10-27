@@ -97,7 +97,7 @@ sum() { printf %s "$1" | shasum -a 256 | cut -c1-16; }
 }
 
 @test "browser-router relay slot is not Mac-only: it reaches cloud unchanged, so the sum matches; CFC env is set" {
-  jq '.hooks.SessionStart += [{matcher: "browser-router-relay", hooks: [{type: "command", command: "~/.local/libexec/cc-orchestrator/browser-relay-handler"}]}]' \
+  jq 'if any(.hooks.SessionStart[]?; .matcher == "browser-router-relay") then . else .hooks.SessionStart += [{matcher: "browser-router-relay", hooks: [{type: "command", command: "~/.local/libexec/cc-orchestrator/browser-relay-handler"}]}] end' \
     "$CC_SYNC_SRC" > "$BATS_TEST_TMPDIR/s2.json"
   export CC_SYNC_SRC="$BATS_TEST_TMPDIR/s2.json"
   "$HOME/.local/bin/cc-sync-settings" --print > "$BATS_TEST_TMPDIR/out.json" 2> "$BATS_TEST_TMPDIR/err"
