@@ -1,6 +1,6 @@
 # Rebuild cloud (`core-vm-cloud`) — the one rebuild path
 
-Machine = oci repo (`~/Documents/oci-free-tier-platform`); Claude Code = this repo ([ADR 0002](../decisions/0002-ownership-split.md)).
+Machine = oci repo (`~/code/oci-free-tier-platform`); Claude Code = this repo ([ADR 0002](../decisions/0002-ownership-split.md)).
 The path is always: **oci (`make restore` or `make host-sync VM=cloud`) → `./install.sh cloud` here (from the Mac)**.
 Both steps are idempotent and can be re-run in any order afterwards: oci's bootstrap never touches `cc-*` units, and
 `install.sh cloud` never touches the machine layer (verified 2026-10-16, Phase 4b: host-sync after install left
@@ -13,7 +13,7 @@ Both steps are idempotent and can be re-run in any order afterwards: oci's boots
 - Persistent `/data` (100 GB, `core-bv-cloud-data`): `/data/home/agent` (agent home: claude + gh logins,
   `~/.claude.json` with Remote Control acceptance and workspace trust, `~/claude-code-fleet`), `/data/fleet/<repo>`.
   Units (`/etc/systemd/system/cc-*`) are on the boot volume, so a restore needs `install.sh cloud` again.
-- Access: Tailscale `cloud` (`tag:cloud`) as `agent`; break-glass OCI Bastion `cd ~/Documents/oci-free-tier-platform && make ssh VM=cloud`.
+- Access: Tailscale `cloud` (`tag:cloud`) as `agent`; break-glass OCI Bastion `cd ~/code/oci-free-tier-platform && make ssh VM=cloud`.
 - Free-tier block storage is full (200/200 GB): never add volumes.
 
 | Who installs what | oci (`host/cloud/bootstrap.sh`) | this repo (`./install.sh cloud`) |
@@ -33,13 +33,13 @@ Both steps are idempotent and can be re-run in any order afterwards: oci's boots
    `core-secret-tailscale-authkey`: a non-expiring OAuth client secret (`tag:cloud`), never rotated
    ([tailscale](tailscale.md) §1–2). Tailscale state is on `/data`, so a restore from backup rejoins as `cloud`
    without it. On a fresh `/data` (`BACKUP=none`), first delete the old `cloud` machine in the admin console.
-2. `[H]` Machine, in `~/Documents/oci-free-tier-platform`:
+2. `[H]` Machine, in `~/code/oci-free-tier-platform`:
    - after a wipe: `make restore BACKUP=<ocid>|none` (oci runbook `wipe-and-restore.md`); cloud-init runs the bootstrap;
    - on an existing VM: `make host-sync VM=cloud`.
 3. From the Mac: `ssh cloud true` (checks in [tailscale](tailscale.md) §5).
 4. Claude Code, from the Mac, in the live checkout:
    ```bash
-   cd ~/Documents/claude-code-fleet
+   cd ~/code/claude-code-fleet
    ./install.sh cloud --dry-run     # what would change; writes nothing on cloud (except a staging copy in ~/.cache)
    ./install.sh cloud               # = make install-cloud; a 2nd run prints "install.sh cloud-local: no changes"
    ```

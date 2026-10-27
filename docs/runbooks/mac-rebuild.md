@@ -3,7 +3,7 @@
 Status: all steps runnable; dry-run drill 2026-10-17 (Phase 7, see `docs/progress/phase-7.md`). `[H]` = human-only.
 
 ## Facts
-- User `nicolas`; repos in `~/Documents`; node via nvm (`~/.nvm`, default alias v24.x), pnpm via corepack.
+- User `nicolas`; repos in `~/code`; node via nvm (`~/.nvm`, default alias v24.x), pnpm via corepack.
 - `jq` is `/usr/bin/jq`; gh, rsync in `/opt/homebrew/bin`; cmux and Ghostty installed.
 - Tailscale node name **`macbook`** (tailnet `tailnet-example`; was `nicolas-macbook`). An exit node like iPhone and cloud; it advertises while it uses none and picks one with `browser-router exit-node use` (`cloud` = egress IP `193.123.182.227`).
 - macOS hostname **`nicolas-macbook`**: ComputerName, LocalHostName and HostName, so it is also the Remote Control
@@ -26,9 +26,9 @@ Status: all steps runnable; dry-run drill 2026-10-17 (Phase 7, see `docs/progres
    `brew upgrade mosh` changes the Cellar path (e.g. `…/mosh/1.4.0_43/…`), which drops the rule: re-run the loop after
    every mosh upgrade. `cc-doctor` (`tcc` line, via `mac-remote-access status`) checks that the allowed mosh-server path is the current Cellar `realpath`.
 3. Claude Code: `curl -fsSL https://claude.ai/install.sh | bash`; `[H]` `claude` → `/login`.
-4. `cd ~/Documents && gh repo clone nicolasMazuryk/claude-code-fleet && cd claude-code-fleet`.
+4. `cd ~/code && gh repo clone nicolasMazuryk/claude-code-fleet && cd claude-code-fleet`.
 5. `./install.sh mac` (idempotent; run it from the checkout that should be live, normally
-   `~/Documents/claude-code-fleet` on `main`; re-run any time, a second run prints `install.sh mac: no changes`).
+   `~/code/claude-code-fleet` on `main`; re-run any time, a second run prints `install.sh mac: no changes`).
    What it does, in order (every overwritten file is backed up first as `<file>.bak.<timestamp>`):
    - `brew install tmux mosh` if missing;
    - symlinks `bin/*` → `~/.local/bin/` (and drops links to scripts that no longer exist);
@@ -68,7 +68,7 @@ Status: all steps runnable; dry-run drill 2026-10-17 (Phase 7, see `docs/progres
    (Equivalent: type `y` in each `rc:<repo>` window.)
 7. `[H]` Full Disk Access (System Settings → Privacy & Security → Full Disk Access → `+`, Cmd+Shift+G):
    `$(realpath /opt/homebrew/bin/tmux)` (the tmux server started by the LaunchAgent at login runs Agent View and the RC
-   servers in `~/Documents`). Not by default for `sshd-keygen-wrapper` / `mosh-server` (phone logins): the phone
+   servers in `~/code`). Not by default for `sshd-keygen-wrapper` / `mosh-server` (phone logins): the phone
    attaches to that tmux server; see [iphone-setup § Full Disk Access](iphone-setup.md#full-disk-access-for-remote-logins). Check after the next login: `tmux ls` shows `agents` and `rc`, and
    `/tmp/cc-orchestrator-start.log` has no `Operation not permitted`.
 8. `repo-init <repo>` for each repo in `config/mac/repos.txt` (TTY; accept the trust prompt, `/exit`). Trust is per
@@ -115,7 +115,7 @@ jq -r '.plugins[] | select(.scope == "user") | .id' config/claude/plugins.json |
 
 Then:
 - Project-scoped plugins (`"scope": "project"` in `plugins.json`) are reinstalled from inside that repo:
-  `cd ~/Documents/<project> && claude plugin install <id> --scope project`.
+  `cd ~/code/<project> && claude plugin install <id> --scope project`.
 - Skills of kind `link` in `config/claude/skills.txt` are reinstalled from the listed source (for `find-skills`:
   the `skills` CLI, e.g. `npx skills add vercel-labs/skills`, then pick `find-skills`, global). Kind `synced` skills come back
   after `/login`.

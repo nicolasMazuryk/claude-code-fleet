@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # install.sh mac | cloud — install cc-orchestrator on this host. Idempotent: a second run changes nothing.
 #
-#   ./install.sh mac     (run on the Mac, from the checkout that should be live; usually ~/Documents/claude-code-fleet)
+#   ./install.sh mac     (run on the Mac, from the checkout that should be live; usually ~/code/claude-code-fleet)
 #   ./install.sh cloud [--dry-run | --rollback]   (run on the Mac; installs on cloud over `ssh cloud` as agent, sudo where needed)
 #
 # mac, in order (each step prints "ok" when already in place, "updated"/"created" when it wrote something):

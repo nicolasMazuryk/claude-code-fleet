@@ -5,7 +5,7 @@ Each step links to the runbook that has the details. `[H]` = human-only step.
 
 | # | Step | Runbook | Done when |
 |---|---|---|---|
-| 1 | Clone this repo to `~/Documents/claude-code-fleet` on the Mac (`gh repo clone nicolasMazuryk/claude-code-fleet`) | — | `make help` works |
+| 1 | Clone this repo to `~/code/claude-code-fleet` on the Mac (`gh repo clone nicolasMazuryk/claude-code-fleet`) | — | `make help` works |
 | 2 | `[H]` Tailscale on the Mac; rename node to `macbook` | [tailscale](tailscale.md) §4 | `tailscale status` shows `macbook` |
 | 3 | `[H]` Apply `config/tailscale/policy.hujson` in the admin console | [tailscale](tailscale.md) §1 | policy saved |
 | 4 | `[H]` Vault secrets `core-secret-tailscale-authkey`, `core-secret-ntfy-topic` (oci `make secret-put`) | [rotate-secrets](rotate-secrets.md) | `oci secrets` lists them |
