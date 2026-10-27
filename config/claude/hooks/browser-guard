@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-// PreToolUse hook for mcp__claude-in-chrome__*, mcp__computer-use__* and Bash(agent-browser*).
+// PreToolUse hook for mcp__claude-in-chrome__*, mcp__computer-use__*, Bash(agent-browser*) and Bash(browser-router ab*); PostToolUse/Stop tab tracking.
 // Contract: docs/contracts.md §9. Exit 0 allows (optionally injecting rules), exit 2 blocks with the reason on stderr.
 import { readFileSync, writeFileSync, renameSync, realpathSync, statSync, existsSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -13,6 +14,7 @@ const stateDir = env.BROWSER_ROUTER_STATE ?? join(home, ".local/state/browser-ro
 const sitesPath = env.BROWSER_ROUTER_SITES ?? join(home, ".config/browser-router/sites.yaml");
 const self = realpathSync(fileURLToPath(import.meta.url));
 const repo = dirname(dirname(self));
+const CHROME = "mcp__claude-in-chrome__";
 const VAULT_EXECUTORS = ["mac-chrome", "mac-computer-use"];
 
 const block = (msg) => {
@@ -30,27 +32,189 @@ try {
 } catch {
   allow(); // not a hook payload: never break the tool call
 }
+// Tab tracking (contracts §9, PostToolUse/Stop): the session state records the tabs this session's claude-in-chrome group holds. Never blocks a tool.
+const tabHook = (ev) => {
+  try {
+    const sid = String(input.session_id ?? env.CLAUDE_SESSION_ID ?? "");
+    if (!sid || /[\\/]/.test(sid)) return;
+    const file = join(stateDir, "sessions", `${sid}.json`);
+    const st = JSON.parse(readFileSync(file, "utf8"));
+    const before = Array.isArray(st.open_tabs) ? st.open_tabs.filter(Number.isInteger) : [];
+    if (ev === "Stop") {
+      if (!before.length || input.stop_hook_active === true) return;
+      const calls = before.map((id) => `${CHROME}tabs_close_mcp tabId=${id}`).join(", ");
+      process.stdout.write(JSON.stringify({ decision: "block", reason: `close tabs first: ${calls}` }) + "\n");
+      return;
+    }
+    if (!/^mcp__claude-in-chrome__(tabs_create_mcp|tabs_close_mcp|tabs_context_mcp|navigate)$/.test(String(input.tool_name ?? ""))) return;
+    const flat = (r) => (typeof r === "string" ? r : Array.isArray(r) ? r.map(flat).join("\n") : r && typeof r === "object" ? (typeof r.text === "string" ? r.text : r.content !== undefined ? flat(r.content) : "") : "");
+    const text = flat(input.tool_response);
+    const set = new Set(before);
+    const ids = (re) => [...text.matchAll(re)].map((m) => Number(m[1]));
+    let listed;
+    try {
+      const j = JSON.parse(text.trim().split("\n")[0]);
+      if (Array.isArray(j?.availableTabs)) listed = j.availableTabs.map((t) => Number(t?.tabId));
+    } catch {
+      /* not JSON */
+    }
+    if (/Available tabs:/.test(text)) listed = [...(listed ?? []), ...ids(/•\s*tabId\s+(\d+)/g)];
+    if (/Group is now empty/.test(text)) listed = listed ?? [];
+    if (listed) {
+      set.clear();
+      listed.filter(Number.isInteger).forEach((n) => set.add(n));
+    }
+    for (const n of [...ids(/Executed on tabId:\s*(\d+)/g), ...ids(/Tab ID:\s*(\d+)/g)]) set.add(n);
+    for (const n of ids(/Closed tab\s+(\d+)/g)) set.delete(n);
+    const next = [...set].sort((a, b) => a - b);
+    if (next.length === before.length && next.every((n, i) => n === [...before].sort((a, b) => a - b)[i])) return;
+    st.open_tabs = next;
+    const tmp = `${file}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(st, null, 2) + "\n");
+    renameSync(tmp, file);
+  } catch {
+    /* tracking is best effort */
+  }
+};
+if (input.hook_event_name === "PostToolUse" || input.hook_event_name === "Stop") {
+  tabHook(input.hook_event_name);
+  process.exit(0);
+}
+
 const tool = String(input.tool_name ?? "");
 const ti = input.tool_input ?? {};
 
+// Bash forms (contracts §9): the trusted wrapper `browser-router ab <site> -- …`, or a raw agent-browser command word anywhere in the command.
+const command = String(ti.command ?? "");
+const WRAP = /^\s*(?:\w+=\S*\s+)*browser-router\s+ab\s+(\S+)/;
+const AB_AT = /(?:^|[;&|(\n]|\b(?:do|then|else)\b)\s*(?:(?:export\s+)?\w+=(?:"[^"]*"|'[^']*'|\S*)\s+)*agent-browser(?:\s|$)/;
+const FIX = "use `browser-router ab <site> -- …`, or assign a literal `S=br-…` earlier in the same command; one site per call, no loops";
+
+// Wrapper form: one simple command; outside single quotes none of ; & | < > ( ) $ ` \ { } newline (no expansion, chaining or redirects).
+const shellSafe = (c) => {
+  let sq = false;
+  for (const ch of c) {
+    if (ch === "'") sq = !sq;
+    else if (!sq && /[;&|<>()$`\\{}\n]/.test(ch)) return false;
+  }
+  return !sq;
+};
+
+// Raw form: leading literal assignments are resolved into `$NAME`/`${NAME}`/`"$NAME"`; anything else dynamic is a problem.
+const resolveAssignments = (c) => {
+  const vars = {};
+  const item = /^\s*(?:export\s+)?([A-Za-z_]\w*)=("[^"$`\\\n]*"|'[^']*'|[^\s"'$`\\;&|<>()]*)(?=\s|;|$)\s*;?/;
+  let rest = c;
+  while (/^\s*(?:export\s+)?[A-Za-z_]\w*=/.test(rest)) {
+    const m = item.exec(rest);
+    if (!m) return { problem: "an assignment value uses expansion or an unsupported form" };
+    vars[m[1]] = m[2].replace(/^(["'])(.*)\1$/s, "$2");
+    rest = rest.slice(m[0].length);
+  }
+  if (!/^\s*agent-browser(\s|$)/.test(rest))
+    return { problem: /\b(for|while|until)\b/.test(c) ? "loops are not resolved" : "agent-browser must be the only command (after literal assignments)" };
+  const prefix = c.slice(0, c.length - rest.length);
+  let out = "";
+  let sq = false;
+  let dq = false;
+  const body = rest.replace(/\d*>&\d+/g, "  ");
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (!sq && ch === "\\") {
+      out += body.slice(i, i + 2);
+      i++;
+    } else if (!dq && ch === "'") {
+      sq = !sq;
+      out += ch;
+    } else if (!sq && ch === '"') {
+      dq = !dq;
+      out += ch;
+    } else if (!sq && ch === "$") {
+      const m = /^\$(?:\{([A-Za-z_]\w*)\}|([A-Za-z_]\w*))/.exec(body.slice(i));
+      const name = m?.[1] ?? m?.[2];
+      if (!m || !(name in vars)) return { problem: `${m ? `$${name}` : "$"} is not assigned a literal earlier in this command` };
+      out += vars[name];
+      i += m[0].length - 1;
+    } else if (!sq && ch === "`") return { problem: "command substitution" };
+    else if (!sq && !dq && /[;&|\n]/.test(ch)) return { problem: "agent-browser must be the only command (no ; & | or newline after it)" };
+    else out += ch;
+  }
+  return sq || dq ? { problem: "unterminated quote" } : { cmd: prefix + out };
+};
+
 let toolExec;
+let wrapper = false;
+let rawProblem;
+let rawCmd = command;
 if (tool.startsWith("mcp__claude-in-chrome__")) toolExec = "mac-chrome";
 else if (tool.startsWith("mcp__computer-use__")) toolExec = "mac-computer-use";
-else if (tool === "Bash" && /^\s*(?:\w+=\S*\s+)*agent-browser(\s|$)/.test(String(ti.command ?? ""))) toolExec = "agent-browser";
-else allow();
+else if (tool === "Bash" && WRAP.test(command)) {
+  toolExec = "agent-browser";
+  wrapper = true;
+  if (!shellSafe(command)) block(`browser-router ab must be one simple command: no ; & | < > ( ) $ \` \\ { } or newline outside single quotes (single-quote URLs and JS).`);
+} else if (tool === "Bash" && AB_AT.test(command)) {
+  toolExec = "agent-browser";
+  const r = resolveAssignments(command);
+  if (r.problem) rawProblem = r.problem;
+  else rawCmd = r.cmd;
+} else allow();
 
 const hostOf = (s) => {
-  const m = /^(?:[a-z][a-z0-9+.-]*:\/\/)?([^/\s?#:]+)/i.exec(String(s).trim());
+  const m = /^(?:[a-z][a-z0-9+.-]*:\/\/)?([^/\s?#:]+)/i.exec(String(s).trim().replace(/^["']|["']$/g, ""));
   return m && m[1].includes(".") ? m[1].toLowerCase().replace(/^www\./, "") : undefined;
 };
+
+// agent-browser command analysis (contracts §9): quote-aware tokens, never a bare-host scan over the whole command.
+const cmd = toolExec === "agent-browser" ? rawCmd : "";
+const unq = (t) => t.replace(/^(["'])(.*)\1$/s, "$2");
+const tokens = (cmd.match(/"[^"]*"|'[^']*'|\S+/g) ?? []).map(unq);
+const abAt = wrapper ? tokens.indexOf("--") : tokens.findIndex((t) => t === "agent-browser");
+const abArgs = abAt < 0 ? [] : tokens.slice(abAt + 1);
+const wrapperSite = wrapper ? tokens[tokens.indexOf("ab") + 1] : undefined;
+const VALUE_FLAGS = new Set(["--session", "--profile", "--cdp", "--executable-path", "--args", "--proxy", "--user-agent", "--headers", "--provider", "--device", "--config", "--state", "--session-name"]);
+const positionals = () => {
+  const out = [];
+  for (let i = 0; i < abArgs.length; i++) {
+    if (abArgs[i].startsWith("-")) {
+      if (VALUE_FLAGS.has(abArgs[i])) i++;
+    } else out.push(abArgs[i]);
+  }
+  return out;
+};
+const navTarget = () => {
+  const i = abArgs.findIndex((t, k) => /^(open|goto|navigate)$/.test(t) || (t === "tab" && abArgs[k + 1] === "new"));
+  if (i < 0) return undefined;
+  return abArgs.slice(abArgs[i] === "tab" ? i + 2 : i + 1).find((t) => !t.startsWith("-"));
+};
+// Read-only subcommands that touch no page: allowed without a routed session (contracts §9).
+const readOnlyAgentBrowser = () => {
+  if (/[;&|`\n]|\$\(/.test(cmd)) return false;
+  const pos = positionals();
+  if (!pos.length) return abArgs.some((f) => ["--version", "-V", "--help", "-h"].includes(f));
+  const j = pos.join(" ");
+  return j === "help" || j === "close" || j === "session" || j === "session list" || /^session info\s+\S+$/.test(j);
+};
+const abSession = () => {
+  const flag = /(?:^|\s)--session(?:=|\s+)(\S+)/.exec(cmd);
+  const envv = /^\s*(?:\w+=\S*\s+)*?AGENT_BROWSER_SESSION=(\S+)/.exec(cmd);
+  return (flag?.[1] ?? envv?.[1])?.replace(/^["']|["']$/g, "");
+};
+
 const targetHost = () => {
   if (typeof ti.url === "string") return hostOf(ti.url);
   if (toolExec === "agent-browser") {
-    const m = /(?:https?:\/\/|\s)((?:[a-z0-9-]+\.)+[a-z]{2,})(?:[/\s:?#]|$)/i.exec(String(ti.command));
-    if (m) return m[1].toLowerCase().replace(/^www\./, "");
+    const t = navTarget();
+    const h = t ? hostOf(t) : undefined;
+    if (h) return h;
+    const m = /\b[a-z][a-z0-9+.-]*:\/\/([^/\s?#:'"]+)/i.exec(cmd);
+    if (m && m[1].includes(".")) return m[1].toLowerCase().replace(/^www\./, "");
   }
   return undefined;
 };
+
+if (wrapper && abAt < 0) block(`browser-router ab needs \`--\` before the agent-browser args: browser-router ab <site> -- <agent-browser args>.`);
+if (toolExec === "agent-browser" && !rawProblem && readOnlyAgentBrowser()) allow();
+if (rawProblem) block(`agent-browser call not understood (${rawProblem}); ${FIX}.`);
 
 const sessionId = String(input.session_id ?? env.CLAUDE_SESSION_ID ?? "");
 const stateFile = join(stateDir, "sessions", `${sessionId}.json`);
@@ -61,6 +225,8 @@ try {
   if (age > 24 * 3600) throw new Error("stale");
   state = JSON.parse(readFileSync(stateFile, "utf8"));
 } catch {
+  // enrollment (a human step) runs in an unrouted session: these two tools target no domain
+  if (tool === `${CHROME}switch_browser` || tool === `${CHROME}list_connected_browsers`) allow();
   block(`no browser-router session for this task. Run \`browser-router route <url>\` first (skill: browser-router).`);
 }
 const cfg = state.config;
@@ -115,30 +281,77 @@ const scanDia = (profile) => {
   return `Dia profile "${profile}" has ${list.length} extension${list.length === 1 ? "" : "s"}: ${list.join(", ")}`;
 };
 
-const host = targetHost() ?? cfg.domain;
+const explicitHost = targetHost();
+const host = explicitHost ?? cfg.domain;
 let site = cfg.site;
 let tier = cfg.tier;
 let extScan = cfg.extension_scan === true;
+let routedExec = cfg.executor;
+const routedSites = Array.isArray(state.routed_sites) && state.routed_sites.length ? state.routed_sites : [cfg.site];
 if (host !== cfg.domain) {
   const m = registry ? matchSite(host, registry) : undefined;
   if (m) {
-    if (m.key !== cfg.site) block(`${host} (site ${m.key}) was not routed in this session (routed: ${cfg.site}). Run \`browser-router route https://${host}\`.`);
+    if (m.key !== cfg.site) {
+      // any site routed in this session is allowed, with that site's own registry config
+      if (!routedSites.includes(m.key)) block(`${host} (site ${m.key}) was not routed in this session (routed: ${routedSites.join(", ")}). Run \`browser-router route https://${host}\`.`);
+      site = m.key;
+      tier = m.entry?.tier ?? tier;
+      extScan = m.entry?.extension_scan === true;
+      routedExec = m.entry?.executor ?? routedExec;
+    }
   } else if (!(host === cfg.domain || host.endsWith(`.${cfg.domain}`))) {
     block(`${host} was not routed in this session (routed: ${cfg.domain}). Run \`browser-router route https://${host}\`.`);
   }
 }
 
+// wrapper: `browser-router ab <site>` selects a routed site; a navigation target must belong to that same site
+let wrapperKey;
+if (wrapper) {
+  const arg = String(wrapperSite ?? "").toLowerCase().replace(/^www\./, "");
+  const wm = registry ? matchSite(arg, registry) : undefined;
+  wrapperKey = arg === "*" ? "*" : wm?.key ?? String(wrapperSite);
+  if (!routedSites.includes(wrapperKey)) block(`browser-router ab ${wrapperSite}: site ${wrapperKey} was not routed in this session (routed: ${routedSites.join(", ")}). Run \`browser-router route https://${arg}\`.`);
+  if (explicitHost && site !== wrapperKey) block(`${host} belongs to site ${site}; use \`browser-router ab ${site} -- …\` (this call names ${wrapperKey}).`);
+  if (!explicitHost && wrapperKey !== site) {
+    const e = wrapperKey === "*" ? registry?.["*"] : registry?.[wrapperKey];
+    site = wrapperKey;
+    tier = e?.tier ?? tier;
+    extScan = e?.extension_scan === true;
+    routedExec = e?.executor ?? routedExec;
+  }
+}
+
 // 0. unregistered host (matches only "*"): allowed only when the routed session was `route --identity anonymous`
-{
-  const hostSite = host === cfg.domain ? cfg.site : registry ? matchSite(host, registry)?.key : cfg.site;
-  if (hostSite === "*" && cfg.identity !== "anonymous")
-    block(`${host} is not in the site registry and this session was not routed with --identity anonymous. Run \`browser-router route https://${host} --identity anonymous|personal\`; a personal task needs a human-chosen \`browser-router site add\`.`);
+if (site === "*" && cfg.identity !== "anonymous")
+  block(`${host} is not in the site registry and this session was not routed with --identity anonymous. Run \`browser-router route https://${host} --identity anonymous|personal\`; a personal task needs a human-chosen \`browser-router site add\`.`);
+// 0b. the latest route did not end in "run" (blocked/queued): no browser tool is allowed until a route returns run
+if (state.decision !== undefined && state.decision !== "run")
+  block(`the latest \`browser-router route\` for ${cfg.domain} returned ${state.decision}${state.decision === "blocked" ? ` (${cfg.executor})` : ""}; ${toolExec} is not allowed. Fix the cause or route again with another executor; never act on a ${state.decision} route.`);
+// 0c. agent-browser runs in a daemon of its own per (Claude session, site) (parallel jobs and sites never share one); same derivation as agentBrowserSession()/siteSlug()
+if (toolExec === "agent-browser") {
+  const slug = (k) => {
+    if (k === "*") return "any";
+    const base = String(k).replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 24);
+    return base === k ? base : `${base}-${createHash("sha1").update(String(k)).digest("hex").slice(0, 6)}`;
+  };
+  const prefix = `br-${sessionId.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 8)}`;
+  const names = routedSites.map((s) => `${prefix}-${slug(s)}`);
+  // a navigation target pairs the daemon with the target's site; other calls accept any routed site's daemon
+  const own = `${prefix}-${slug(explicitHost ? site : cfg.site)}`;
+  const ok = explicitHost ? [own] : names;
+  if (!wrapper && !ok.includes(abSession())) block(`agent-browser must use this site's daemon: add \`--session ${own}\` (or prefix \`AGENT_BROWSER_SESSION=${own}\`)${explicitHost ? ` for ${site}` : names.length > 1 ? `; sessions routed here: ${names.join(", ")}` : ""}.`);
+}
+// 1a. claude-in-chrome only serves mac-chrome sessions; switch_browser (broadcast Connect) is never allowed in a routed session
+if (toolExec === "mac-chrome") {
+  if (tool === `${CHROME}switch_browser`) block(`switch_browser is not allowed in a routed session (it broadcasts Connect to every browser). Use select_browser with the device_id from \`browser-router route\`.`);
+  if (routedExec !== "mac-chrome") block(`${site} is routed to ${routedExec}, not claude-in-chrome. Use the executor from \`browser-router route\`.`);
 }
 // 1. vault domain on a non-vault executor, or without the global lock
 if (tier === "vault") {
   if (!VAULT_EXECUTORS.includes(toolExec)) block(`${site} is a vault site; ${toolExec} is not a vault executor.`);
-  if (toolExec !== cfg.executor) block(`${site} is routed to ${cfg.executor}, not ${toolExec}. Use the executor from \`browser-router route\`.`);
-  if (state.lock_held !== true) block(`${site} is a vault site and this session does not hold the global vault lock. Run \`browser-router vault submit\`.`);
+  if (toolExec !== routedExec) block(`${site} is routed to ${routedExec}, not ${toolExec}. Use the executor from \`browser-router route\`.`);
+  // closing a tab needs no lock: a finished vault run must clean up (a run decision and the bound browser are still required: 0b, 5)
+  if (state.lock_held !== true && tool !== `${CHROME}tabs_close_mcp`) block(`${site} is a vault site and this session does not hold the global vault lock. Run \`browser-router vault submit\`.`);
 }
 // 2. mac-chrome on extension_scan sites
 if (extScan && toolExec === "mac-chrome") block(`${site} scans for browser extensions; Claude in Chrome (mac-chrome) is not allowed there. Use mac-computer-use.`);
@@ -164,6 +377,46 @@ if (tier === "vault" && tool === "mcp__claude-in-chrome__form_input") block(`for
   }
 }
 
+// 5. browser binding: a mac-chrome session acts only in the browser enrolled for its profile
+let dirty = false;
+if (toolExec === "mac-chrome" && tool !== `${CHROME}list_connected_browsers`) {
+  const profile = cfg.profile ?? (tier === "vault" ? "vault-extension" : "shield-extension");
+  let enrolled;
+  try {
+    const e = JSON.parse(readFileSync(join(stateDir, "browsers.json"), "utf8"))?.browsers;
+    const x = e && Object.prototype.hasOwnProperty.call(e, profile) ? e[profile] : undefined;
+    if (x && typeof x.device_id === "string" && x.device_id) enrolled = x;
+  } catch {
+    enrolled = undefined; // absent or malformed: no enrollment
+  }
+  if (!enrolled) block(`needs config: browser enroll ${profile}. No browser is enrolled for this profile; stop and report it (never enroll yourself).`);
+  const label = `${enrolled.device_id}${enrolled.name ? ` ("${enrolled.name}")` : ""}`;
+  if (tool === `${CHROME}select_browser`) {
+    if (ti.deviceId !== enrolled.device_id) block(`select_browser deviceId=${JSON.stringify(ti.deviceId ?? null)} is not the browser enrolled for ${profile}: ${label}.`);
+    if (state.browser_device !== enrolled.device_id || state.browser_profile !== profile) {
+      state.browser_device = enrolled.device_id;
+      state.browser_profile = profile;
+      dirty = true;
+    }
+  } else if (state.browser_device !== enrolled.device_id || state.browser_profile !== profile)
+    block(`call select_browser deviceId=${label} first; this session is not bound to the browser enrolled for ${profile}.`);
+}
+
+// Single atomic write for the binding record and the rules flag
+const save = () => {
+  const tmp = `${stateFile}.${process.pid}.tmp`;
+  writeFileSync(tmp, JSON.stringify(state, null, 2) + "\n");
+  renameSync(tmp, stateFile);
+};
+
+const saveSafe = () => {
+  try {
+    save();
+  } catch {
+    if (tool === `${CHROME}select_browser`) block("could not record the browser binding; state dir not writable.");
+  }
+};
+
 // Rules injection on the first action
 if (state.rules_injected !== true) {
   const file = tier === "vault" ? "vault-rules.md" : "shield-rules.md";
@@ -172,12 +425,12 @@ if (state.rules_injected !== true) {
   try {
     text = dir ? readFileSync(join(dir, file), "utf8") : "";
     state.rules_injected = true;
-    const tmp = `${stateFile}.${process.pid}.tmp`;
-    writeFileSync(tmp, JSON.stringify(state, null, 2) + "\n");
-    renameSync(tmp, stateFile);
+    dirty = true;
   } catch {
     /* injection is best effort */
   }
+  if (dirty) saveSafe();
   if (text) allow(`browser-router ${tier} rules for ${site} (follow them for this whole run):\n\n${text}`);
 }
+if (dirty) saveSafe();
 allow();

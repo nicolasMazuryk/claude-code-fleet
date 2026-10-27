@@ -13,6 +13,7 @@ docx	synced	claude.ai
 find-skills	link	→ ../../.agents/skills/find-skills (source: https://github.com/vercel-labs/skills.git skills/find-skills/SKILL.md)
 google-workspace	synced	claude.ai
 import-memory	synced	claude.ai
+merge-worktree	local	config/claude/skills/merge-worktree/
 morning	synced	claude.ai
 orchestrate	local	config/claude/skills/orchestrate/
 pdf	synced	claude.ai
