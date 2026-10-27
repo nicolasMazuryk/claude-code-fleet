@@ -158,3 +158,21 @@ sum() { printf %s "$1" | shasum -a 256 | cut -c1-16; }
   line=$(grep 'sites.yaml' "$HOME/rsync.calls")
   [[ "$line" == *" -n "* && "$line" == *"cloud:.config/browser-router/sites.yaml" ]]
 }
+
+@test "--install-plugins adds a directory marketplace at the same path under cloud \$HOME" {
+  mkdir -p "$HOME/.claude/plugins"
+  jq -n --arg p "$HOME/code/dirp" '{dirmkt: {source: {source: "directory", path: $p}}}' > "$HOME/.claude/plugins/known_marketplaces.json"
+  jq '.enabledPlugins["dirp@dirmkt"] = true' "$CC_SYNC_SRC" > "$BATS_TEST_TMPDIR/src.json"
+  printf '#!/bin/sh\necho "$*" >> "$HOME/ssh.calls"\ncase "$*" in *"jq -e"*) exit 1;; esac\nexit 0\n' > "$HOME/.local/bin/ssh"
+  printf '#!/bin/sh\nexit 0\n' > "$HOME/.local/bin/rsync"
+  chmod +x "$HOME/.local/bin/ssh" "$HOME/.local/bin/rsync"
+  CC_SYNC_SRC="$BATS_TEST_TMPDIR/src.json" run "$HOME/.local/bin/cc-sync-settings" --install-plugins
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  grep -qF "plugin marketplace add '/data/home/agent/code/dirp'" "$HOME/ssh.calls"
+  grep -qF "plugin install 'dirp@dirmkt'" "$HOME/ssh.calls"
+}
+
+@test "make sync passes ARGS through to cc-sync-settings" {
+  run make -n -C "$REPO" sync ARGS=--dry-run
+  [[ "$output" == *'cc-sync-settings" --dry-run'* ]]
+}

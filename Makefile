@@ -21,8 +21,8 @@ install-mac: ## ./install.sh mac (idempotent; backs up ~/.claude/settings.json f
 install-cloud: ## ./install.sh cloud (rsync + units over ssh cloud; idempotent)
 	$(call run,install.sh,cloud,Phase 4)
 
-sync: ## mirror Mac Claude Code settings to cloud (expect "4 ... relayed")
-	$(call run,cc-sync-settings,,Phase 4)
+sync: ## mirror Mac Claude Code settings to cloud (expect "4 ... relayed"); ARGS=--dry-run|--print|--install-plugins
+	$(call run,cc-sync-settings,$(ARGS),Phase 4)
 
 capture: ## snapshot Mac ~/.claude into config/ (sanitized), then review git diff
 	$(call run,cc-capture,,Phase 1)

@@ -15,7 +15,8 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
 3. `make sync` (= `cc-sync-settings`) — mirrors to cloud. Must print **`4 macOS-only hook handler(s) relayed`**.
    - Fewer than 4: a sound hook changed or uses a tool outside `CC_MAC_ONLY`; fix before relying on cloud sounds.
    - It lists plugins enabled on the Mac but missing on cloud with the `claude plugin install` command to run;
-     `bin/cc-sync-settings --install-plugins` runs them (adding the Mac's GitHub marketplace on cloud first).
+     `make sync ARGS=--install-plugins` runs them, adding the Mac's marketplace on cloud first: a GitHub repo, or a
+     `directory` marketplace at the same path under cloud `$HOME` (clone that repo on cloud first, e.g. `~/code/phone-control-router`).
    - Dropped on the way: `statusLine` (needs ccstatusline + claude-hud, Mac only), `preferredNotifChannel`,
      credential-like `env` keys, and everything `config/claude/mac-only.json` lists. `/Users/nicolas` becomes
      `/data/home/agent`.
@@ -28,7 +29,7 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
    - Mirrored with `rsync --delete`: `CLAUDE.md keybindings.json skills agents commands output-styles hooks profile`
      (symlinks copied as files; `skills/synced` is claude.ai's own). The previous cloud `settings.json` is kept as
      `settings.json.bak.<ts>`; nothing is written when it is unchanged.
-   - `--dry-run` shows the diff and the rsync list without writing; `--print` prints the cloud `settings.json`.
+   - `make sync ARGS=--dry-run` shows the diff and the rsync list without writing; `--print` prints the cloud `settings.json`.
 4. Keys this repo enforces live in `config/claude/settings.orchestrator.json` (Mac) and
    `config/claude/cloud-settings.json` (cloud). Change them there, then `./install.sh mac` / `make sync`.
 5. Never edit cloud's `~/.claude` directly; the next sync overwrites it.

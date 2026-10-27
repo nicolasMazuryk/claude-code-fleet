@@ -14,7 +14,8 @@
 #                  copied as files; skills/synced is claude.ai's own and left alone)
 #   sites.yaml     ~/.config/browser-router/sites.yaml → cloud (browser-router's routing table; rsync -L, written only when different)
 #   plugins        enabled on the Mac but not installed on cloud: listed with the install command
-#                  (--install-plugins runs them, adding the Mac's GitHub marketplace on cloud first)
+#                  (--install-plugins runs them, adding the Mac's marketplace on cloud first: GitHub repo, or
+#                  directory at the same path under cloud $HOME, which must be cloned there)
 #   --dry-run      show what would change, write nothing      --print   print the cloud settings.json and exit
 # Must report "4 macOS-only hook handler(s) relayed" (docs/runbooks/sync-settings.md).
 # Test switches: CC_SYNC_SITES (sites.yaml path), CC_SYNC_SRC, CC_SYNC_OVERRIDES, CC_SYNC_MAC_ONLY, CC_SYNC_CLOUD_HOME (skips the ssh lookup), CC_SYNC_HOST.
@@ -33,7 +34,7 @@ for a in "$@"; do
     --dry-run) mode=dry ;;
     --print) mode=print ;;
     --install-plugins) plugins=install ;;
-    -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "cc-sync-settings: unknown option $a" >&2; exit 2 ;;
   esac
 done
@@ -134,9 +135,10 @@ have=$(rsh 'jq -r ".plugins | keys[]" ~/.claude/plugins/installed_plugins.json 2
 for p in $want; do
   grep -qxF "$p" <<<"$have" && continue
   if [ "$plugins" = install ] && [ "$mode" = sync ]; then
-    # the marketplace first, from the Mac's own source (cloud only knows the default directory)
+    # the marketplace first, from the Mac's own source: a GitHub repo, or a directory at the same path under cloud $HOME
     m=${p#*@}
-    src_repo=$(jq -r --arg m "$m" '.[$m].source | select(.source == "github") | .repo // empty' \
+    src_repo=$(jq -r --arg m "$m" --arg mh "$HOME" --arg ch "$cloud_home" '.[$m].source
+                 | if .source == "github" then .repo elif .source == "directory" then .path | split($mh) | join($ch) else empty end' \
                  "$HOME/.claude/plugins/known_marketplaces.json" 2>/dev/null || true)
     if [ -n "$src_repo" ] && ! rsh "jq -e --arg m '$m' 'has(\$m)' ~/.claude/plugins/known_marketplaces.json" >/dev/null 2>&1; then
       # shellcheck disable=SC2088
