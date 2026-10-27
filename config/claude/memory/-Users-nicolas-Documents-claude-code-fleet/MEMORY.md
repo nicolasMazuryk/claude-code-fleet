@@ -1,1 +1,1 @@
-- [Global working style](global-working-style.md) — cross-project rules in ~/.claude/profile/working-style.md; phased-work escalation in the orchestrate skill
+- [Global working style](global-working-style.md) — cross-project rules in ~/.claude/profile/working-style.md; dependency-ordered execution + escalation in the orchestrate skill

@@ -1,0 +1,183 @@
+#!/usr/bin/env node
+// PreToolUse hook for mcp__claude-in-chrome__*, mcp__computer-use__* and Bash(agent-browser*).
+// Contract: docs/contracts.md §9. Exit 0 allows (optionally injecting rules), exit 2 blocks with the reason on stderr.
+import { readFileSync, writeFileSync, renameSync, realpathSync, statSync, existsSync } from "node:fs";
+import { createRequire } from "node:module";
+import { homedir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const env = process.env;
+const home = env.HOME ?? homedir();
+const stateDir = env.BROWSER_ROUTER_STATE ?? join(home, ".local/state/browser-router");
+const sitesPath = env.BROWSER_ROUTER_SITES ?? join(home, ".config/browser-router/sites.yaml");
+const self = realpathSync(fileURLToPath(import.meta.url));
+const repo = dirname(dirname(self));
+const VAULT_EXECUTORS = ["mac-chrome", "mac-computer-use"];
+
+const block = (msg) => {
+  process.stderr.write(`browser-guard: ${msg}\n`);
+  process.exit(2);
+};
+const allow = (ctx) => {
+  if (ctx) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", additionalContext: ctx } }) + "\n");
+  process.exit(0);
+};
+
+let input;
+try {
+  input = JSON.parse(readFileSync(0, "utf8"));
+} catch {
+  allow(); // not a hook payload: never break the tool call
+}
+const tool = String(input.tool_name ?? "");
+const ti = input.tool_input ?? {};
+
+let toolExec;
+if (tool.startsWith("mcp__claude-in-chrome__")) toolExec = "mac-chrome";
+else if (tool.startsWith("mcp__computer-use__")) toolExec = "mac-computer-use";
+else if (tool === "Bash" && /^\s*(?:\w+=\S*\s+)*agent-browser(\s|$)/.test(String(ti.command ?? ""))) toolExec = "agent-browser";
+else allow();
+
+const hostOf = (s) => {
+  const m = /^(?:[a-z][a-z0-9+.-]*:\/\/)?([^/\s?#:]+)/i.exec(String(s).trim());
+  return m && m[1].includes(".") ? m[1].toLowerCase().replace(/^www\./, "") : undefined;
+};
+const targetHost = () => {
+  if (typeof ti.url === "string") return hostOf(ti.url);
+  if (toolExec === "agent-browser") {
+    const m = /(?:https?:\/\/|\s)((?:[a-z0-9-]+\.)+[a-z]{2,})(?:[/\s:?#]|$)/i.exec(String(ti.command));
+    if (m) return m[1].toLowerCase().replace(/^www\./, "");
+  }
+  return undefined;
+};
+
+const sessionId = String(input.session_id ?? env.CLAUDE_SESSION_ID ?? "");
+const stateFile = join(stateDir, "sessions", `${sessionId}.json`);
+let state;
+try {
+  if (!sessionId || /[\\/]/.test(sessionId)) throw new Error("bad session id");
+  const age = Date.now() / 1000 - statSync(stateFile).mtimeMs / 1000;
+  if (age > 24 * 3600) throw new Error("stale");
+  state = JSON.parse(readFileSync(stateFile, "utf8"));
+} catch {
+  block(`no browser-router session for this task. Run \`browser-router route <url>\` first (skill: browser-router).`);
+}
+const cfg = state.config;
+
+// Registry lookup (longest-suffix match, aliases included), via the repo's own yaml dependency.
+const matchSite = (host, sites) => {
+  let best;
+  for (const [key, entry] of Object.entries(sites ?? {})) {
+    if (key === "*") continue;
+    for (const k of [key, ...(entry?.aliases ?? [])]) {
+      const kk = String(k).toLowerCase();
+      if ((host === kk || host.endsWith(`.${kk}`)) && (!best || kk.length > best.len)) best = { key, entry, len: kk.length };
+    }
+  }
+  return best ?? (sites?.["*"] ? { key: "*", entry: sites["*"] } : undefined);
+};
+let registry;
+try {
+  const { parse } = createRequire(join(repo, "package.json"))("yaml");
+  registry = parse(readFileSync(sitesPath, "utf8"))?.sites;
+} catch {
+  registry = undefined; // rules fall back to the session's own config
+}
+
+// Returns a problem string, or undefined when the Dia profile has no user extensions (components 5/10 are the browser's own).
+const scanDia = (profile) => {
+  const data = env.BROWSER_ROUTER_DIA_DIR ?? join(home, "Library/Application Support/Dia/User Data");
+  const rd = (p) => {
+    try {
+      return JSON.parse(readFileSync(p, "utf8"));
+    } catch {
+      return undefined;
+    }
+  };
+  const cache = rd(join(data, "Local State"))?.profile?.info_cache;
+  const dir = profile && cache && typeof cache === "object" ? Object.keys(cache).find((d) => cache[d]?.name === profile) : undefined;
+  if (!dir) return `Dia profile "${profile}" not found in ${join(data, "Local State")}`;
+  if (!existsSync(join(data, dir))) return `Dia profile "${profile}" directory is missing`;
+  const found = new Map();
+  for (const f of ["Preferences", "Secure Preferences"]) {
+    const settings = rd(join(data, dir, f))?.extensions?.settings;
+    if (!settings || typeof settings !== "object") continue;
+    for (const [id, e] of Object.entries(settings)) {
+      if (!e || typeof e !== "object" || [5, 10, "component", "external_component"].includes(e.location)) continue;
+      if (e.location === undefined && e.path === undefined && e.manifest === undefined) continue;
+      const name = typeof e.manifest?.name === "string" ? e.manifest.name : "";
+      if (!found.has(id) || (name && !found.get(id))) found.set(id, name);
+    }
+  }
+  if (!found.size) return undefined;
+  const list = [...found].sort(([a], [b]) => a.localeCompare(b)).map(([id, n]) => (n ? `${id} (${n})` : id));
+  return `Dia profile "${profile}" has ${list.length} extension${list.length === 1 ? "" : "s"}: ${list.join(", ")}`;
+};
+
+const host = targetHost() ?? cfg.domain;
+let site = cfg.site;
+let tier = cfg.tier;
+let extScan = cfg.extension_scan === true;
+if (host !== cfg.domain) {
+  const m = registry ? matchSite(host, registry) : undefined;
+  if (m) {
+    if (m.key !== cfg.site) block(`${host} (site ${m.key}) was not routed in this session (routed: ${cfg.site}). Run \`browser-router route https://${host}\`.`);
+  } else if (!(host === cfg.domain || host.endsWith(`.${cfg.domain}`))) {
+    block(`${host} was not routed in this session (routed: ${cfg.domain}). Run \`browser-router route https://${host}\`.`);
+  }
+}
+
+// 0. unregistered host (matches only "*"): allowed only when the routed session was `route --identity anonymous`
+{
+  const hostSite = host === cfg.domain ? cfg.site : registry ? matchSite(host, registry)?.key : cfg.site;
+  if (hostSite === "*" && cfg.identity !== "anonymous")
+    block(`${host} is not in the site registry and this session was not routed with --identity anonymous. Run \`browser-router route https://${host} --identity anonymous|personal\`; a personal task needs a human-chosen \`browser-router site add\`.`);
+}
+// 1. vault domain on a non-vault executor, or without the global lock
+if (tier === "vault") {
+  if (!VAULT_EXECUTORS.includes(toolExec)) block(`${site} is a vault site; ${toolExec} is not a vault executor.`);
+  if (toolExec !== cfg.executor) block(`${site} is routed to ${cfg.executor}, not ${toolExec}. Use the executor from \`browser-router route\`.`);
+  if (state.lock_held !== true) block(`${site} is a vault site and this session does not hold the global vault lock. Run \`browser-router vault submit\`.`);
+}
+// 2. mac-chrome on extension_scan sites
+if (extScan && toolExec === "mac-chrome") block(`${site} scans for browser extensions; Claude in Chrome (mac-chrome) is not allowed there. Use mac-computer-use.`);
+// 2b. live extension scan of the Dia profile (two small JSON reads; compact copy of src/extscan/scan.ts)
+if (extScan && toolExec === "mac-computer-use") {
+  const problem = scanDia(cfg.profile);
+  if (problem) block(`${site}: extension_scan: ${problem}`);
+}
+// 3. form_input on vault
+if (tier === "vault" && tool === "mcp__claude-in-chrome__form_input") block(`form_input is not allowed on vault sites; type with real key events.`);
+// 4. hours window
+{
+  const now = env.BROWSER_ROUTER_NOW ? Number(env.BROWSER_ROUTER_NOW) : Math.floor(Date.now() / 1000);
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: cfg.tz, hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(now * 1000));
+  const g = (t) => Number(parts.find((p) => p.type === t).value);
+  const mins = g("hour") * 60 + g("minute");
+  const m = /^(\d{2}):(\d{2})-(\d{2}):(\d{2})$/.exec(cfg.hours);
+  if (m) {
+    const a = +m[1] * 60 + +m[2];
+    const b = +m[3] * 60 + +m[4];
+    const ok = a <= b ? mins >= a && mins < b : mins >= a || mins < b;
+    if (!ok) block(`outside the allowed hours ${cfg.hours} (${cfg.tz}) for ${site}.`);
+  }
+}
+
+// Rules injection on the first action
+if (state.rules_injected !== true) {
+  const file = tier === "vault" ? "vault-rules.md" : "shield-rules.md";
+  const dir = [join(home, ".claude/skills/browser-router"), join(repo, "skill")].find((d) => existsSync(join(d, file)));
+  let text = "";
+  try {
+    text = dir ? readFileSync(join(dir, file), "utf8") : "";
+    state.rules_injected = true;
+    const tmp = `${stateFile}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(state, null, 2) + "\n");
+    renameSync(tmp, stateFile);
+  } catch {
+    /* injection is best effort */
+  }
+  if (text) allow(`browser-router ${tier} rules for ${site} (follow them for this whole run):\n\n${text}`);
+}
+allow();

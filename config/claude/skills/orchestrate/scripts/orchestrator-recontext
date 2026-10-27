@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# orchestrator-recontext <run-dir> <job>             — print the run context a session needs after compaction
+#                                                      (stdout of a SessionStart "compact" hook lands in its context).
+# orchestrator-recontext --settings <run-dir> <job>  — print the --settings JSON that installs that hook.
+# <job> is a job id (J03), a planner id (P-J03), a verifier id (V-J03), a plan-review verifier id (PV-J03), or
+# "orchestrator".
+set -euo pipefail
+usage() { echo "usage: orchestrator-recontext [--settings] <run-dir> <job>" >&2; exit 2; }
+S=$(cd "$(dirname "$0")" && pwd)
+if [ "${1:-}" = --settings ]; then
+  [ $# -eq 3 ] || usage
+  run=$(cd "$2" && pwd)
+  cmd="$(printf '%q %q %q' "$S/orchestrator-recontext" "$run" "$3")"
+  jq -cn --arg c "$cmd" '{hooks: {SessionStart: [{matcher: "compact", hooks: [{type: "command", command: $c}]}]}}'
+  exit 0
+fi
+[ $# -eq 2 ] || usage
+run=$(cd "$1" && pwd) job=$2 slug=$(basename "$run")
+section() { # section <title> <file> [max-lines]
+  [ -s "$2" ] || return 0
+  local n; n=$(wc -l <"$2" | tr -d ' ')
+  printf '\n### %s (%s)\n' "$1" "$2"
+  if [ "$n" -gt "${3:-150}" ]; then head -n "${3:-150}" "$2"; printf '… (%s more lines; read the file)\n' "$((n - ${3:-150}))"
+  else cat "$2"; fi
+}
+echo "## Orchestrate run context (re-injected after compaction)"
+echo "Run: $slug. Run dir: $run. Skill: $(dirname "$S")."
+case $job in
+  orchestrator)
+    cat <<TXT
+This session is the orchestrator (session $slug-orchestrator). It does no implementation; all run state lives in files.
+The conversation summary above may be incomplete. Before the next action this session re-reads, in order:
+$(dirname "$S")/SKILL.md (Run mode + Non-negotiables), $(dirname "$S")/references/tick.md, $run/ORCHESTRATOR.md
+(Resume pointer first), $run/PLAN.md. The monitor loop runs "Run one orchestrator tick for $run"; if CronList shows no
+such task and the run is not finished or paused for the user, the loop is re-armed per SKILL.md Run mode step 2.
+TXT
+    section "ORCHESTRATOR.md" "$run/ORCHESTRATOR.md" 200
+    printf '\n### orchestrator-status\n'; "$S/orchestrator-status" "$run" 2>&1 || true ;;
+  P-*)
+    j=${job#P-}
+    cat <<TXT
+This session is planner $job: it plans job $j in plan mode and writes no code. The conversation summary above may be
+incomplete. Before the next action this session re-reads the card for $j in $run/PLAN.md, $run/TASK.md and the
+required plan sections in $run/PLAN.md § Job plan sections, then finishes exploring read-only and ends by calling
+ExitPlanMode with the full plan. Nobody answers questions in this run: unknowns go under Open questions, never into
+AskUserQuestion.
+TXT
+    section "status.json ($job)" "$run/jobs/$job/status.json"
+    section "plan-check.md (revise per this)" "$run/jobs/$j/plan-check.md"
+    section "plan-review.md (revise per this)" "$run/jobs/$j/plan-review.md"
+    section "answer.md (user's answer, verbatim)" "$run/jobs/$j/answer.md" ;;
+  PV-*)
+    j=${job#PV-}
+    cat <<TXT
+This session is verifier $job in plan-review mode: it reviews the plan for job $j and is read-only. The conversation
+summary above may be incomplete. Before the next action this session re-reads $run/VERIFIER.md (Plan review), the card
+for $j in $run/PLAN.md, $run/jobs/$j/plan.md and $run/jobs/$j/plan-review.md, then continues with the checks not yet
+recorded in plan-review.md.
+TXT
+    section "status.json ($job)" "$run/jobs/$job/status.json"
+    section "plan-review.md so far" "$run/jobs/$j/plan-review.md" ;;
+  V-*)
+    j=${job#V-}
+    cat <<TXT
+This session is verifier $job: it independently verifies job $j and is read-only. The conversation summary above may
+be incomplete. Before the next action this session re-reads $run/VERIFIER.md, the card for $j in $run/PLAN.md, and
+$run/jobs/$j/handoff.md, then resumes the checks not yet recorded in $run/jobs/$j/verify-report.md.
+TXT
+    section "status.json ($job)" "$run/jobs/$job/status.json"
+    section "verify-report.md so far" "$run/jobs/$j/verify-report.md" ;;
+  *)
+    cat <<TXT
+This session is implementer $job. The conversation summary above may be incomplete; handoff.md and the repo are the
+source of truth. Before the next action this session re-reads $run/IMPLEMENTER.md, the card for $job in $run/PLAN.md,
+its approved plan $run/jobs/$job/plan.md (if present) and $run/jobs/$job/handoff.md, then reconciles with the repo
+(git status, git log -5, worktree/branch named in handoff.md) and continues from "Exact next commands". Steps already
+listed under "Done" are not redone.
+TXT
+    section "status.json" "$run/jobs/$job/status.json"
+    section "plan.md (approved plan)" "$run/jobs/$job/plan.md" 200
+    section "handoff.md" "$run/jobs/$job/handoff.md"
+    section "answer.md (user's answer, verbatim)" "$run/jobs/$job/answer.md" ;;
+esac

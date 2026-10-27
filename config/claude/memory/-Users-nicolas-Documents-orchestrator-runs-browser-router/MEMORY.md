@@ -1,0 +1,2 @@
+- [Orchestrator merge authority](orchestrator-merge-authority.md) — user lets the orchestrator push/PR/merge after V PASS; apply, secrets, money and GUI stay human
+- [Permission rule absolute paths](permission-rule-absolute-paths.md) — Read/Edit rules need //abs or ~/; /path is settings-relative

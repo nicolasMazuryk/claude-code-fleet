@@ -1,0 +1,21 @@
+#!/bin/bash
+# Enable the built-in computer-use MCP server for a project (default: $PWD), or --all known projects.
+# Claude Code only persists this per project (projects.<path>.enabledMcpServers in ~/.claude.json).
+# Runs from the zsh claude() wrapper and as a SessionStart hook. No-op off macOS.
+[ "$(uname)" = Darwin ] || exit 0
+CFG="$HOME/.claude.json"
+[ -f "$CFG" ] && command -v jq >/dev/null || exit 0
+if [ "$1" = --all ]; then
+  filter='.projects |= with_entries(.value.enabledMcpServers = ((.value.enabledMcpServers // []) + ["computer-use"] | unique) | .value.disabledMcpServers = ((.value.disabledMcpServers // []) - ["computer-use"]))'
+  args=()
+else
+  dir="${1:-$PWD}"
+  # Hook mode: take cwd from the SessionStart JSON on stdin.
+  if [ -z "$1" ] && [ ! -t 0 ]; then d=$(jq -r '.cwd // empty' 2>/dev/null); [ -n "$d" ] && dir="$d"; fi
+  jq -e --arg p "$dir" '.projects[$p].enabledMcpServers // [] | index("computer-use")' "$CFG" >/dev/null 2>&1 && exit 0
+  filter='.projects[$p].enabledMcpServers = ((.projects[$p].enabledMcpServers // []) + ["computer-use"] | unique) | .projects[$p].disabledMcpServers = ((.projects[$p].disabledMcpServers // []) - ["computer-use"])'
+  args=(--arg p "$dir")
+fi
+tmp=$(mktemp "$CFG.XXXXXX") || exit 0
+if jq "${args[@]}" "$filter" "$CFG" > "$tmp" && [ -s "$tmp" ]; then chmod 600 "$tmp"; mv "$tmp" "$CFG"; else rm -f "$tmp"; fi
+exit 0
