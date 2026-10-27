@@ -82,7 +82,9 @@ Goal: turn the task into an approved orchestration plan, then hand it to a backg
    - **Sequential when better.** Tightly coupled changes, exploratory work whose result shapes the next step, and work
      where coordination/merge cost exceeds the time saved are one job or a chain, never forced into parallel.
    - **Disjoint ownership.** A job owns its write set; shared things get one owner job or a dependency edge.
-   - **Same-repo code work:** each job in its own git worktree on branch `orchestrator/<slug>/<job>`.
+   - **Same-repo code work:** each job in its own git worktree on branch `orchestrator/<slug>/<job>`. The implementer
+     commits there and sets `blocked "merge <job> <sha>"`; the orchestrator fast-forwards it into the default branch
+     after verification (`references/tick.md` step 2, merge requests).
    - **Integrate incrementally.** After each parallel stage that touches the same repo, an integration job merges the
      stage's branches in dependency order and runs the full suite before any dependent job starts. A final integration
      job and the e2e verify job close the plan.

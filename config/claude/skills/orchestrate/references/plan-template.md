@@ -71,6 +71,8 @@ Target length 2–5k tokens.
   others build on; the verifier runs *before* that step or before dependents start (the implementer stops at
   `ready_for_verify`).
 - A job that only reads (drafts, research) still owns its output paths.
+- Cards never say 'main checkout' for repo writes. Each job writes in a worktree on orchestrator/<slug>/<job>, and the
+  orchestrator fast-forwards it into the default branch after verification.
 - **Plan first** decides whether a plan-mode planner session writes `jobs/<job>/plan.md` before a fresh implementer
   starts. Planning costs about 5–10 minutes per job.
   - `no`: small or mechanical jobs (about 5 minutes or less, a few files, or a card that is already step by step),

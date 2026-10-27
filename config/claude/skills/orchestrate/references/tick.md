@@ -6,7 +6,7 @@
    `role`, `live` (busy/idle/waiting/absent), `waiting_for`, `ctx_tokens`, `state`, `step`, `age_min`, `needs_input`,
    and for live planners `plan` (ready/asking/none). Also check `jobs/*/answer.md` newer than the job's last resume.
 
-2. **Human input needed.** Triggers: `state == blocked`; `waiting_for` mentions a permission prompt (except a planner
+2. **Human input needed.** Triggers: `state == blocked` (except a merge request, below); `waiting_for` mentions a permission prompt (except a planner
    with `plan: ready`, which waits on ExitPlanMode and is handled in step 5); or the transcript
    tail (`claude logs <name>`) shows the session about to do something destructive/outward-facing outside its card.
    - Do not approve or answer it yourself. `claude stop <id>` that session (frees the slot; conversation kept).
@@ -18,6 +18,11 @@
    - When the user answers (in this session, or by writing `answer.md`): write/keep the answer verbatim in
      `jobs/<job>/answer.md`, then `cd <job cwd> && claude --resume <session_id> --bg "Read <R>/jobs/<job>/answer.md and
      continue from handoff.md."` If resume fails, relaunch fresh with `orchestrator-launch` using the Resume prompt.
+   - **Merge requests** (`state == blocked`, step `merge <job> <sha>`) are not a human decision. Check that `<sha>` is
+     the tip of `orchestrator/<slug>/<job>`, that the job's verifier PASSed on it (when the card has Verify = V), and
+     that the default branch's checkout is clean. Then `git -C <repo> merge --ff-only <sha>` in that checkout, Log it,
+     and resume the session with `Merged <sha> into <branch>; continue from handoff.md.` A dirty checkout or a
+     non-fast-forward is a normal block (above).
 
 3. **Context: planned handoff and compaction.** Workers (planner/implementer/verifier) launch with
    `--autocompact <compact_at>` (workers' value in PLAN.md `## Settings`, default 300k), which is only a safety net. The
