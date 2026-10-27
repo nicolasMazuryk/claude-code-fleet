@@ -11,6 +11,6 @@ Status: Mac (Phase 3) and cloud (Phase 4b). Removing a *directory* deletes unpus
 ## Delete the clone too (human)
 ```bash
 ssh cloud 'git -C /data/fleet/<repo> worktree list; git -C /data/fleet/<repo> status --short'   # check for unpushed work
-ssh cloud 'rm -rf /data/fleet/<repo>'          # or on the Mac: rm -rf ~/Documents/<repo>
+ssh cloud 'rm -rf /data/fleet/<repo>'          # or on the Mac: rm -rf ~/code/<repo>
 ```
 Agent View's `@` list drops it automatically.

@@ -10,7 +10,7 @@ Code here is the design reference for the phase that implements it; the phase nu
 
 | Original | Real | Why |
 |---|---|---|
-| `~/Projects` (Mac `AGENTS_ROOT`) | `~/Documents` | 32 repos live there |
+| `~/Projects` (Mac `AGENTS_ROOT`) | `~/code` | 32 repos live there |
 | `~/src` (cloud `AGENTS_ROOT`) | `/data/fleet` | persistent 100 GB `/data` volume |
 | cloud user `ubuntu`, home `/home/ubuntu` | user **`agent`**, home `/data/home/agent` | oci bootstrap creates `agent`; survives restore |
 | host `cloud` on port 22 | `core-vm-cloud`, Tailscale node `cloud` (`tag:cloud`), no public IP | [ADR 0001](decisions/0001-tailscale-on-oci.md) |
@@ -40,10 +40,10 @@ See [architecture.md](architecture.md).
 ```bash
 # Mac
 AGENT_HOST=mac
-AGENTS_ROOT="$HOME/Documents"
+AGENTS_ROOT="$HOME/code"
 AGENTS_SESSION=agents
 AGENT_PERMISSION_MODE=auto
-CC_ORCH_DIR="$HOME/Documents/claude-code-fleet"
+CC_ORCH_DIR="$HOME/code/claude-code-fleet"
 REPOS_FILE="$CC_ORCH_DIR/config/mac/repos.txt"
 ```
 
@@ -259,7 +259,7 @@ As the original §2.8 with `ssh cloud` = `agent@cloud` and the remote command
 
 ## 3. Cloud (`core-vm-cloud`, Ubuntu 24.04 arm64)
 
-### 3.1 Bootstrap — owned by `~/Documents/oci-free-tier-platform` (Phase 2/4, via oci PRs)
+### 3.1 Bootstrap — owned by `~/code/oci-free-tier-platform` (Phase 2/4, via oci PRs)
 
 The machine part of the original §3.1 is done by oci `host/cloud/bootstrap.sh` and `make host-sync VM=cloud`:
 packages (git, tmux, mosh, jq, rsync, gh, build-essential, …), Node 24 + corepack, `agent` user + linger,

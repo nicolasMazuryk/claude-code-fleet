@@ -50,7 +50,7 @@ make help          # every target
 make lint test     # shellcheck + bats (brew install shellcheck bats-core)
 ```
 
-Infrastructure (VM, disk, Tailscale package, Vault) lives in the separate `oci-free-tier-platform` repo (`~/Documents/oci-free-tier-platform`).
+Infrastructure (VM, disk, Tailscale package, Vault) lives in the separate `oci-free-tier-platform` repo (`~/code/oci-free-tier-platform`).
 
 ## Getting started
 

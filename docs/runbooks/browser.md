@@ -1,13 +1,13 @@
 # Runbook: browser-router on the fleet
 
-Design: [ADR 0007](../decisions/0007-browser-router-control-plane.md). The CLI, skill and hook live in `~/Documents/browser-router`;
+Design: [ADR 0007](../decisions/0007-browser-router-control-plane.md). The CLI, skill and hook live in `~/code/browser-router`;
 this repo owns the relay, the cloud install, the drain timer and the settings wiring.
 
 ## What runs where
 | | Mac | Cloud |
 |---|---|---|
 | relay | `agent-relay` (LaunchAgent) sends `mac-up` (incl. the Mac's IANA `tz`, read from `/etc/localtime`; omitted when underivable) every 15 s, runs `browser-relay-handler` for lease/release/dispatch | `browser-relay-cloud line` (called by the relay's remote script) writes `mac-up` and `replies/<id>` |
-| CLI | `agent-browser` (pinned, `npm -g` under the nvm node, plus Chrome for Testing), installed by `install-mac`; browser-router comes from the `~/Documents/browser-router` checkout via a global link | `~/.local/bin/browser-router` (`~/.local/share/browser-router`) and `agent-browser` |
+| CLI | `agent-browser` (pinned, `npm -g` under the nvm node, plus Chrome for Testing), installed by `install-mac`; browser-router comes from the `~/code/browser-router` checkout via a global link | `~/.local/bin/browser-router` (`~/.local/share/browser-router`) and `agent-browser` |
 | queue | LaunchAgent `cc-orchestrator.claude.vault-drain` every 180 s (`~/.local/libexec/cc-orchestrator/browser-vault-drain`, log `/tmp/browser-vault-drain.log`) | `browser-router-vault-drain.timer` every 3 min |
 | config | `~/.config/browser-router/sites.yaml` (source) | mirrored by `cc-sync-settings` |
 
@@ -66,7 +66,7 @@ A host with no `sites.yaml` entry matches only `"*"`. The agent classifies the t
 - Personal (acting as the user or on the user's data or money, or any other risk), or `--identity` missing: `route` is blocked (exit 7) and lists the configuration choices. A human picks one
   (tier vault|shield, executor, profile, optional `--isp-pin`, `--caps`, `--logged-in`), then
   `browser-router site add <host> --tier … --executor …` writes the entry to the registry file the symlink points at
-  (`~/Documents/browser-router/config/sites.yaml`). Commit that change in the browser-router repo, run `cc-sync-settings`
+  (`~/code/browser-router/config/sites.yaml`). Commit that change in the browser-router repo, run `cc-sync-settings`
   to mirror it to cloud, then route again. Background sessions stop with "needs input: site config for <host>".
 
 ## Browser Use proxy (mode `browseruse` or `isp`)

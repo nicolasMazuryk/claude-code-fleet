@@ -24,13 +24,6 @@
       "version": "1.0.0",
       "project": null,
       "enabled": true
-    },
-    {
-      "id": "playwright@claude-plugins-official",
-      "scope": "project",
-      "version": "c447c3207a42",
-      "project": "~/Documents/datapipeline",
-      "enabled": null
     }
   ]
 }

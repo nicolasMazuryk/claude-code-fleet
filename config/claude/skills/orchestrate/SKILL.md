@@ -35,7 +35,7 @@ Defaults (the user may override any in the request):
 | Worker auto-compact (safety net) | 300k (`--autocompact 300k`) | |
 | Orchestrator auto-compact | 200k (`--autocompact 200k`); all state is in files | |
 | Permission mode | `auto`; planners `plan` | |
-| Run dir | `~/Documents/orchestrator-runs/<slug>/` | `--run-dir DIR` |
+| Run dir | `~/code/orchestrator-runs/<slug>/` | `--run-dir DIR` |
 | Session name prefix | `<slug>-` (orchestrator: `<slug>-orchestrator`) | |
 
 Plain-language overrides ("orchestrator opus high", "planners on opus") work too. Valid efforts: low, medium, high,
@@ -114,7 +114,7 @@ Goal: turn the task into an approved orchestration plan, then hand it to a backg
    The orchestrator keeps `--autocompact 200k`: its state is in files and the Resume pointer is rewritten every tick,
    so compaction costs it almost nothing and keeps each tick small.
    Every job `cwd` and the run dir must be inside a **trusted workspace** (`claude --bg` refuses otherwise with
-   "Workspace not trusted"); `~/Documents/...` is trusted. Check this before launching; if a cwd isn't trusted, ask the
+   "Workspace not trusted"); `~/code/...` is trusted. Check this before launching; if a cwd isn't trusted, ask the
    user to run `claude` there once and accept the prompt.
    Tell the user how to follow it: `claude agents`, `claude attach <slug>-orchestrator`, `<run-dir>/ORCHESTRATOR.md`,
    `~/.claude/skills/orchestrate/scripts/orchestrator-status <run-dir>`, and that answers to questions can be given by

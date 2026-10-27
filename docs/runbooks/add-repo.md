@@ -9,7 +9,7 @@ every session on both hosts ([spec §2.8](../spec.md)). `agent` on cloud has pas
 
 Two independent things can be "added":
 - **Agent View (`@<repo>` dispatch):** automatic for any git repo one level below `AGENTS_ROOT`
-  (Mac `~/Documents`, cloud `/data/fleet`). Directory name must have no spaces.
+  (Mac `~/code`, cloud `/data/fleet`). Directory name must have no spaces.
 - **Remote Control server (`<host>/<repo>` in the Claude app):** only for repos listed in
   `config/<host>/repos.txt` ([ADR 0003](../decisions/0003-repos-allowlist.md)).
 
@@ -22,7 +22,7 @@ in to claude.ai and to gh (`ssh cloud 'claude auth status; gh auth status'`); Re
    (equivalent: `repo-init --rc <repo>` run on the Mac's checkout edits the same file; on cloud `--rc` would edit the
    rsynced copy, which the next `install.sh cloud` overwrites, so always edit the list on the Mac):
    ```bash
-   cd ~/Documents/claude-code-fleet
+   cd ~/code/claude-code-fleet
    echo '<repo>' >> config/cloud/repos.txt
    git switch -c feat/add-<repo>-cloud && git commit -am "cloud: add <repo> to RC allowlist"   # PR as usual
    ```
@@ -42,7 +42,7 @@ in to claude.ai and to gh (`ssh cloud 'claude auth status; gh auth status'`); Re
    - Runs `rc-servers`, which does `sudo systemctl enable --now cc-rc@<repo>` if `<repo>` is in the allowlist and
      trusted (it reads `projects[dir].hasTrustDialogAccepted` in `~/.claude.json`).
    - Extra files to copy into worktrees: `ssh -t cloud 'REPO_INIT_INCLUDE=".env .env.local .env.test" repo-init <repo>'`.
-   - Copy any `.env` files the repo needs: `scp ~/Documents/<repo>/.env cloud:/data/fleet/<repo>/` (never commit them).
+   - Copy any `.env` files the repo needs: `scp ~/code/<repo>/.env cloud:/data/fleet/<repo>/` (never commit them).
 4. **Commit the setup files once** in the target repo (on cloud or the Mac) so every machine has them:
    `.gitignore`, `.worktreeinclude` — via a normal branch + PR in that repo.
 5. **Verify**
@@ -58,11 +58,11 @@ in to claude.ai and to gh (`ssh cloud 'claude auth status; gh auth status'`); Re
 ## Add a repo to the Mac
 
 ```bash
-repo-init <name | path | git-url>      # clones into ~/Documents if a URL; accept trust, /exit
+repo-init <name | path | git-url>      # clones into ~/code if a URL; accept trust, /exit
                                        # (--no-trust skips the claude step, e.g. without a TTY)
 # for the Claude app:
 repo-init --rc <repo>                  # appends to config/mac/repos.txt, starts window rc:<repo>
-cd ~/Documents/claude-code-fleet && git diff config/mac/repos.txt   # commit via branch + PR
+cd ~/code/claude-code-fleet && git diff config/mac/repos.txt   # commit via branch + PR
 ```
 Verify: `tmux list-windows -t rc` shows `<repo>`; the app lists `mac/<repo>`. A new server window first asks
 `Enable Remote Control? (y/n)` until Remote Control has been accepted once on this Mac (`tmux attach -t rc:<repo>`).

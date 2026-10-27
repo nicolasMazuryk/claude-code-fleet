@@ -60,7 +60,7 @@ grants the same thing.
   Keychain files. A leaked phone key would then expose everything, not just a shell.
 
 Recommendation: leave it **off** when `TMUX_SERVER_DOCUMENTS=readable`. Work in the Mac through `am` (Agent View) or
-`tmux new-window` inside that server. Grant it only if you need a plain shell in `~/Documents` from the phone; if you
+`tmux new-window` inside that server. Grant it only if you need a plain shell in `~/code` from the phone; if you
 do, grant `sshd-keygen-wrapper` and `$(realpath /opt/homebrew/bin/mosh-server)` in Privacy & Security → Full Disk
 Access. If the tmux server isn't running (e.g. right after a crash), start it from the Mac, or with
 `launchctl kickstart -k gui/$(id -u)/cc-orchestrator.claude.agents` from the phone.

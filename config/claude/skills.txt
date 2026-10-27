@@ -3,7 +3,7 @@
 #   link    - a symlink (e.g. installed by the 'skills' CLI into ~/.agents/skills); reinstall from source
 #   synced  - pushed by claude.ai to every logged-in client; not copied, comes back after login
 # name<TAB>kind<TAB>detail
-browser-router	link	→ /Users/nicolas/Documents/browser-router/skill
+browser-router	link	→ /Users/nicolas/code/browser-router/skill
 built-in-browser	synced	claude.ai
 chrome-browser	synced	claude.ai
 computer-use	synced	claude.ai

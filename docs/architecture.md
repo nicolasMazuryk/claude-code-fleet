@@ -11,7 +11,7 @@ Adapted from `prompts/prompt.md` §1 for the real machines. Details and code: [s
             ┌────────────┘           │           │              │
             ▼                        ▼           │              │
 ┌──── MacBook (macbook, nicolas) ─┐  ┌──── cloud = core-vm-cloud (agent) ────┐
-│ AGENTS_ROOT ~/Documents         │  │ AGENTS_ROOT /data/fleet               │
+│ AGENTS_ROOT ~/code         │  │ AGENTS_ROOT /data/fleet               │
 │ tmux "agents" → Agent View      │  │ tmux "fleet" → Agent View             │
 │   (LaunchAgent …claude.agents)  │  │   (cc-agents.service)                 │
 │ tmux "rc" → RC server per repo  │  │ cc-rc@<repo>.service per repo         │
@@ -35,7 +35,7 @@ Adapted from `prompts/prompt.md` §1 for the real machines. Details and code: [s
 
 | Component | Where | Owner |
 |---|---|---|
-| VM, `/data` volume, `agent` user, apt packages, Node, Tailscale daemon + `tailscale up`, mosh iptables rule, Vault secrets | cloud | `~/Documents/oci-free-tier-platform` (`host/cloud/bootstrap.sh`, `make host-sync VM=cloud`) |
+| VM, `/data` volume, `agent` user, apt packages, Node, Tailscale daemon + `tailscale up`, mosh iptables rule, Vault secrets | cloud | `~/code/oci-free-tier-platform` (`host/cloud/bootstrap.sh`, `make host-sync VM=cloud`) |
 | Claude Code binary, Agent View, RC servers (`cc-rc@`, `cc-agents`), hooks, settings, scripts in `bin/` | both | this repo (`install.sh`) |
 | Tailnet policy | Tailscale admin console | this repo (`config/tailscale/policy.hujson`, applied by a human) |
 | Mac Remote Login, Full Disk Access, firewall | Mac | this repo's runbooks (manual, human) |

@@ -23,8 +23,8 @@
       "mcp__ccd_session_mgmt__list_sessions",
       "mcp__ccd_session_mgmt__search_session_transcripts",
       "mcp__plugin_playwright_playwright__*",
-      "Read(//Users/nicolas/Documents/orchestrator-runs/**)",
-      "Edit(//Users/nicolas/Documents/orchestrator-runs/**)"
+      "Read(//Users/nicolas/code/orchestrator-runs/**)",
+      "Edit(//Users/nicolas/code/orchestrator-runs/**)"
     ]
   },
   "model": "opus",

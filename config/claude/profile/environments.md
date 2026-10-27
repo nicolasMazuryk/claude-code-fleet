@@ -1,6 +1,6 @@
 # Environments: devices, names and how they connect
 
-Authoritative detail: `~/Documents/claude-code-fleet/CLAUDE.md` and `docs/architecture.md` (cloud copy:
+Authoritative detail: `~/code/claude-code-fleet/CLAUDE.md` and `docs/architecture.md` (cloud copy:
 `~/claude-code-fleet`).
 
 ## Devices
@@ -9,7 +9,7 @@ Authoritative detail: `~/Documents/claude-code-fleet/CLAUDE.md` and `docs/archit
 | Tailscale name | `macbook` | `cloud` (OCI VM `core-vm-cloud`, `tag:cloud`) | iPhone |
 | OS hostname / RC device | `nicolas-macbook` | `cloud` | |
 | User / home | `nicolas`, `/Users/nicolas` | `agent`, `/data/home/agent` | |
-| `AGENTS_ROOT` (repos) | `~/Documents` | `/data/fleet` | |
+| `AGENTS_ROOT` (repos) | `~/code` | `/data/fleet` | |
 | Agent View tmux | `agents` | `fleet` | attaches to both |
 | Remote Control servers | tmux `rc`, `config/mac/repos.txt` | systemd `cc-rc@<repo>`, `config/cloud/repos.txt` | Claude app |
 
@@ -25,7 +25,7 @@ Authoritative detail: `~/Documents/claude-code-fleet/CLAUDE.md` and `docs/archit
 - **iPhone → hosts:** the Claude app via Remote Control (`mac/<repo>`, `cloud/<repo>`; outbound-only through Anthropic),
   and Moshi (mosh/SSH over Tailscale) into tmux `agents` on the Mac or `fleet` on cloud.
 - **OCI edge (cloud's public services):** Cloudflare → OCI NLB → Caddy on the VM. Admin access is Tailscale only;
-  break-glass is OCI Bastion (`make ssh VM=cloud` in `~/Documents/oci-free-tier-platform`). Secrets live in OCI Vault.
+  break-glass is OCI Bastion (`make ssh VM=cloud` in `~/code/oci-free-tier-platform`). Secrets live in OCI Vault.
 - **Ownership:** `oci-free-tier-platform` owns the VM, packages, the `agent` user, Tailscale and Vault;
   `claude-code-fleet` owns everything Claude Code.
 

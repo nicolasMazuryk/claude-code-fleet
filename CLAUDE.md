@@ -15,12 +15,12 @@ Rebuilding any of them must be "follow this repo".
 
 1. **Secrets never enter git.** Not the ntfy topic, Tailscale auth keys, claude.ai logins, the GitHub PAT, tokens in
    `settings.json` (`env.*TOKEN*`, `*KEY*`), or `~/.claude.json`. Secrets live in OCI Vault (managed from
-   `~/Documents/oci-free-tier-platform`: `make secret-put`) or in local files outside the repo (`~/.config/agent-push/topic`).
+   `~/code/oci-free-tier-platform`: `make secret-put`) or in local files outside the repo (`~/.config/agent-push/topic`).
    `cc-capture` sanitizes before writing to `config/`; `make test` greps for secret-looking strings.
 2. **The Mac is the source of truth for Claude Code settings.** Flow is Mac → `config/claude/` (capture) →
    Mac (apply) and Mac → cloud (`cc-sync-settings`). Never edit cloud's `~/.claude` by hand; never sync cloud → Mac.
 3. **Cloud is reachable only via Tailscale (`cloud`, `tag:cloud`) or OCI Bastion (break-glass, `make ssh VM=cloud` in
-   `~/Documents/oci-free-tier-platform`).** No public IP, no port 22 on the internet, no `0.0.0.0/0` ingress. mosh is allowed only on
+   `~/code/oci-free-tier-platform`).** No public IP, no port 22 on the internet, no `0.0.0.0/0` ingress. mosh is allowed only on
    `tailscale0` (UDP 60000–61000).
 4. **Cloud must never reach the Mac or the iPhone.** The tailnet policy has no rule with `src: tag:cloud`. Never put a
    Mac key, Mac credential or Mac address that grants access on cloud. Every Mac↔cloud connection (relay, presence,
@@ -31,7 +31,7 @@ Rebuilding any of them must be "follow this repo".
    started or checked, the matching runbook and the verify steps change in the same commit.
 7. **Back up before touching user state.** `~/.claude/settings.json`, `~/.ssh/config`, `~/.zshrc` and LaunchAgents are
    backed up (`*.bak.<timestamp>`) before any write. `~/.claude/settings.json` is deep-merged, never replaced.
-8. **Ownership split (ADR 0002).** `~/Documents/oci-free-tier-platform` owns the VM, disk, packages, the `agent` user, Tailscale, the
+8. **Ownership split (ADR 0002).** `~/code/oci-free-tier-platform` owns the VM, disk, packages, the `agent` user, Tailscale, the
    mosh iptables rule and Vault secrets. This repo owns everything Claude Code (scripts, Agent View, Remote Control
    servers, hooks, settings sync, cloud systemd units). Changes to oci go through **that repo's** `CLAUDE.md` rules
    (its own branch/worktree + PR); never edit its main checkout directly.
@@ -52,14 +52,14 @@ Prepare the exact commands, make them resumable, and list them for the human.
 | Host / Tailscale name | `macbook` (tailnet `tailnet-example`; was `nicolas-macbook`) | `cloud` = `core-vm-cloud`, `tag:cloud` |
 | OS hostname (= Remote Control device name) | `nicolas-macbook` (ComputerName/LocalHostName/HostName) | `cloud` (pinned by the oci bootstrap; was `app`) |
 | User / home | `nicolas`, `/Users/nicolas` | `agent`, `/data/home/agent` (on persistent `/data`) |
-| `AGENTS_ROOT` | `~/Documents` | `/data/fleet` |
+| `AGENTS_ROOT` | `~/code` | `/data/fleet` |
 | Agent View tmux session | `agents` | `fleet` |
 | RC servers | tmux session `rc`, one window per repo | systemd `cc-rc@<repo>`, headless (no tmux); oci `agent@<repo>` removed in Phase 4b |
 | RC allowlist | `config/mac/repos.txt` | `config/cloud/repos.txt` |
 | Node | nvm (`~/.nvm`), pnpm via corepack | system Node 24 (NodeSource), pnpm via corepack |
 | Starts at boot | LaunchAgents `cc-orchestrator.claude.{agents,relay}` | `cc-agents.service`, `cc-rc@.service` (linger on) |
 | Claude Code binary | native installer (`~/.local/bin/claude`) | same, installed by `install.sh cloud` (not oci) |
-| This repo on the host | `~/Documents/claude-code-fleet` (live checkout) | `~/claude-code-fleet`, an rsync copy (never edit it there) |
+| This repo on the host | `~/code/claude-code-fleet` (live checkout) | `~/claude-code-fleet`, an rsync copy (never edit it there) |
 
 Environment notes: macOS ships bash 3.2 and BSD tools. Scripts use `#!/usr/bin/env bash`, avoid bash-4-only features
 unless the script only runs on cloud, and avoid `${arr[@]}` on empty arrays under `set -u`
