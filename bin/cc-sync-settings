@@ -5,7 +5,9 @@
 #                  - macOS-only hook handlers ($CC_MAC_ONLY: afplay, osascript, …) → `cc-relay-hook <event> <group>
 #                    <handler> <sha256[:16]>` stand-ins (same events/matchers; the Mac's agent-relay plays them)
 #                  - dropped: statusLine (needs ccstatusline + claude-hud, Mac only), preferredNotifChannel,
-#                    enabledPlugins "warp@…", credential-like env keys (TOKEN, KEY, SECRET, PASSWORD, AUTH, CREDENTIAL)
+#                    credential-like env keys (TOKEN, KEY, SECRET, PASSWORD, AUTH, CREDENTIAL), and what
+#                    config/claude/mac-only.json lists: Mac-only plugins (enabledPlugins "<name>@…", their
+#                    extraKnownMarketplaces entry, mcp__plugin_<name>_* rules) and permission rules
 #                  - /Users/nicolas → cloud $HOME; config/claude/cloud-settings.json deep-merged on top
 #                  written only when it differs (previous one kept as settings.json.bak.<ts>)
 #   mirrored       CLAUDE.md keybindings.json skills agents commands output-styles hooks profile (rsync --delete; symlinks
@@ -15,14 +17,16 @@
 #                  (--install-plugins runs them, adding the Mac's GitHub marketplace on cloud first)
 #   --dry-run      show what would change, write nothing      --print   print the cloud settings.json and exit
 # Must report "4 macOS-only hook handler(s) relayed" (docs/runbooks/sync-settings.md).
-# Test switches: CC_SYNC_SITES (sites.yaml path), CC_SYNC_SRC, CC_SYNC_OVERRIDES, CC_SYNC_CLOUD_HOME (skips the ssh lookup), CC_SYNC_HOST.
+# Test switches: CC_SYNC_SITES (sites.yaml path), CC_SYNC_SRC, CC_SYNC_OVERRIDES, CC_SYNC_MAC_ONLY, CC_SYNC_CLOUD_HOME (skips the ssh lookup), CC_SYNC_HOST.
 set -eo pipefail
 # shellcheck source=bin/agent-env
 . "$HOME/.local/bin/agent-env"
 H=${CC_SYNC_HOST:-cloud}
 MAC_ONLY=${CC_MAC_ONLY:-'afplay|osascript|terminal-notifier|/usr/bin/say|say -v'}
 src=${CC_SYNC_SRC:-$HOME/.claude/settings.json}
-overrides=${CC_SYNC_OVERRIDES:-${CC_ORCH_DIR:-$(cd "$(dirname "$(readlink "$0" || echo "$0")")/.." && pwd)}/config/claude/cloud-settings.json}
+cfg=${CC_ORCH_DIR:-$(cd "$(dirname "$(readlink "$0" || echo "$0")")/.." && pwd)}/config/claude
+overrides=${CC_SYNC_OVERRIDES:-$cfg/cloud-settings.json}
+mac_only=${CC_SYNC_MAC_ONLY:-$cfg/mac-only.json}
 mode=sync; plugins=list
 for a in "$@"; do
   case $a in
@@ -35,6 +39,7 @@ for a in "$@"; do
 done
 [ "$AGENT_HOST" = mac ] || { echo "cc-sync-settings runs on the Mac (Mac → cloud only)" >&2; exit 2; }
 jq empty "$src" || { echo "cc-sync-settings: $src is not valid JSON" >&2; exit 1; }
+jq -e '.plugins and .permissions' "$mac_only" >/dev/null || { echo "cc-sync-settings: $mac_only is missing or invalid" >&2; exit 1; }
 rsh() { ssh -o BatchMode=yes -o ConnectTimeout=10 "$H" "$@"; }
 
 # shellcheck disable=SC2016  # $HOME of cloud
@@ -62,9 +67,19 @@ done < <(jq -r '(.hooks // {}) | to_entries[] | .key as $ev | .value | to_entrie
                 | (.value.hooks // []) | to_entries[] | select(.value.type == "command") | [$ev, $g, .key] | @tsv' "$src")
 
 # shellcheck disable=SC2016  # jq program
-s=$(jq --arg mh "$HOME" --arg ch "$cloud_home" '
-      del(.statusLine, .preferredNotifChannel)
-      | if .enabledPlugins then .enabledPlugins |= with_entries(select(.key | startswith("warp@") | not)) else . end
+s=$(jq --arg mh "$HOME" --arg ch "$cloud_home" --slurpfile mo "$mac_only" '
+      $mo[0] as $mo
+      | ((.enabledPlugins // {}) | keys | map(select(split("@")[0] as $n | $mo.plugins | index($n)))) as $drop
+      | ((.enabledPlugins // {}) | keys - $drop | map(split("@")[1])) as $keep_mkts
+      | ($drop | map(split("@")[1]) - $keep_mkts) as $drop_mkts
+      | del(.statusLine, .preferredNotifChannel)
+      | if .enabledPlugins then .enabledPlugins |= with_entries(select(.key as $k | $drop | index($k) | not)) else . end
+      | if .extraKnownMarketplaces then .extraKnownMarketplaces |= with_entries(select(.key as $k | $drop_mkts | index($k) | not)) else . end
+      | if .permissions then .permissions |= with_entries(
+          if (.value | type) == "array" then .value |= map(select(. as $r
+            | ($mo.permissions | index($r) | not)
+              and ($mo.plugins | all(. as $n | $r | startswith("mcp__plugin_" + $n + "_") | not))))
+          else . end) | .permissions |= with_entries(select(.value != [])) else . end
       | if .env then .env |= with_entries(select(.key | test("TOKEN|KEY|SECRET|PASSWORD|AUTH|CREDENTIAL"; "i") | not)) else . end
       | walk(if type == "string" then split($mh) | join($ch) else . end)' <<<"$s")
 [ -f "$overrides" ] && s=$(jq -s '.[0] * .[1]' <(printf '%s' "$s") "$overrides")
@@ -113,8 +128,8 @@ if [ -f "$sites" ]; then
   else echo "  sites     $([ "$mode" = dry ] && echo 'would ')update $H:~/.config/browser-router/sites.yaml"; fi
 fi
 
-# plugins: listed (or installed with --install-plugins), never silently
-want=$(jq -r '(.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key | select(startswith("warp@") | not)' "$src")
+# plugins: listed (or installed with --install-plugins), never silently; Mac-only ones are already gone from $s
+want=$(jq -r '(.enabledPlugins // {}) | to_entries[] | select(.value == true) | .key' <<<"$s")
 have=$(rsh 'jq -r ".plugins | keys[]" ~/.claude/plugins/installed_plugins.json 2>/dev/null' || true)
 for p in $want; do
   grep -qxF "$p" <<<"$have" && continue

@@ -1,0 +1,22 @@
+{
+  "plugins": ["warp", "mac-control-router"],
+  "permissions": [
+    "Bash(mac-control-router *)",
+    "Bash(peekaboo *)",
+    "Bash(osascript *)",
+    "Bash(shortcuts *)",
+    "Bash(mdfind *)",
+    "Bash(mdls *)",
+    "Bash(open -g *)",
+    "Bash(trash *)",
+    "Bash(lsappinfo *)",
+    "Bash(defaults read *)",
+    "Bash(sudo *)",
+    "Bash(csrutil *)",
+    "Bash(tccutil *)",
+    "Bash(nvram *)",
+    "Bash(fdesetup *)",
+    "Bash(peekaboo agent *)",
+    "mcp__computer-use"
+  ]
+}

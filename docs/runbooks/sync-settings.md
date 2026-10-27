@@ -17,7 +17,14 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
    - It lists plugins enabled on the Mac but missing on cloud with the `claude plugin install` command to run;
      `bin/cc-sync-settings --install-plugins` runs them (adding the Mac's GitHub marketplace on cloud first).
    - Dropped on the way: `statusLine` (needs ccstatusline + claude-hud, Mac only), `preferredNotifChannel`,
-     `enabledPlugins["warp@…"]`, credential-like `env` keys. `/Users/nicolas` becomes `/data/home/agent`.
+     credential-like `env` keys, and everything `config/claude/mac-only.json` lists. `/Users/nicolas` becomes
+     `/data/home/agent`.
+   - `config/claude/mac-only.json` `plugins`: Mac-only plugins by name (`warp`, `mac-control-router`). Their
+     `enabledPlugins` entry, their `extraKnownMarketplaces` entry (unless a synced plugin shares it) and every
+     `mcp__plugin_<name>_*` permission rule are dropped, so they are never listed as missing on cloud.
+     `permissions`: exact rules dropped from every permission list (the macOS automation allows such as
+     `Bash(osascript *)` and the Mac safety denies such as `Bash(sudo *)`, which would break cloud's sudo workflows).
+     A new Mac-only plugin or rule goes there.
    - Mirrored with `rsync --delete`: `CLAUDE.md keybindings.json skills agents commands output-styles hooks profile`
      (symlinks copied as files; `skills/synced` is claude.ai's own). The previous cloud `settings.json` is kept as
      `settings.json.bak.<ts>`; nothing is written when it is unchanged.

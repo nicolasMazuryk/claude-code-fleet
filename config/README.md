@@ -4,6 +4,7 @@
 |---|---|---|
 | `claude/settings.orchestrator.json` | keys this repo enforces on the Mac (deep-merged by `install.sh mac`) | 0 (content), 3 (apply) |
 | `claude/cloud-settings.json` | cloud-only overrides merged by `cc-sync-settings` | 0 (content), 4 (apply) |
+| `claude/mac-only.json` | Mac-only plugins and permission rules `cc-sync-settings` never sends to cloud | 4 |
 | `claude/settings.mac.json` | `~/.claude/settings.json`, sanitized (credential-like `env` keys and `agent-push.sh` handlers dropped) | 1 (`make capture`) |
 | `claude/statusline-*.sh`, `claude/sounds/`, `claude/plugins/claude-hud/`, `claude/ccstatusline/settings.json` | statusline scripts, Choo Choo sound, claude-hud wrapper + config, `~/.config/ccstatusline/settings.json` (verbatim) | 1 (`make capture`) |
 | `claude/skills.txt`, `claude/skills/<name>/` | skill inventory (local / link / claude.ai synced) + copies of the local skills | 1 (`make capture`) |
