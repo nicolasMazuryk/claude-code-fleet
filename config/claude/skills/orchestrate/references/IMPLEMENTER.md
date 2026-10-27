@@ -44,7 +44,10 @@ on jobs the orchestrator judged independent of yours. Status tool: `S=~/.claude/
 8. **Gated steps:** if your card has `Verify = V`, stop *before* the risky step: `... ready_for_verify "<what to verify>"`,
    write in handoff.md exactly what the verifier should check and where (paths, refs, commands), end your turn. Continue
    only when told verify passed.
-9. **Done:** commit your work per the binding rules, run the acceptance checks, write a final summary in handoff.md,
+9. **Done:** run the acceptance checks and commit your work per the binding rules. Background sessions may not commit
+   in the shared checkout. Commit on your job branch, then set blocked "merge <job> <sha>"
+   (`$S/orchestrator-set-status <RUN_DIR> <job> blocked "merge <job> <sha>"`) and end your turn; the orchestrator
+   fast-forwards it. When told it is merged (or when the job has no repo commits), write a final summary in handoff.md,
    `... done "<one-line result>"` (or `failed "<reason>"`), end your turn.
 10. **After compaction or a restart (including a planned-handoff relaunch):** the run context is re-injected automatically. Before any other action re-read
     this file, your card, plan.md (if present) and handoff.md, reconcile with the repo (`git status`, `git log -5`, the worktree/branch in
