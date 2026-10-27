@@ -15,12 +15,14 @@ ssh cloud 'rm -rf /data/fleet/<repo>'          # or on the Mac: rm -rf ~/code/<r
 ```
 Agent View's `@` list drops it automatically.
 
-## Tidy merged worktrees and branches (every repo)
-`/repo-tidy` (skill) merges the branches you pick through PRs, then runs `repo-tidy --apply`. The script alone:
+## Tidy merged worktrees and branches (all your repos)
+`/cleanup-all-repositories-state` (skill, no arguments) shows the dry-run plan, asks once, merges any branches you pick
+through PRs, then runs `repo-tidy --apply`. The script alone:
 ```bash
-repo-tidy                          # dry run over $AGENTS_ROOT: would/decide/keep per item
-repo-tidy --apply --claude-state   # ff default checkouts; remove merged clean worktrees + merged branches; archive Claude state
-repo-tidy --apply --remote <repo>  # also delete merged branches on origin (not ones with an open PR)
+repo-tidy           # dry run: your repos under $AGENTS_ROOT (recursive) + repos Claude Code uses; would/decide/keep per item
+repo-tidy --apply   # ff default checkouts; remove merged clean worktrees, merged local + origin branches; archive stale Claude state
 ```
-It keeps dirty, locked, in-use and unmerged work, and skips repos mid-merge/rebase or whose fetch fails. Every deleted
-ref is bundled to `~/.local/state/repo-tidy/<ts>/` (`<repo>.refs` → `git fetch <bundle> <ref>:<ref>`).
+Only repos whose origin is `github.com/$GH_OWNER` (nicolasMazuryk) are handled; organization and remote-less repos are
+listed as excluded. It keeps dirty, locked, in-use and unmerged work, origin branches with an open PR, and skips repos
+mid-merge/rebase or whose fetch fails. Every deleted ref is bundled to `~/.local/state/repo-tidy/<ts>/`
+(`<repo>.refs` → `git fetch <bundle> <ref>:<ref>`). `--no-remote` / `--no-claude-state` narrow it.

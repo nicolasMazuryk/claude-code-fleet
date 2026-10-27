@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# repo-tidy [--apply] [--remote] [--claude-state] [--no-fetch] [REPO|PATH ...] — sync default branches and remove
-# merged worktrees and branches across $AGENTS_ROOT (or the named repos). Dry run unless --apply.
-#   --apply         fast-forward clean default checkouts; remove merged clean worktrees, prune missing ones; delete
-#                   merged local branches. Every deleted ref is bundled first into $REPO_TIDY_STATE/<ts>/.
-#   --remote        also check origin's branches and delete merged ones (never the default, never one with an open PR)
-#   --claude-state  also archive ~/.claude/projects dirs and drop ~/.claude.json keys of worktrees that no longer exist
-#   --no-fetch      use the current remote-tracking refs (nothing is deleted from a repo whose fetch fails)
+# repo-tidy [--apply] [--no-remote] [--no-claude-state] [--no-fetch] [REPO|PATH ...] — sync default branches and remove
+# merged worktrees, branches and stale Claude state in your own repos. Dry run unless --apply.
+# Repos: every git repo under $AGENTS_ROOT (recursive), every repo a Claude Code project or running session uses
+# (~/.claude.json, `claude agents`), or the named ones. Only repos whose origin is github.com/$REPO_TIDY_OWNER
+# (default $GH_OWNER, nicolasMazuryk) are handled; organization repos and repos without that origin are excluded.
+#   --apply            fast-forward clean default checkouts; remove merged clean worktrees, prune missing ones; delete
+#                      merged local and origin branches (never the default, never one with an open PR); archive Claude
+#                      project dirs and drop ~/.claude.json keys of worktrees that no longer exist. Every deleted ref is
+#                      bundled first into $REPO_TIDY_STATE/<ts>/.
+#   --no-remote        leave origin's branches alone      --no-claude-state  leave Claude state alone
+#   --no-fetch         use the current remote-tracking refs (nothing is deleted from a repo whose fetch fails)
 # Never touches: dirty or locked worktrees, worktrees a process has as cwd, unmerged commits, a repo mid-merge/rebase.
 # "Merged" = tip is an ancestor of origin/<default>, every commit is patch-equivalent there, merging it would not change
 # origin/<default>'s tree, or GitHub reports a merged PR whose head is exactly the tip.
@@ -15,27 +19,42 @@ if [ -z "${AGENTS_ROOT:-}" ] && [ -r "$HOME/.local/bin/agent-env" ]; then
   # shellcheck source=bin/agent-env
   . "$HOME/.local/bin/agent-env"
 fi
-apply=0; remote=0; cstate=0; fetch=1; repos=()
+apply=0; remote=1; cstate=1; fetch=1; repos=()
 for a in "$@"; do
   case $a in
     --apply) apply=1 ;;
-    --remote) remote=1 ;;
-    --claude-state) cstate=1 ;;
+    --no-remote) remote=0 ;;
+    --no-claude-state) cstate=0 ;;
     --no-fetch) fetch=0 ;;
-    -h|--help) sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     -*) echo "repo-tidy: unknown option $a" >&2; exit 2 ;;
     *) repos+=("$a") ;;
   esac
 done
+OWNER=${REPO_TIDY_OWNER:-${GH_OWNER:-nicolasMazuryk}}
+ORIGIN_RE=${REPO_TIDY_ORIGIN_RE:-github\.com[:/]$OWNER/}
+CLAUDE_JSON=${REPO_TIDY_CLAUDE_JSON:-$HOME/.claude.json}
 if [ ${#repos[@]} -eq 0 ]; then
-  [ -n "${AGENTS_ROOT:-}" ] && [ -d "$AGENTS_ROOT" ] || { echo "repo-tidy: AGENTS_ROOT unset; name repos" >&2; exit 2; }
-  for d in "$AGENTS_ROOT"/*/; do [ -e "$d.git" ] && repos+=("${d%/}"); done
+  # candidates: .git under $AGENTS_ROOT, Claude Code project paths, running sessions' cwds → main checkouts, deduped
+  while IFS= read -r r; do repos+=("$r"); done < <(
+    {
+      [ -n "${AGENTS_ROOT:-}" ] && [ -d "$AGENTS_ROOT" ] &&
+        find "$AGENTS_ROOT" \( -name node_modules -o -path '*/.claude/worktrees' \) -prune -o -name .git -prune -print 2>/dev/null |
+        sed 's#/\.git$##'
+      [ -f "$CLAUDE_JSON" ] && python3 -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1])).get("projects",{})))' "$CLAUDE_JSON" 2>/dev/null
+      [ "${REPO_TIDY_NO_AGENTS:-0}" = 1 ] || ! command -v claude >/dev/null ||
+        claude agents --json 2>/dev/null | python3 -c 'import json,sys; [print(a["cwd"]) for a in json.load(sys.stdin)]' 2>/dev/null
+    } | while IFS= read -r p; do
+      [ -d "$p" ] || continue
+      g=$(git -C "$p" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || continue
+      [ "${g%/.git}" != "$g" ] && echo "${g%/.git}"
+    done | sort -u)
 fi
+[ ${#repos[@]} -gt 0 ] || { echo "repo-tidy: no repos found (AGENTS_ROOT=${AGENTS_ROOT:-unset})" >&2; exit 2; }
 
 STATE=${REPO_TIDY_STATE:-$HOME/.local/state/repo-tidy}
 BK="$STATE/$(date +%Y%m%d-%H%M%S)"
 CLAUDE_DIR=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
-CLAUDE_JSON=${REPO_TIDY_CLAUDE_JSON:-$HOME/.claude.json}
 DISPOSABLE='(^|/)(node_modules|dist|build|out|\.next|\.turbo|\.cache|coverage|__pycache__|\.pytest_cache|\.venv|venv|target|\.DS_Store|[^/]*\.log)/?$'
 fail=0; mode=plan; [ $apply = 1 ] && mode=apply
 mkdir -p "$STATE"
@@ -80,9 +99,10 @@ ignored_unique() {
 backup() {
   local repo=$1 name=$2; shift 2
   mkdir -p "$BK" || return 1
-  local b; b="$BK/$name.$(printf '%s' "$1" | tr '/' '_').bundle"
+  local n; n=$(printf '%s' "$name" | tr '/' '_')
+  local b; b="$BK/$n.$(printf '%s' "$1" | tr '/' '_').bundle"
   git -C "$repo" bundle create -q "$b" "$@" 2>/dev/null || return 1
-  for r in "$@"; do echo "$(git -C "$repo" rev-parse "$r") $r $b"; done >> "$BK/$name.refs"
+  for r in "$@"; do echo "$(git -C "$repo" rev-parse "$r") $r $b"; done >> "$BK/$n.refs"
 }
 act() {  # act REPO ITEM STATE DESCRIPTION CMD...
   local r=$1 i=$2 s=$3 d=$4; shift 4
@@ -109,11 +129,13 @@ claude_archive() {  # claude_archive WORKTREE_PATH: archive its Claude project d
 }
 
 say REPO ITEM STATE ACTION
+excluded=; ROOT_REAL=$(cd "${AGENTS_ROOT:-/}" 2>/dev/null && pwd -P)
 for repo in ${repos[@]+"${repos[@]}"}; do
   case $repo in /*) ;; *) [ -d "$repo" ] || repo="${AGENTS_ROOT:-.}/$repo" ;; esac
   repo=$(cd "$repo" 2>/dev/null && git rev-parse --show-toplevel 2>/dev/null) || { say "$repo" - not-a-repo skip; continue; }
-  name=$(basename "$repo")
+  name=${repo#"$ROOT_REAL"/}; name=${name#"$HOME"/}
   [ "$(git -C "$repo" rev-parse --git-common-dir)" = .git ] || { say "$name" - is-a-linked-worktree skip; continue; }
+  if ! git -C "$repo" remote get-url origin 2>/dev/null | grep -qE "$ORIGIN_RE"; then excluded="$excluded $name"; continue; fi
   cd "$repo" || continue
   if busy "$repo"; then say "$name" - merge/rebase-in-progress "skip repo"; continue; fi
   has_origin=0; git remote get-url origin >/dev/null 2>&1 && has_origin=1
@@ -175,9 +197,10 @@ for repo in ${repos[@]+"${repos[@]}"}; do
   flush_wt
 
   # local branches (after worktree removal, so freed branches are handled too)
-  checked_out=$(git worktree list --porcelain | sed -n 's#^branch refs/heads/##p')
+  checked_out=$(git worktree list --porcelain | sed -n 's#^branch refs/heads/##p')   # first = the default checkout's
   for br in $(git for-each-ref --format='%(refname:short)' refs/heads); do
     [ "$br" = "$def" ] && continue
+    [ "$br" = "$cur" ] && continue   # reported with the default checkout above
     printf '%s\n' "$checked_out" | grep -qxF "$br" && { [ $apply = 1 ] || say "$name" "branch:$br" in-a-worktree "(see worktree)"; continue; }
     if how=$(merged "refs/heads/$br" "$base"); then
       [ $safe = 1 ] || { say "$name" "branch:$br" "merged ($how), stale refs" keep; continue; }
@@ -190,11 +213,7 @@ for repo in ${repos[@]+"${repos[@]}"}; do
     fi
   done
 
-  # remote branches (checked only with --remote: slow on repos with many old branches)
-  if [ $has_origin = 1 ] && [ $remote = 0 ]; then
-    n=$(git for-each-ref --format=x refs/remotes/origin | wc -l | tr -d ' ')
-    [ "$n" -gt 2 ] && say "$name" "remote:*" "$((n - 2)) non-default branch(es)" "decide: --remote checks/deletes merged ones"
-  fi
+  # origin's branches
   if [ $has_origin = 1 ] && [ $remote = 1 ]; then
     for rb in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin); do
       b=${rb#origin/}; [ "$b" = "$def" ] || [ "$b" = HEAD ] || [ "$rb" = origin ] && continue
@@ -228,6 +247,7 @@ print("\n".join(k for k in d.get("projects",{}) if k.startswith(r) and not os.pa
   [ $apply = 1 ] && git worktree prune
 done
 rm -f "$STATE/.err"
+[ -n "$excluded" ] && echo "excluded (origin not github.com/$OWNER):$excluded"
 [ -d "$BK" ] && echo "backups: $BK (restore a ref: git fetch <bundle> <ref>:<ref>; see *.refs)"
 echo "repo-tidy: $mode done$([ $fail = 1 ] && echo ', with failures')"
 exit $fail

@@ -4,7 +4,7 @@
 
 setup() {
   T="$(cd "$BATS_TEST_DIRNAME/.." && pwd)/bin/repo-tidy"
-  export HOME="$BATS_TEST_TMPDIR/home" REPO_TIDY_STATE="$BATS_TEST_TMPDIR/state" AGENTS_ROOT="$BATS_TEST_TMPDIR/root"
+  export REPO_TIDY_ORIGIN_RE=. REPO_TIDY_NO_AGENTS=1 HOME="$BATS_TEST_TMPDIR/home" REPO_TIDY_STATE="$BATS_TEST_TMPDIR/state" AGENTS_ROOT="$BATS_TEST_TMPDIR/root"
   export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
   export GIT_CONFIG_GLOBAL="$BATS_TEST_TMPDIR/gitconfig"; git config --global init.defaultBranch main
   mkdir -p "$HOME/.claude/projects" "$AGENTS_ROOT"
@@ -34,7 +34,7 @@ refs() { git -C "$R" for-each-ref --format='%(refname:short)' refs/heads | sort 
 
 @test "dry run reports and changes nothing" {
   before=$(refs)
-  run "$T" --claude-state r
+  run "$T" r
   [ "$status" -eq 0 ]
   [[ "$output" == *"branch:ff"*"would: git branch -D"* ]]
   [[ "$output" == *"branch:sq"*"merged"* ]]
@@ -47,7 +47,7 @@ refs() { git -C "$R" for-each-ref --format='%(refname:short)' refs/heads | sort 
 }
 
 @test "--apply removes merged work only, bundles every deleted ref, archives Claude state" {
-  run "$T" --apply --claude-state r
+  run "$T" --apply r
   [ "$status" -eq 0 ]
   [ "$(refs)" = "dirty main notes wip " ]
   [ ! -d "$R/.claude/worktrees/done" ]
@@ -81,9 +81,11 @@ refs() { git -C "$R" for-each-ref --format='%(refname:short)' refs/heads | sort 
   [ -d "$R/.claude/worktrees/done" ]
 }
 
-@test "--remote deletes merged origin branches only" {
+@test "--apply deletes merged origin branches only; --no-remote leaves them" {
   git -C "$R" push -q origin ff wip
-  run "$T" --apply --remote r
+  "$T" --apply --no-remote r >/dev/null
+  [ -n "$(git -C "$R" ls-remote --heads origin ff)" ]
+  run "$T" --apply r
   [[ "$output" == *"remote:ff"*"done: git push origin --delete"* ]]
   [[ "$output" == *"remote:wip"*"unmerged"*"keep"* ]]
   [ -z "$(git -C "$R" ls-remote --heads origin ff)" ] && [ -n "$(git -C "$R" ls-remote --heads origin wip)" ]
@@ -94,4 +96,16 @@ refs() { git -C "$R" for-each-ref --format='%(refname:short)' refs/heads | sort 
   run "$T" --apply r
   [[ "$output" == *"merge/rebase-in-progress"*"skip repo"* ]]
   [ -d "$R/.claude/worktrees/done" ]
+}
+
+@test "no args: finds nested repos under AGENTS_ROOT; repos not owned by REPO_TIDY_OWNER are excluded" {
+  git clone -q "$BATS_TEST_TMPDIR/origin.git" "$AGENTS_ROOT/ARCHIVE/mine" 2>/dev/null
+  git -C "$AGENTS_ROOT/ARCHIVE/mine" remote set-url origin git@github.com:me/mine.git
+  git -C "$R" remote set-url origin git@github.com:someorg/r.git
+  unset REPO_TIDY_ORIGIN_RE
+  REPO_TIDY_OWNER=me run "$T" --no-fetch
+  [[ "$output" == *"excluded (origin not github.com/me): r"* ]]
+  [[ "$output" != *"r "*"branch:"* ]]
+  REPO_TIDY_OWNER=me run "$T" --no-fetch --apply
+  [ -d "$R/.claude/worktrees/done" ] && [ "$(refs)" = "dirty done ff gone main notes sq wip " ]
 }

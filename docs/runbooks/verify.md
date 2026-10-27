@@ -80,4 +80,4 @@ Each phase's PR records the output of its rows. `make doctor` (`bin/cc-doctor`: 
 | 5 | Does `@` list every repo in `AGENTS_ROOT`? (names have no spaces; check `FIO`, `fio.contracts`) | type `@` | _tbd_ |
 | 6 | `claude` from an SSH login on the Mac: Keychain login available? | `mac-remote-access selftest` (`CLAUDE_LOGGED_IN`, `CLAUDE_KEYCHAIN`; also `SSH_DOCUMENTS`, `TMUX_SERVER_DOCUMENTS`, `MOSH_DOCUMENTS` for the TCC question) | _tbd: needs Remote Login on (Phase 6, human step 1)_ |
 | 7 | Tenancy A1 allowance | oci `make free-tier` | 4 OCPU / 24 GB, using 2 / 12 |
-| 8 | Does `repo-tidy` find nothing to do after a tidy? | `repo-tidy` (dry run) prints no `would:` lines | 2026-10-27, Mac: dry run over 41 repos in 89 s, only `decide:`/`keep` lines |
+| 8 | After `/cleanup-all-repositories-state`, is there nothing left to do? | `repo-tidy` (dry run) prints no `would:` lines and lists organization repos only under `excluded` | _tbd_ |

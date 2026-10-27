@@ -13,7 +13,7 @@ cloud: `cc-capture`, `cc-sync-settings`, `cc-orchestrator-start`, `agent-relay`,
 | `rc-servers` | reconcile servers with `$REPOS_FILE` (Mac: tmux `rc`; cloud: `cc-rc@` for cloned + trusted repos, legacy `agent@` stopped first) | 3, 4b |
 | `cc-orchestrator-start` | Mac login: tmux `agents` + `rc-servers` (run by the LaunchAgent via tmux) | 3 |
 | `repo-init [--rc] [--no-trust] <repo>` | `.gitignore`/`.worktreeinclude`, trust, allowlist, servers | 3 |
-| `repo-tidy [--apply] [--remote] [--claude-state] [repo…]` | sync default checkouts; remove merged worktrees/branches (bundled first) and stale Claude state; dry run by default. Driven by the `repo-tidy` skill | 3, 4b |
+| `repo-tidy [--apply] [--no-remote] [--no-claude-state] [repo…]` | your repos (origin `github.com/$GH_OWNER`) under `$AGENTS_ROOT` and in Claude Code: sync default checkouts; remove merged worktrees/branches (bundled first) and stale Claude state; dry run by default. Driven by the `cleanup-all-repositories-state` skill | 3, 4b |
 | `fleet [logs\|restart\|attach <host> <repo>]` | all sessions on both hosts | 3 |
 | `agent-present` | exit 0 when you're at the Mac (Mac: `ioreg`; cloud: relay's `mac-present` marker < 90 s) | 3, 5 |
 | `cc-capture` | snapshot Mac `~/.claude` → `config/` | 1 |
