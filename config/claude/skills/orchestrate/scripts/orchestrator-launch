@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # orchestrator-launch [--plan] <run-dir> <job> <cwd> <model> <effort> <prompt> [compact_at] — start a background Claude
-# Code session for a job and record session_name/session_id/short_id/cwd in jobs/<job>/status.json.
+# Code session for a job and record session_name/session_id/short_id/cwd in jobs/<job>/status.json; every launch is
+# also appended to .sessions[] (relaunch history, used by orchestrator-cleanup).
 # --plan starts it in plan mode (planner sessions P-<job>); otherwise the permission mode is auto.
 # Name: <slug>-<job>[-r<n> on relaunch]. Workers auto-compact at <compact_at> (default 300k, a safety net); the
 # orchestrator plans a fresh relaunch at 180k. Every session gets a SessionStart(compact) hook that re-injects its run
@@ -28,6 +29,7 @@ jq --arg n "$name" --arg sid "$sid" --arg id "$short" --arg c "$cwd" --arg m "$m
    --arg k "$compact" --arg pm "$mode" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   '.session_name=$n | .session_id=$sid | .short_id=$id | .cwd=$c | .model=$m | .effort=$e | .compact_at=$k | .permission_mode=$pm
    | .launches=((.launches // 0) + 1) | .launched_at=$t
+   | .sessions=((.sessions // []) + [{name: $n, id: $id, session_id: $sid, launched_at: $t}])
    | (if (.state // "queued") == "queued" then .state="running" | .step="launched" | .updated_at=$t else . end)' \
   "$f" >"$tmp" && mv "$tmp" "$f"
 echo "launched $name id=${short:-?} session=${sid:-?}"

@@ -20,8 +20,9 @@
      continue from handoff.md."` If resume fails, relaunch fresh with `orchestrator-launch` using the Resume prompt.
    - **Merge requests** (`state == blocked`, step `merge <job> <sha>`) are not a human decision. Check that `<sha>` is
      the tip of `orchestrator/<slug>/<job>`, that the job's verifier PASSed on it (when the card has Verify = V), and
-     that the default branch's checkout is clean. Then `git -C <repo> merge --ff-only <sha>` in that checkout, Log it,
-     and resume the session with `Merged <sha> into <branch>; continue from handoff.md.` A dirty checkout or a
+     that the default branch's checkout is clean. Then `git -C <repo> merge --ff-only <sha>` in that checkout, record
+     it with `$S/orchestrator-set-status $R <job> blocked "merge <job> <sha>" --field merged_sha=<sha> --field
+     merged_repo=<repo>` (orchestrator-cleanup checks it), Log it, and resume the session with `Merged <sha> into <branch>; continue from handoff.md.` A dirty checkout or a
      non-fast-forward is a normal block (above).
 
 3. **Context: planned handoff and compaction.** Workers (planner/implementer/verifier) launch with
@@ -48,6 +49,10 @@
        earlier `plan-draft.md` exists, otherwise with Launch (planner).
      - The slot carries over: a handoff relaunch does not count as a new launch against the cap. Log `handoff_relaunch
        <job> <new name>`.
+     - Once the new session is live in `orchestrator-status`, `claude rm <old id>` the stopped predecessor (its state
+       is in handoff.md / verify-report.md / plan-review.md / plan-draft.md). Never pass `--discard-unpushed` or
+       `--force-remove-worktree`; if `rm` refuses, leave it stopped (job-end cleanup in step 5 retries it). Log
+       `cleanup <old name>`.
    - **Fallback, unplanned.** Any of: `ctx_tokens > compact_at` and still growing over two ticks (compaction is not
      firing); after a compaction the session redoes steps listed as Done, contradicts a recorded decision, or works
      outside its card; compaction errors in the logs; a planned handoff that hasn't reached idle after 2 ticks. Then
@@ -72,6 +77,13 @@
      with "Verify passed; continue with the gated step." FAIL → resume the implementer with "Verify failed; read
      verify-report.md, fix, then set ready_for_verify again." Third FAIL → block and ask the user.
    - `done` / `failed` → free the slot; `failed` means block-and-ask unless the plan says otherwise.
+     - **Cleanup.** Once a job is `done`, its required `verify_pass` is recorded and any merge it requested has landed,
+       run `$S/orchestrator-cleanup $R <job>` and Log its output. It stops and removes the job's implementer, planner
+       `P-<job>` and verifier `V-/PV-<job>` sessions, including Revise relaunches (`-r<n>`) and any handoff
+       predecessor whose `rm` refused; finished planners and verifiers stay (stopped, no pid) until then, so revisions
+       remain inspectable. Exit 3 (a gate is not met yet) → retry next tick; exit 4 (`kept <name>: …`,
+       `claude rm` refused over unpushed commits or a dirty worktree) → add it to Open items in `ORCHESTRATOR.md`,
+       never force it. `failed` and `blocked` jobs are never cleaned up automatically; they only get `claude stop`.
    - **Plan-first jobs** (`Plan first` = `yes` or `yes+review`) go queued → `planning` → `plan_ready` →
      `plan_approved` → implementer. A `yes*` implementer launches only from an approved `jobs/<job>/plan.md`.
      1. **Launch planner** when launchable conditions 1–3 and 5 hold (condition 4 is skipped: the planner is

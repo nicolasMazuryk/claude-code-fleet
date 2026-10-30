@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# orchestrator-cleanup <run-dir> <job>|--all [--dry-run] — stop and remove every background session of a finished job:
+# rows of `claude agents --json --all` named <slug>-(P-|V-|PV-)?<job>(-r<n>)? plus every id in the jobs' status.json
+# sessions[] history. --all: every job of the run (never the orchestrator row).
+# Gates (exit 3, nothing touched): job state done; no session busy or waiting; a recorded merged_sha is an ancestor of
+# the default branch. Per session: `claude stop` (if it has a pid), then `claude rm`. Never passes --discard-unpushed
+# or --force-remove-worktree: an rm refusal keeps the session stopped, prints `kept <name>: <reason>`, exit 4.
+# Prints `removed|kept|absent <name> <id>` per session (`would-remove` with --dry-run). Idempotent.
+set -euo pipefail
+usage() { echo "usage: orchestrator-cleanup <run-dir> <job>|--all [--dry-run]" >&2; exit 2; }
+[ $# -ge 2 ] && [ $# -le 3 ] || usage
+run=$(cd "$1" && pwd) target=$2 dry=0
+[ $# -eq 3 ] && { [ "$3" = --dry-run ] || usage; dry=1; }
+slug=$(basename "$run")
+agents=$(claude agents --json --all) || { echo "orchestrator-cleanup: claude agents --json --all failed" >&2; exit 1; }
+
+base() { local j=$1; j=${j#PV-}; j=${j#V-}; j=${j#P-}; echo "$j"; }
+
+default_branch() { # local default branch of repo $1 (origin/HEAD, else main, else master)
+  local b; b=$(git -C "$1" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true); b=${b#origin/}
+  for c in "$b" main master; do
+    [ -n "$c" ] && git -C "$1" rev-parse --verify --quiet "refs/heads/$c" >/dev/null && { echo "$c"; return; }
+  done
+  return 1
+}
+
+# clean_job <job> → 0 ok, 3 refused, 4 kept; prints one line per session
+clean_job() {
+  local job=$1 f="$run/jobs/$1/status.json" state sha repo def hist rows active tmp s id name pid msg rc=0 removed='[]'
+  [ "$job" != orchestrator ] || { echo "refuse $job: the orchestrator session is never cleaned up"; return 3; }
+  [ -s "$f" ] || { echo "refuse $job: no $f"; return 3; }
+  state=$(jq -r '.state // "queued"' "$f")
+  [ "$state" = "done" ] || { echo "refuse $job: state $state (only done jobs are cleaned up)"; return 3; }
+  sha=$(jq -r '.merged_sha // empty' "$f")
+  if [ -n "$sha" ]; then
+    repo=$(jq -r '.merged_repo // .cwd // empty' "$f")
+    def=$(default_branch "$repo" 2>/dev/null) || { echo "refuse $job: no default branch in '$repo' to check merged_sha"; return 3; }
+    git -C "$repo" merge-base --is-ancestor "$sha" "$def" 2>/dev/null \
+      || { echo "refuse $job: merged_sha $sha is not on $def in $repo"; return 3; }
+  fi
+  # recorded sessions of the job, its planner and verifiers (current + sessions[] history)
+  hist=$(for p in "" P- V- PV-; do s="$run/jobs/$p$job/status.json"; if [ -s "$s" ]; then cat "$s"; fi; done |
+    jq -s -c '[.[] | (.sessions // []) + [{name: .session_name, id: .short_id, session_id: .session_id}] | .[]
+      | select((.id // "") != "" or (.session_id // "") != "")] | unique_by(.id // .session_id)')
+  rows=$(jq -c --arg re "^${slug}-(P-|V-|PV-)?${job}(-r[0-9]+)?\$" --argjson h "$hist" '[.[] | select(
+      ((.name // "") | test($re)) or (. as $r | $h | any((.id // "") == $r.id or (.session_id // "") == $r.sessionId)))]
+    | unique_by(.id)' <<<"$agents")
+  active=$(jq -r '.[] | select(.state == "working" or .state == "busy" or .state == "blocked" or .status == "busy"
+      or .status == "waiting" or .waitingFor != null) | "\(.name) (\(.state)/\(.waitingFor // .status))"' <<<"$rows")
+  [ -z "$active" ] || { echo "refuse $job: session busy or waiting: $(echo "$active" | paste -sd, -)"; return 3; }
+  jq -r --argjson s "$rows" '.[] | select(. as $h | $s | any(.id == $h.id or .sessionId == $h.session_id) | not)
+    | "absent \(.name // "-") \(.id // .session_id)"' <<<"$hist"
+  while IFS=$'\t' read -r id name pid; do
+    [ -n "$id" ] || continue
+    if [ "$dry" = 1 ]; then echo "would-remove $name $id"; continue; fi
+    [ "$pid" = null ] || claude stop "$id" >/dev/null 2>&1 || true
+    if msg=$(claude rm "$id" 2>&1); then
+      echo "removed $name $id"
+      removed=$(jq -c --arg n "$name" --arg i "$id" '. + [{name: $n, id: $i}]' <<<"$removed")
+    else
+      echo "kept $name: $(echo "$msg" | tr '\n' ' ' | sed 's/ *$//')"; rc=4
+    fi
+  done < <(jq -r '.[] | [.id, (.name // "-"), (.pid // "null" | tostring)] | @tsv' <<<"$rows")
+  if [ "$removed" != '[]' ]; then
+    tmp=$(mktemp "$run/jobs/$job/.status.XXXXXX")
+    jq --argjson r "$removed" --arg t "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      '.cleaned_at=$t | .cleaned_sessions=((.cleaned_sessions // []) + $r)' "$f" >"$tmp" && mv "$tmp" "$f"
+  fi
+  return $rc
+}
+
+if [ "$target" != --all ]; then
+  clean_job "$(base "$target")"; exit $?
+fi
+worst=0
+for j in $(for d in "$run"/jobs/*/; do [ -d "$d" ] && base "$(basename "$d")"; done | sort -u); do
+  [ -s "$run/jobs/$j/status.json" ] || { echo "skip $j: no status.json"; continue; }
+  st=$(jq -r '.state // "queued"' "$run/jobs/$j/status.json")
+  [ "$st" = "done" ] || { echo "skip $j: state $st"; continue; }
+  rc=0; clean_job "$j" || rc=$?
+  [ "$rc" -gt "$worst" ] && worst=$rc
+done
+exit $worst
