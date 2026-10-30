@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Fake claude for bats: argv → $FAKE_CLAUDE/calls; `agents` prints $FAKE_CLAUDE/agents.json; `stop <id>` clears the
+# row's pid; `rm <id>` drops the row, or fails like an unpushed worktree when <id> is listed in $FAKE_CLAUDE/rm-fail.
+# shellcheck disable=SC2016 # jq programs, not shell expansions
+d=${FAKE_CLAUDE:?}; echo "claude $*" >> "$d/calls"
+edit() { jq --arg i "$1" "$2" "$d/agents.json" > "$d/a" && mv "$d/a" "$d/agents.json"; }
+case $1 in
+  agents) cat "$d/agents.json" ;;
+  stop) edit "$2" 'map(if .id == $i then .pid = null | .state = "stopped" else . end)' ;;
+  rm)
+    if grep -qx "$2" "$d/rm-fail" 2>/dev/null; then
+      echo "has unpushed commits; pass --discard-unpushed abc1234@wt1 to discard them" >&2; exit 1
+    fi
+    edit "$2" 'map(select(.id != $i))' ;;
+esac
