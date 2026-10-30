@@ -51,7 +51,7 @@
        <job> <new name>`.
      - Once the new session is live in `orchestrator-status`, `claude rm <old id>` the stopped predecessor (its state
        is in handoff.md / verify-report.md / plan-review.md / plan-draft.md). Never pass `--discard-unpushed` or
-       `--force-remove-worktree`; if `rm` refuses, leave it stopped (job-end cleanup in step 5 retries it). Log
+       `--force-remove-worktree`; if `rm` refuses, leave it stopped (the cleanup sweep, step 6, retries it). Log
        `cleanup <old name>`.
    - **Fallback, unplanned.** Any of: `ctx_tokens > compact_at` and still growing over two ticks (compaction is not
      firing); after a compaction the session redoes steps listed as Done, contradicts a recorded decision, or works
@@ -68,7 +68,8 @@
 
 4. **Stalls.** `state == running` and `age_min > 10`: SendMessage asking for a status update. `> 25`: read
    `claude logs <name>`; nudge, restart from handoff (planned handoff path, step 3), or block and ask the user. Same failure
-   twice → block. Session `absent` but state is `running`: it died. Relaunch from handoff once; second death → block.
+   twice → block. Session `absent` but state is `running`: it died (`absent` with state `done` was removed by the
+   cleanup sweep and is normal). Relaunch from handoff once; second death → block.
 
 5. **Gates and dispatch.** Every launch takes its role's model/effort from PLAN.md `## Settings` (orchestrator,
    planner, implementer, verifier), never a hard-coded value.
@@ -77,13 +78,7 @@
      with "Verify passed; continue with the gated step." FAIL → resume the implementer with "Verify failed; read
      verify-report.md, fix, then set ready_for_verify again." Third FAIL → block and ask the user.
    - `done` / `failed` → free the slot; `failed` means block-and-ask unless the plan says otherwise.
-     - **Cleanup.** Once a job is `done`, its required `verify_pass` is recorded and any merge it requested has landed,
-       run `$S/orchestrator-cleanup $R <job>` and Log its output. It stops and removes the job's implementer, planner
-       `P-<job>` and verifier `V-/PV-<job>` sessions, including Revise relaunches (`-r<n>`) and any handoff
-       predecessor whose `rm` refused; finished planners and verifiers stay (stopped, no pid) until then, so revisions
-       remain inspectable. Exit 3 (a gate is not met yet) → retry next tick; exit 4 (`kept <name>: …`,
-       `claude rm` refused over unpushed commits or a dirty worktree) → add it to Open items in `ORCHESTRATOR.md`,
-       never force it. `failed` and `blocked` jobs are never cleaned up automatically; they only get `claude stop`.
+     Its sessions are removed by the cleanup sweep (step 6) once its merge has landed.
    - **Plan-first jobs** (`Plan first` = `yes` or `yes+review`) go queued → `planning` → `plan_ready` →
      `plan_approved` → implementer. A `yes*` implementer launches only from an approved `jobs/<job>/plan.md`.
      1. **Launch planner** when launchable conditions 1–3 and 5 hold (condition 4 is skipped: the planner is
@@ -127,12 +122,29 @@
      that cwd and accept the trust prompt (only they can). Other launch failures: retry once next tick, then block.
    - Human-gate jobs (drafts for review): when the job reaches its gate, notify the user as in step 2.
 
-6. **Record.** Append one line per state change or decision (with its reason) to the Log in `ORCHESTRATOR.md`; update
+6. **Cleanup sweep** (every tick, after dispatch). `$S/orchestrator-cleanup $R --all` stops and removes every
+   session whose status id is `done` and whose state is already in files, so live processes track active work and
+   Agent View stays short on long runs:
+
+   | Status id | Removed once it is `done` | Its state lives in |
+   |---|---|---|
+   | planner `P-<job>` | `done "plan written"` (step 5, plan-first 2) | `plan.md` / `plan-draft.md` |
+   | plan review `PV-<job>` | after plan-review.md | `plan-review.md` |
+   | verifier `V-<job>` | after verify-report.md and the job's verify_pass/verify_fail | `verify-report.md` |
+   | implementer `<job>` | job `done` and a recorded `merged_sha` on the default branch | `handoff.md`, the repo |
+
+   Revise and re-verify relaunches read those files, never an old session; `orchestrator-launch` sets a relaunched
+   `done` id back to `running`, so the sweep leaves the new session alone. Log only `removed`/`kept` lines. A `refuse`
+   line (a session still busy or waiting, a merge not landed yet) is retried next tick. `kept <name>: …` (exit 4:
+   `claude rm` refused over unpushed commits or a dirty worktree) → Open items in `ORCHESTRATOR.md`; never force it.
+   `failed` and `blocked` ids are never swept; they only get `claude stop`.
+
+7. **Record.** Append one line per state change or decision (with its reason) to the Log in `ORCHESTRATOR.md`; update
    Slots/Queue/Gates/Pending decisions; rewrite the Resume pointer (current stage; live sessions with ids; pending
    decisions; last decision + why; next intended action). At each stage boundary post a short status report
    (done / running / blocked / next).
 
-7. **Completion check.** All jobs `done`, e2e verify PASS, no pending decisions → Finish (SKILL.md Run mode step 4).
+8. **Completion check.** All jobs `done`, e2e verify PASS, no pending decisions → Finish (SKILL.md Run mode step 4).
 
 ## Prompts
 - **Launch (implementer):** `Read <R>/IMPLEMENTER.md, then your job card <job> in <R>/PLAN.md. Your job id is <job>, run dir <R>.`

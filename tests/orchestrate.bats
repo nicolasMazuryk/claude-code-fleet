@@ -120,12 +120,70 @@ untouched() { ! grep -qE '^claude (stop|rm)' "$CL/calls"; }
   [ "$(cat "$R/jobs/J1/status.json")" = "$before" ]
 }
 
-@test "orchestrator-cleanup: refuses a non-done job (exit 3, nothing touched)" {
+@test "orchestrator-cleanup: refuses a non-done id (exit 3, nothing touched)" {
   cleanup_setup
-  run "$S/orchestrator-cleanup" "$R" P-J2
+  run "$S/orchestrator-cleanup" "$R" J2
   [ "$status" -eq 3 ]
   [[ $output == "refuse J2: state running"* ]]
   untouched
+}
+
+# J3 is still running; its planner, plan review and verifier have finished (their status ids are done)
+running_job_setup() {
+  { cat "$CL/agents.json"; row J3 k0000000 working 30; row P-J3 k1111111 stopped null; row PV-J3 k2222222 done null
+    row V-J3 k3333333 done 31; row V-J3-r1 k4444444 done 32; } | jq -s '.[0] + .[1:]' > "$CL/a"
+  mv "$CL/a" "$CL/agents.json"
+  for j in J3 P-J3 PV-J3 V-J3; do mkdir -p "$R/jobs/$j"; done
+  echo '{"job":"J3","state":"running","short_id":"k0000000"}' > "$R/jobs/J3/status.json"
+  echo '{"job":"P-J3","state":"done","short_id":"k1111111"}' > "$R/jobs/P-J3/status.json"
+  echo '{"job":"PV-J3","state":"done","short_id":"k2222222"}' > "$R/jobs/PV-J3/status.json"
+  echo '{"job":"V-J3","state":"done","short_id":"k4444444","sessions":[{"id":"k3333333"},{"id":"k4444444"}]}' \
+    > "$R/jobs/V-J3/status.json"
+}
+
+@test "orchestrator-cleanup: a done role id is removed while its job still runs; nothing else is touched" {
+  cleanup_setup; running_job_setup
+  run "$S/orchestrator-cleanup" "$R" V-J3
+  [ "$status" -eq 0 ]
+  [[ $output == *"removed $slug-V-J3 k3333333"* && $output == *"removed $slug-V-J3-r1 k4444444"* ]]
+  grep -qx 'claude stop k3333333' "$CL/calls"
+  grep -qx 'claude stop k4444444' "$CL/calls"
+  [ "$(grep -c '^claude rm' "$CL/calls")" -eq 2 ]
+  jq -e '[.[].id] | index("k0000000") and index("k1111111") and index("k2222222")' "$CL/agents.json"
+  jq -e '(.cleaned_sessions | length) == 2' "$R/jobs/V-J3/status.json"
+}
+
+@test "orchestrator-cleanup: --all sweep removes finished planners/verifiers of a running job, keeps the job" {
+  cleanup_setup; running_job_setup
+  run "$S/orchestrator-cleanup" "$R" --all
+  [ "$status" -eq 0 ]
+  [[ $output == *"skip J3: state running"* ]]
+  for id in k1111111 k2222222 k3333333 k4444444; do ! jq -e --arg i "$id" 'any(.id == $i)' "$CL/agents.json"; done
+  jq -e 'any(.id == "k0000000")' "$CL/agents.json"
+  ! grep -qx 'claude stop k0000000' "$CL/calls"
+}
+
+@test "orchestrator-cleanup: --all treats a busy done id as retry-next-tick (exit 0, untouched)" {
+  cleanup_setup; running_job_setup
+  agents_set 'map(if .id == "k3333333" then .state = "working" else . end)'
+  run "$S/orchestrator-cleanup" "$R" --all
+  [ "$status" -eq 0 ]
+  [[ $output == *"refuse V-J3: session busy or waiting"* ]]
+  jq -e 'any(.id == "k3333333") and any(.id == "k4444444")' "$CL/agents.json"
+  run "$S/orchestrator-cleanup" "$R" V-J3
+  [ "$status" -eq 3 ]
+}
+
+@test "orchestrator-launch: relaunching a done role id makes it running, so the sweep keeps the new session" {
+  cleanup_setup; running_job_setup
+  "$S/orchestrator-cleanup" "$R" V-J3 >/dev/null
+  agents_set '. + [{name: "'"$slug"'-V-J3-r2", id: "k5555555", sessionId: "sid-k5555555", state: "idle", status: "idle", pid: 33, waitingFor: null}]'
+  jq '.launches = 2' "$R/jobs/V-J3/status.json" > "$R/x" && mv "$R/x" "$R/jobs/V-J3/status.json"
+  "$S/orchestrator-launch" "$R" V-J3 "$BATS_TEST_TMPDIR" sonnet medium go
+  [ "$(jq -r .state "$R/jobs/V-J3/status.json")" = running ]
+  run "$S/orchestrator-cleanup" "$R" --all
+  [[ $output == *"skip V-J3: state running"* ]]
+  jq -e 'any(.id == "k5555555")' "$CL/agents.json"
 }
 
 @test "orchestrator-cleanup: refuses while a session is waiting or busy" {
@@ -167,17 +225,17 @@ untouched() { ! grep -qE '^claude (stop|rm)' "$CL/calls"; }
   no_force
 }
 
-@test "orchestrator-cleanup: --all cleans done jobs only, never the orchestrator; --dry-run touches nothing" {
+@test "orchestrator-cleanup: --all cleans done ids only, never the orchestrator; --dry-run touches nothing" {
   cleanup_setup
   run "$S/orchestrator-cleanup" "$R" --all --dry-run
   [ "$status" -eq 0 ]
   [[ $output == *"skip J2: state running"* ]]
-  [[ $output == *"would-remove $slug-J10 g1111111"* ]]
-  [[ $output != *o0000000* && $output != *e1111111* && $output != *f1111111* ]]
+  [[ $output == *"would-remove $slug-J10 g1111111"* && $output == *"would-remove $slug-P-J2 f1111111"* ]]
+  [[ $output != *o0000000* && $output != *e1111111* ]]
   untouched
   run "$S/orchestrator-cleanup" "$R" --all
   [ "$status" -eq 0 ]
-  [ "$(ids_left)" = "e1111111 f1111111 o0000000 z9999999" ]
+  [ "$(ids_left)" = "e1111111 o0000000 z9999999" ]
   run "$S/orchestrator-cleanup" "$R" orchestrator
   [ "$status" -eq 3 ]
 }

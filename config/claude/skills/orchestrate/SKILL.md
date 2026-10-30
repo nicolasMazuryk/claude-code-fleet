@@ -49,12 +49,13 @@ Scripts (in this skill's `scripts/`, call by absolute path `~/.claude/skills/orc
   plan is written to `jobs/<job>/plan.md`), `asking` + the question (AskUserQuestion pending), or `none`.
 - `orchestrator-set-status <run-dir> <job> <state> "<step>" ["<needs_input>"] [--field key=value]...`:
   implementers/verifiers update their status; the orchestrator records `merged_sha`/`merged_repo` with `--field`.
-- `orchestrator-cleanup <run-dir> <job>|--all [--dry-run]`: stop and `claude rm` every session of a `done` job
-  (implementer, `P-`/`V-`/`PV-`, all `-r<n>` relaunches, plus the `sessions[]` history in status.json). Refuses (exit 3,
-  nothing touched) unless the job is `done`, no session is busy or waiting, and a recorded `merged_sha` is on the
-  default branch. A `claude rm` refusal (unpushed commits, dirty worktree) leaves the session stopped and exits 4 with
-  `kept <name>: <reason>`. Prints `removed|kept|absent <name> <id>`; idempotent. `--all` skips non-done jobs and never
-  touches the orchestrator session.
+- `orchestrator-cleanup <run-dir> <id>|--all [--dry-run]`: stop and `claude rm` the sessions of a `done` status id,
+  all `-r<n>` relaunches and the `sessions[]` history in its status.json included. A role id (`P-`/`V-`/`PV-<job>`)
+  covers only that role; a base `<job>` covers its whole family. Refuses (exit 3, nothing touched) unless the id is
+  `done`, no session is busy or waiting, and (base id) a recorded `merged_sha` is on the default branch. A `claude rm`
+  refusal (unpushed commits, dirty worktree) leaves the session stopped and exits 4 with `kept <name>: <reason>`.
+  Prints `removed|kept|absent <name> <id>`; idempotent. `--all` is the per-tick sweep: every `done` id, refusals
+  retried next tick (exit 0 unless something was kept); never the orchestrator session.
 - `orchestrator-status <run-dir> [--json]`: one row for the orchestrator session itself, then one per job: role
   (planner/implementer/verifier), live state, waiting-for, context tokens, job state, minutes since update, and
   `plan: ready|asking|none` for live planners.
@@ -127,9 +128,9 @@ Goal: turn the task into an approved orchestration plan, then hand it to a backg
    user to run `claude` there once and accept the prompt.
    Tell the user how to follow it: `claude agents`, `claude attach <slug>-orchestrator`, `<run-dir>/ORCHESTRATOR.md`,
    `~/.claude/skills/orchestrate/scripts/orchestrator-status <run-dir>`, and that answers to questions can be given by
-   attaching to the orchestrator or by writing `<run-dir>/jobs/<job>/answer.md`. Finished jobs' sessions are removed
-   by the orchestrator; `~/.claude/skills/orchestrate/scripts/orchestrator-cleanup <run-dir> --all [--dry-run]` does
-   it by hand (e.g. for a paused run).
+   attaching to the orchestrator or by writing `<run-dir>/jobs/<job>/answer.md`. The orchestrator removes each session
+   as soon as it is finished (every tick); `~/.claude/skills/orchestrate/scripts/orchestrator-cleanup <run-dir> --all
+   [--dry-run]` does it by hand (e.g. for a paused run).
 
 ---
 
@@ -143,8 +144,10 @@ Goal: turn the task into an approved orchestration plan, then hand it to a backg
 2. **Start the loop:** invoke the `loop` skill with `3m Run one orchestrator tick for <run-dir> per the orchestrate
    skill references/tick.md`. Then run the first tick immediately.
 3. **Each tick:** follow `references/tick.md` exactly. Keep tick output to a few lines; all state lives in files, and
-   the Resume pointer is current at the end of every tick.
-4. **Finish:** when the e2e verify job PASSes and no gate is open: run
+   the Resume pointer is current at the end of every tick. Every tick ends its dispatch with the cleanup sweep
+   (`orchestrator-cleanup <run-dir> --all`), which removes each finished planner, verifier and merged implementer
+   session right away, so a 20–30 job run never piles up idle processes.
+4. **Finish:** when the e2e verify job PASSes and no gate is open: run a last sweep
    `~/.claude/skills/orchestrate/scripts/orchestrator-cleanup <run-dir> --all` and Log its output; write
    `<run-dir>/REPORT.md` (what was done, where it lives, verification evidence, open items, including every `kept`
    session and skipped job from the cleanup); schedule any delayed checks the plan asks for, stop the loop, and end with a
@@ -166,7 +169,7 @@ Goal: turn the task into an approved orchestration plan, then hand it to a backg
   loop (stop ticking until the user answers); resume only after the items are confirmed done and the affected job
   verifies.
 - Never exceed the session cap. Blocked sessions are stopped (`claude stop`) so they don't hold a slot.
-- Clean up only `done` jobs (`orchestrator-cleanup`); never pass `--discard-unpushed` or `--force-remove-worktree` to
+- Clean up only `done` status ids (`orchestrator-cleanup`); never pass `--discard-unpushed` or `--force-remove-worktree` to
   `claude rm`.
 - Never let anything outward-facing happen before its verifier PASSes.
 - Do no implementation yourself; read-only checks are fine.
