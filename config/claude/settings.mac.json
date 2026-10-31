@@ -5,24 +5,68 @@
   },
   "permissions": {
     "allow": [
+      "Bash(defaults read *)",
       "Bash(gh pr create:*)",
+      "Bash(gh pr merge * --squash*)",
       "Bash(gh pr merge:*)",
       "Bash(gh pr ready:*)",
       "Bash(gh repo create:*)",
       "Bash(gh repo edit:*)",
       "Bash(gh repo rename:*)",
+      "Bash(gh repo view*)",
+      "Bash(gh run list*)",
+      "Bash(gh run view*)",
+      "Bash(git branch*)",
+      "Bash(git log*)",
       "Bash(git merge:*)",
       "Bash(git push:*)",
+      "Bash(git remote add *)",
+      "Bash(git remote set-url *)",
+      "Bash(git rev-parse*)",
+      "Bash(git status*)",
+      "Bash(git worktree remove *)",
+      "Bash(browser-router route *)",
+      "Bash(browser-router status*)",
+      "Bash(lsappinfo *)",
+      "Bash(mac-control-router *)",
       "Bash(make apply-*)",
       "Bash(make host-sync*)",
+      "Bash(mdfind *)",
+      "Bash(mdls *)",
+      "Bash(open -g *)",
+      "Bash(osascript *)",
+      "Bash(peekaboo *)",
+      "Bash(pgrep *)",
+      "Bash(phone --status*)",
+      "Bash(shortcuts *)",
+      "Bash(trash *)",
+      "Edit(//Users/nicolas/code/orchestrator-runs/**)",
+      "Read(//Users/nicolas/code/orchestrator-runs/**)",
       "mcp__ccd_session_mgmt__export_transcript",
       "mcp__ccd_session_mgmt__get_session",
       "mcp__ccd_session_mgmt__list_events",
       "mcp__ccd_session_mgmt__list_sessions",
       "mcp__ccd_session_mgmt__search_session_transcripts",
-      "mcp__plugin_playwright_playwright__*",
-      "Read(//Users/nicolas/code/orchestrator-runs/**)",
-      "Edit(//Users/nicolas/code/orchestrator-runs/**)"
+      "mcp__plugin_mac-control-router_imcp__*",
+      "mcp__plugin_mac-control-router_peekaboo__*",
+      "mcp__plugin_playwright_playwright__*"
+    ],
+    "deny": [
+      "Bash(sudo *)",
+      "Bash(csrutil *)",
+      "Bash(tccutil *)",
+      "Bash(nvram *)",
+      "Bash(fdesetup *)",
+      "Bash(gh repo create *--public*)",
+      "Bash(gh repo edit *--visibility public*)",
+      "Bash(gh repo edit *--visibility=public*)",
+      "Bash(git push --force* main*)",
+      "Bash(git push --force* master*)",
+      "Bash(git push -f * main*)",
+      "Bash(git push -f * master*)",
+      "Bash(git push * +main*)",
+      "Bash(git push * +master*)",
+      "mcp__computer-use"
     ],
     "defaultMode": "auto"
   },
@@ -148,13 +192,27 @@
   "enabledPlugins": {
     "claude-md-management@claude-plugins-official": true,
     "claude-hud@claude-hud": true,
-    "cowork-plugin-management@synced": false
+    "cowork-plugin-management@synced": false,
+    "mac-control-router@mac-control-router": true,
+    "phone-control-router@phone-control-router": true
   },
   "extraKnownMarketplaces": {
     "claude-hud": {
       "source": {
         "source": "github",
         "repo": "jarrodwatts/claude-hud"
+      }
+    },
+    "mac-control-router": {
+      "source": {
+        "source": "directory",
+        "path": "/Users/nicolas/code/mac-control-router"
+      }
+    },
+    "phone-control-router": {
+      "source": {
+        "source": "directory",
+        "path": "/Users/nicolas/code/phone-control-router"
       }
     }
   },
@@ -179,5 +237,27 @@
   "autoCompactEnabled": true,
   "remoteControlAtStartup": true,
   "inputNeededNotifEnabled": false,
-  "agentPushNotifEnabled": false
+  "agentPushNotifEnabled": false,
+  "autoMode": {
+    "allow": [
+      "$defaults",
+      "Repointing (git remote add / set-url) or renaming (gh repo rename) the user's own github.com/nicolasMazuryk repos is allowed.",
+      "Merging the user's own pull requests on github.com/nicolasMazuryk repos is allowed once CI checks on the PR are green.",
+      "rm -rf inside a .claude/worktrees/<name> directory or inside ~/.claude/jobs/*/tmp is allowed: these are disposable.",
+      "Editing ~/.claude/settings.json is allowed when a .bak copy of it was written earlier in the same session."
+    ],
+    "hard_deny": [
+      "$defaults",
+      "Never make a repository public (gh repo create --public, gh repo edit --visibility public, or the GitHub API/web equivalent).",
+      "Never force-push or otherwise rewrite the history of a main or master branch.",
+      "Never run make apply* (or any terraform/IaC apply) against the cloud production VM or OCI production resources.",
+      "Never run sudo on the cloud host over ssh (ssh cloud ... sudo ...)."
+    ],
+    "environment": [
+      "$defaults",
+      "Organization: solo developer (Nicolas Mazuryk). Primary use: software development and personal automation on this Mac.",
+      "Source control: github.com/nicolasMazuryk and every repo under it is owned by the user; every git repo under ~/code is the user's own.",
+      "Disposable paths: git worktrees under any .claude/worktrees/ directory and background-job tmp dirs ~/.claude/jobs/*/tmp are scratch space owned by the agent session."
+    ]
+  }
 }

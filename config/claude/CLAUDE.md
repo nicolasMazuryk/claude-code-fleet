@@ -5,6 +5,10 @@
 
 # Agent rules
 - In a fresh worktree, install dependencies first with the repo's package manager (pnpm install --frozen-lockfile / npm ci) before running anything else.
+- In a background job, call EnterWorktree before the first write; never `cd` into the shared checkout afterwards.
+- Run `git` from the cwd, not `git -C <computed path>` (the isolation guard rejects commands it can't verify).
+- Write files with Edit/Write, not `sed -i` or `cat > file <<EOF`; pass long commit messages with `git commit -F <file>`.
+- Wait with Monitor or `run_in_background`, never `sleep`.
 
 # Global profile
 Who I am, my goals and how to work with me, for every repo.
