@@ -8,6 +8,14 @@
     "claude-hud": {
       "source": "github",
       "repo": "jarrodwatts/claude-hud"
+    },
+    "mac-control-router": {
+      "source": "directory",
+      "path": "~/code/mac-control-router"
+    },
+    "phone-control-router": {
+      "source": "directory",
+      "path": "~/code/phone-control-router"
     }
   },
   "plugins": [
@@ -20,6 +28,20 @@
     },
     {
       "id": "claude-md-management@claude-plugins-official",
+      "scope": "user",
+      "version": "1.0.0",
+      "project": null,
+      "enabled": true
+    },
+    {
+      "id": "mac-control-router@mac-control-router",
+      "scope": "user",
+      "version": "1.0.0",
+      "project": null,
+      "enabled": true
+    },
+    {
+      "id": "phone-control-router@phone-control-router",
       "scope": "user",
       "version": "1.0.0",
       "project": null,
