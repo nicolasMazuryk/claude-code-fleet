@@ -44,10 +44,12 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
      its text, or `cc-sync-settings` turns it into an async relay stub that cannot return `retry`.
    - `Bash(osascript *)` stays allowed. Check `/permissions` to see whether it survives auto mode. The narrow
      alternative, not applied: replace it with `Bash(osascript -e *)` and `Bash(osascript -l JavaScript -e *)`.
-   - `onFailure:"block"` on the browser-guard PreToolUse entries is not set: browser-guard needs `node` from nvm and
-     exits 127 under a minimal PATH (LaunchAgent, Remote Control, cloud), which would block every Bash, Chrome and
-     computer-use call. Set it after browser-guard resolves `node` by absolute path or through a wrapper, and confirm
-     `node` is on cloud's hook PATH.
+   - `onFailure:"block"` is set on the three browser-guard PreToolUse entries (Chrome, computer-use, Bash), Mac only
+     (Claude Code ≥ 2.1.295): a guard that cannot start, times out or exits other than 0/2 blocks the call instead of
+     letting it through. browser-guard is a POSIX `sh` launcher that finds `node` itself (PATH, nvm, Homebrew,
+     `/usr/local`) and exits 2 when none exists, so it also starts under a minimal PATH (LaunchAgent, Remote
+     Control). Not set on PostToolUse/Stop entries (no effect or not a gate) nor on cloud (the guard is not wired
+     there).
 6. The global profile (`~/.claude/profile/*.md`: who the owner is, goals, working style, environments) and the
    project memories (`~/.claude/projects/<dir>/memory/`) are edited on the Mac in place. `make capture` saves them
    to `config/claude/profile/` and `config/claude/memory/<dir>/` in **plaintext in this public repo**
