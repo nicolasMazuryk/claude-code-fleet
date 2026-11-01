@@ -132,7 +132,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/browser-guard"
+            "command": "~/.claude/hooks/browser-guard",
+            "onFailure": "block"
           }
         ]
       },
@@ -141,7 +142,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/browser-guard"
+            "command": "~/.claude/hooks/browser-guard",
+            "onFailure": "block"
           }
         ]
       },
@@ -150,7 +152,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/browser-guard"
+            "command": "~/.claude/hooks/browser-guard",
+            "onFailure": "block"
           }
         ]
       }
