@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# PermissionDenied hook: ask Claude Code to retry a denied call only when it is a read-only GUI probe.
+# Strict whitelist, default silent. Any parse error or unknown input prints nothing (no retry). Always exits 0.
+set -u
+
+input=$(cat 2>/dev/null || true)
+[ -n "$input" ] || exit 0
+
+fields=$(printf '%s' "$input" | /usr/bin/jq -r '[.tool_name // "", (.tool_input.command // "" | gsub("\n"; " \u0001 ")), (.tool_input.action // "")] | @tsv' 2>/dev/null) || exit 0
+[ -n "$fields" ] || exit 0
+
+tool=${fields%%$'\t'*}
+rest=${fields#*$'\t'}
+cmd=${rest%%$'\t'*}
+action=${rest#*$'\t'}
+
+retry() {
+  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PermissionDenied","retry":true}}'
+  exit 0
+}
+
+case "$tool" in
+  Bash)
+    [ -n "$cmd" ] || exit 0
+    # Single simple command only: reject separators, substitutions, redirects, newlines.
+    # shellcheck disable=SC2016
+    case "$cmd" in
+      *';'* | *'&'* | *'|'* | *'`'* | *'$('* | *'>'* | *'<'* | *$'\001'* | *'$'*) exit 0 ;;
+    esac
+    # shellcheck disable=SC2086
+    set -f
+    # shellcheck disable=SC2086
+    set -- $cmd
+    case "${1:-}" in
+      peekaboo)
+        case "${2:-}" in
+          see | list) retry ;;
+          window | menu) [ "${3:-}" = "list" ] && retry ;;
+        esac
+        ;;
+      defaults)
+        [ "${2:-}" = "read" ] && retry
+        ;;
+      lsappinfo)
+        case "${2:-}" in
+          list | front | info | find | visibleProcessList | processList) retry ;;
+        esac
+        ;;
+      mdfind)
+        retry
+        ;;
+    esac
+    ;;
+  mcp__plugin_mac-control-router_peekaboo__see)
+    retry
+    ;;
+  mcp__plugin_mac-control-router_peekaboo__window | mcp__plugin_mac-control-router_peekaboo__menu)
+    [ "$action" = "list" ] && retry
+    ;;
+esac
+exit 0

@@ -29,16 +29,17 @@
       "Bash(browser-router status*)",
       "Bash(lsappinfo *)",
       "Bash(mac-control-router *)",
-      "Bash(make apply-*)",
       "Bash(make host-sync*)",
       "Bash(mdfind *)",
       "Bash(mdls *)",
       "Bash(open -g *)",
+      "Bash(open -g x-apple.systempreferences:*)",
       "Bash(osascript *)",
       "Bash(peekaboo *)",
       "Bash(pgrep *)",
       "Bash(phone --status*)",
       "Bash(shortcuts *)",
+      "Bash(sleep *)",
       "Bash(trash *)",
       "Edit(//Users/nicolas/code/orchestrator-runs/**)",
       "Read(//Users/nicolas/code/orchestrator-runs/**)",
@@ -66,12 +67,27 @@
       "Bash(git push -f * master*)",
       "Bash(git push * +main*)",
       "Bash(git push * +master*)",
+      "Bash(git push * *:main*)",
+      "Bash(git push * *:master*)",
+      "Bash(git push * *:refs/heads/main*)",
+      "Bash(git push * *:refs/heads/master*)",
       "mcp__computer-use"
     ],
     "defaultMode": "auto"
   },
   "model": "opus",
   "hooks": {
+    "PermissionDenied": [
+      {
+        "matcher": "Bash|mcp__plugin_mac.control.router_peekaboo__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/permission-retry"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [

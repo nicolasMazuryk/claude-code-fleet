@@ -33,6 +33,21 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
 4. Keys this repo enforces live in `config/claude/settings.orchestrator.json` (Mac) and
    `config/claude/cloud-settings.json` (cloud). Change them there, then `./install.sh mac` / `make sync`.
 5. Never edit cloud's `~/.claude` directly; the next sync overwrites it.
+6. Permission-stall settings (`PermissionDenied` hook, narrow allows):
+   - `Bash(open -g x-apple.systempreferences:*)` is Mac-only (listed in `mac-only.json` `permissions`).
+   - `config/claude/hooks/permission-retry` (the `PermissionDenied` hook) runs unrelayed and returns `retry:true` only for
+     read-only GUI probes: `peekaboo see|list|window list|menu list`, `defaults read`, `lsappinfo` read subcommands,
+     `mdfind`, and the Peekaboo MCP `see` and `window`/`menu` with `action: list`. Anything else, any chained or
+     redirected command and any parse error prints nothing (default silent). Those probes are already allowed by
+     `Bash(peekaboo *)`, `Bash(lsappinfo *)`, `Bash(mdfind *)` and `Bash(defaults read *)`; the hook matters only for
+     classifier-denied variants. On cloud it is a harmless no-op. Keep `afplay|osascript|terminal-notifier|say` out of
+     its text, or `cc-sync-settings` turns it into an async relay stub that cannot return `retry`.
+   - `Bash(osascript *)` stays allowed. Check `/permissions` to see whether it survives auto mode. The narrow
+     alternative, not applied: replace it with `Bash(osascript -e *)` and `Bash(osascript -l JavaScript -e *)`.
+   - `onFailure:"block"` on the browser-guard PreToolUse entries is not set: browser-guard needs `node` from nvm and
+     exits 127 under a minimal PATH (LaunchAgent, Remote Control, cloud), which would block every Bash, Chrome and
+     computer-use call. Set it after browser-guard resolves `node` by absolute path or through a wrapper, and confirm
+     `node` is on cloud's hook PATH.
 6. The global profile (`~/.claude/profile/*.md`: who the owner is, goals, working style, environments) and the
    project memories (`~/.claude/projects/<dir>/memory/`) are edited on the Mac in place. `make capture` saves them
    to `config/claude/profile/` and `config/claude/memory/<dir>/` in **plaintext in this public repo**
