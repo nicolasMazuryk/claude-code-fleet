@@ -8,6 +8,7 @@
     "Bash(mdfind *)",
     "Bash(mdls *)",
     "Bash(open -g *)",
+    "Bash(open -g x-apple.systempreferences:*)",
     "Bash(trash *)",
     "Bash(lsappinfo *)",
     "Bash(defaults read *)",
