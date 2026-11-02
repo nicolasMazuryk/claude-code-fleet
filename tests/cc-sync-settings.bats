@@ -78,6 +78,18 @@ sum() { printf %s "$1" | shasum -a 256 | cut -c1-16; }
   [ "$(jq '.permissions | has("deny")' "$o")" = false ]
 }
 
+@test "autoMode rules listed in mac-only.json are dropped; the home-deletion rule and the rest reach cloud" {
+  gui=$(jq -r '.autoMode[0]' "$REPO/config/claude/mac-only.json")
+  jq --arg g "$gui" '.autoMode.allow = (.autoMode.allow - [$g]) + [$g]
+      | .autoMode.hard_deny += ["Never make a repository public."]' "$CC_SYNC_SRC" > "$BATS_TEST_TMPDIR/src.json"
+  CC_SYNC_SRC="$BATS_TEST_TMPDIR/src.json" "$HOME/.local/bin/cc-sync-settings" --print > "$BATS_TEST_TMPDIR/out.json" 2>/dev/null
+  o="$BATS_TEST_TMPDIR/out.json"
+  [ "$(jq --arg g "$gui" '.autoMode.allow | index($g)' "$o")" = null ]
+  [ "$(jq '[.autoMode.allow[] | select(test("anywhere under the user.s home"))] | length' "$o")" -eq 1 ]
+  [ "$(jq '.autoMode.hard_deny | index("Never make a repository public.") != null' "$o")" = true ]
+  [ "$(jq -r '.autoMode.allow[0]' "$o")" = '$defaults' ]
+}
+
 @test "Mac-only plugins are not offered for install on cloud" {
   mkdir -p "$HOME/.claude"
   jq '.enabledPlugins["mac-control-router@mac-control-router"] = true' "$CC_SYNC_SRC" > "$BATS_TEST_TMPDIR/src.json"
