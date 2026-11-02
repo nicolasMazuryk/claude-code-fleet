@@ -50,17 +50,20 @@
       "mcp__ccd_session_mgmt__search_session_transcripts",
       "mcp__plugin_mac-control-router_imcp__*",
       "mcp__plugin_mac-control-router_peekaboo__*",
-      "mcp__plugin_playwright_playwright__*"
+      "mcp__plugin_playwright_playwright__*",
+      "mcp__claude-artifacts__publish_files",
+      "Bash(open -a *)",
+      "Bash(open -ga *)",
+      "Bash(open x-apple.systempreferences:*)",
+      "Bash(killall Dock)",
+      "Bash(killall Finder)",
+      "Bash(killall SystemUIServer)",
+      "Bash(killall ControlCenter)",
+      "Bash(defaults write com.apple.dock *)",
+      "Bash(cliclick *)"
     ],
     "deny": [
       "Bash(sudo *)",
-      "Bash(csrutil *)",
-      "Bash(tccutil *)",
-      "Bash(nvram *)",
-      "Bash(fdesetup *)",
-      "Bash(gh repo create *--public*)",
-      "Bash(gh repo edit *--visibility public*)",
-      "Bash(gh repo edit *--visibility=public*)",
       "Bash(git push --force* main*)",
       "Bash(git push --force* master*)",
       "Bash(git push -f * main*)",
@@ -71,7 +74,17 @@
       "Bash(git push * *:master*)",
       "Bash(git push * *:refs/heads/main*)",
       "Bash(git push * *:refs/heads/master*)",
-      "mcp__computer-use"
+      "mcp__computer-use",
+      "Bash(csrutil disable*)",
+      "Bash(csrutil clear*)",
+      "Bash(csrutil enable*)",
+      "Bash(nvram -c*)",
+      "Bash(nvram -d *)",
+      "Bash(nvram *=*)",
+      "Bash(fdesetup enable*)",
+      "Bash(fdesetup disable*)",
+      "Bash(fdesetup changerecovery*)",
+      "Bash(fdesetup removerecovery*)"
     ],
     "defaultMode": "auto"
   },
@@ -197,6 +210,17 @@
           }
         ]
       }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/permission-away",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   },
   "worktree": {
@@ -261,13 +285,13 @@
     "allow": [
       "$defaults",
       "Repointing (git remote add / set-url) or renaming (gh repo rename) the user's own github.com/nicolasMazuryk repos is allowed.",
-      "Merging the user's own pull requests on github.com/nicolasMazuryk repos is allowed once CI checks on the PR are green.",
+      "Merging the user's own pull requests on github.com/nicolasMazuryk repos is allowed.",
       "rm -rf inside a .claude/worktrees/<name> directory or inside ~/.claude/jobs/*/tmp is allowed: these are disposable.",
-      "Editing ~/.claude/settings.json is allowed when a .bak copy of it was written earlier in the same session."
+      "Editing ~/.claude/settings.json is allowed when a .bak copy of it was written earlier in the same session.",
+      "GUI automation of this Mac through mac-control-router (peekaboo, osascript/System Events UI scripting, open -a/-g, sleep, killall Dock/Finder/SystemUIServer/ControlCenter, defaults write of UI preferences) is allowed. The mac-control-router PreToolUse guard enforces security policy and asks for sensitive actions."
     ],
     "hard_deny": [
       "$defaults",
-      "Never make a repository public (gh repo create --public, gh repo edit --visibility public, or the GitHub API/web equivalent).",
       "Never force-push or otherwise rewrite the history of a main or master branch.",
       "Never run make apply* (or any terraform/IaC apply) against the cloud production VM or OCI production resources.",
       "Never run sudo on the cloud host over ssh (ssh cloud ... sudo ...)."

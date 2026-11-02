@@ -50,6 +50,20 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
      `/usr/local`) and exits 2 when none exists, so it also starts under a minimal PATH (LaunchAgent, Remote
      Control). Not set on PostToolUse/Stop entries (no effect or not a gate) nor on cloud (the guard is not wired
      there).
+   - `config/claude/hooks/permission-away` (the `PermissionRequest` hook, both hosts) keeps unattended sessions moving:
+     while `agent-present` fails it denies every permission prompt with "Human away: approval needed for <tool> …
+     list it under needs-approval", logs to `~/.local/state/agent-push/permission-away.log` and pushes a needs-input
+     notification through `agent-push.sh`; while you are present it prints nothing and the normal prompt shows. Any
+     error prints nothing (fail-open to the prompt). Claude Code runs PermissionRequest hooks only when it is about to
+     prompt or would auto-deny a call that cannot prompt, so allowed calls never reach it.
+   - mac-control-router GUI work runs unprompted: `permissions.allow` lists `open -a|-ga`, `open
+     x-apple.systempreferences:*`, `killall Dock|Finder|SystemUIServer|ControlCenter`, `defaults write com.apple.dock *`
+     and `cliclick` (Mac-only), and an `autoMode.allow` line names the GUI automation the guard already polices.
+     `cc-sync-settings` drops every `autoMode.allow` line that names a Mac-only plugin, so cloud never gets it.
+   - The SIP/FileVault deny floor lists only mutation forms (`csrutil disable|clear|enable`, `nvram -c|-d|*=*`,
+     `fdesetup enable|disable|changerecovery|removerecovery`), so the status reads the mac-control-router guard allows
+     (`csrutil status`, `nvram -p`, `fdesetup status`) are reachable; `tccutil reset` is asked by the guard. Repository
+     visibility is not restricted, and merging the owner's own PRs is allowed at any time.
 6. The global profile (`~/.claude/profile/*.md`: who the owner is, goals, working style, environments) and the
    project memories (`~/.claude/projects/<dir>/memory/`) are edited on the Mac in place. `make capture` saves them
    to `config/claude/profile/` and `config/claude/memory/<dir>/` in **plaintext in this public repo**

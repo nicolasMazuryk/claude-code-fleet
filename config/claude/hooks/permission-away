@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# permission-away — Claude Code PermissionRequest hook: while the human is away (agent-present fails), deny every
+# permission prompt with a "Human away" message and push it, so the agent continues with other work or the next rung
+# instead of stalling on a prompt nobody answers. While the human is present it prints nothing (the normal prompt shows).
+# Fail-open by design: any error prints nothing and exits 0, so the prompt shows as usual.
+# Test hooks: AGENT_PRESENT (command, default ~/.local/bin/agent-present), PERMISSION_AWAY_PUSH (command, default
+# ~/.claude/hooks/agent-push.sh), PERMISSION_AWAY_LOG (default ~/.local/state/agent-push/permission-away.log).
+set -u
+input=$(cat 2>/dev/null || true)
+[ -n "$input" ] || exit 0
+
+if ${AGENT_PRESENT:-"$HOME/.local/bin/agent-present"} >/dev/null 2>&1; then exit 0; fi
+
+tool=$(jq -r '.tool_name // empty' <<<"$input" 2>/dev/null) || exit 0
+[ -n "$tool" ] || exit 0
+what=$(jq -r '(.tool_input.command // .tool_input.file_path // .tool_input.url // "") | tostring | gsub("\\s+"; " ") | .[0:120]' <<<"$input" 2>/dev/null)
+label="$tool${what:+: $what}"
+
+msg="Human away: approval needed for $label. Do not retry it now. Continue with other work or the next rung, and list it under needs-approval in the final report."
+jq -nc --arg m "$msg" '{hookSpecificOutput:{hookEventName:"PermissionRequest",decision:{behavior:"deny",message:$m}}}'
+
+L=${PERMISSION_AWAY_LOG:-$HOME/.local/state/agent-push/permission-away.log}
+{ mkdir -p "$(dirname "$L")" && echo "$(date '+%F %T') denied-away $tool" >> "$L"; } 2>/dev/null
+# Push in the background so the prompt decision is never delayed; agent-push.sh pushes only when away.
+push=${PERMISSION_AWAY_PUSH:-"$HOME/.claude/hooks/agent-push.sh"}
+if [ -x "$push" ]; then
+  payload=$(jq -nc --arg m "Auto-denied while away: $label" --arg s "$(jq -r '.session_id // ""' <<<"$input" 2>/dev/null)" \
+    '{hook_event_name:"Notification",notification_type:"agent_needs_input",message:$m,session_id:$s}' 2>/dev/null)
+  { printf '%s\n' "$payload" | "$push"; } >/dev/null 2>&1 &
+fi
+exit 0
