@@ -13,8 +13,8 @@
 #               baseline files from config/claude/ only where missing (sounds, skills, claude-hud, ccstatusline,
 #               profile/*, memory/<dir> → ~/.claude/projects/<dir>/memory)
 #   settings    ~/.claude/settings.json: seeded from settings.mac.json if absent; settings.orchestrator.json
-#               deep-merged; one agent-push.sh group appended to Notification and Stop (once); one session-env.sh SessionStart group (once); browser-guard PreToolUse,
-#               PostToolUse (Chrome tab tools) and Stop groups and the browser-router-relay SessionStart slot (once each). Backup first.
+#               deep-merged; one agent-push.sh group appended to Notification and Stop (once); one session-env.sh SessionStart group (once); the browser-router-relay
+#               SessionStart slot (once); browser-guard handlers removed (the browser-router plugin registers them). Backup first.
 #   ntfy        ~/.config/agent-push/topic (0600): kept if present, else Vault core-secret-ntfy-topic, else new
 #   zshrc       one sourcing line for the snippet (am, ac); existing aliases untouched
 #   ssh         Host cloud appended to ~/.ssh/config if no Host cloud exists
@@ -39,7 +39,9 @@
 #   config      ~/.config/cc-orchestrator/config (config/cloud/config.tmpl), ~/.tmux.conf
 #   legacy      oci's agent@<repo> units stopped + disabled, agent@.service, /usr/local/bin/fleet and the
 #               tmux -L agent-<repo> servers removed (one RC server per folder; ADR 0002)
-#   browser     browser-router cloned + built (~/.local/share/browser-router, linked into ~/.local/bin), agent-browser pinned
+#   browser     browser-router cloned + built (~/.local/share/browser-router, linked into ~/.local/bin), its plugin
+#               (skill + browser-guard hooks) installed from that checkout (marketplace browser-router, user scope),
+#               agent-browser pinned
 #   units       cc-rc@.service, cc-agents.service, browser-router-vault-drain.{service,timer}
 #               → /etc/systemd/system (the drain timer is enabled once browser-router is installed); rsyslog rule → /var/log/core/agent.log
 #   linger      loginctl enable-linger agent
@@ -175,17 +177,19 @@ SETTINGS_JQ='
     .hooks[$ev] = ((.hooks[$ev] // []) as $g
       | if any($g[]?.hooks[]?; (.command // "") | test("agent-push\\.sh")) then $g
         else $g + [{hooks: [{type: "command", command: "~/.claude/hooks/agent-push.sh", async: true}]}] end);
-  # browser-router: PreToolUse guard per browser tool family (contracts §9), and the relay slot agent-relay looks up for
-  # BrowserLease/Release/Dispatch events (a SessionStart matcher Claude Code never reports, so it only runs from the relay)
-  def addguard($m):
-    .hooks.PreToolUse = ((.hooks.PreToolUse // []) as $g
-      | if any($g[]?; .matcher == $m and any(.hooks[]?; (.command // "") | test("browser-guard"))) then $g
-        else $g + [{matcher: $m, hooks: [{type: "command", command: "~/.claude/hooks/browser-guard"}]}] end);
-  # PostToolUse (Chrome tab tools) and Stop run the same guard; Stop is a separate group beside agent-push.sh
-  def addguardev($ev; $m):
-    .hooks[$ev] = ((.hooks[$ev] // []) as $g
-      | if any($g[]?; .matcher == $m and any(.hooks[]?; (.command // "") | test("browser-guard"))) then $g
-        else $g + [(if $m == null then {} else {matcher: $m} end) + {hooks: [{type: "command", command: "~/.claude/hooks/browser-guard"}]}] end);
+  # browser-router: browser-guard runs from the browser-router plugin (its hooks/hooks.json), never from settings.json.
+  # dropguard removes every browser-guard handler from any event (and a group or event left empty by that), so a
+  # settings.json that still registers ~/.claude/hooks/browser-guard does not run the guard twice or a missing script.
+  def dropguard:
+    def isguard: (.command // "") | test("browser-guard");
+    if (.hooks | type) == "object" then
+      .hooks |= with_entries(
+        if any(.value[]?.hooks[]?; isguard)
+        then .value |= map(.hooks |= map(select(isguard | not)) | select(.hooks != [])) | select(.value != [])
+        else . end)
+    else . end;
+  # the relay slot agent-relay looks up for BrowserLease/Release/Dispatch events (a SessionStart matcher Claude Code
+  # never reports, so it only runs from the relay)
   def addrelay:
     .hooks.SessionStart = ((.hooks.SessionStart // []) as $g
       | if any($g[]?; .matcher == "browser-router-relay") then $g
@@ -195,10 +199,7 @@ SETTINGS_JQ='
     .hooks.SessionStart = ((.hooks.SessionStart // []) as $g
       | if any($g[]?.hooks[]?; (.command // "") | test("session-env\\.sh")) then $g
         else $g + [{hooks: [{type: "command", command: "~/.claude/hooks/session-env.sh"}]}] end);
-  (.[0] * .[1]) | addpush("Notification") | addpush("Stop") | addsessionenv
-  | addguard("mcp__claude-in-chrome__.*") | addguard("mcp__computer-use__.*") | addguard("Bash")
-  | addguardev("PostToolUse"; "mcp__claude-in-chrome__(tabs_create_mcp|tabs_close_mcp|tabs_context_mcp|navigate)")
-  | addguardev("Stop"; null) | addrelay'
+  (.[0] * .[1]) | dropguard | addpush("Notification") | addpush("Stop") | addsessionenv | addrelay'
 
 step_settings() {
   local s="$HOME/.claude/settings.json" new
@@ -451,8 +452,28 @@ step_browser() { # browser-router (CLI + vault, github.com/<owner>/browser-route
     if [ "$DRY" != 1 ] && [ -f "$d/dist/cli.js" ] && [ ! -x "$d/dist/cli.js" ]; then
       act browser "chmod +x $d/dist/cli.js" chmod +x "$d/dist/cli.js"
     fi
+    step_browser_plugin
   fi
   step_agent_browser "$SUDO"
+}
+
+# browser-router's skill and browser-guard hooks ship as a Claude Code plugin from the checkout's own marketplace
+# (.claude-plugin/marketplace.json → ./plugin); cloud-settings.json points extraKnownMarketplaces.browser-router there too.
+step_browser_plugin() {
+  local c="$HOME/.local/bin/claude" d=$BROWSER_DIR p=browser-router@browser-router
+  if [ ! -f "$d/.claude-plugin/marketplace.json" ]; then say plugin "missing $d/.claude-plugin/marketplace.json"; return 0; fi
+  if [ ! -x "$c" ]; then say plugin "skipped (no $c)"; return 0; fi
+  if jq -e 'has("browser-router")' "$HOME/.claude/plugins/known_marketplaces.json" >/dev/null 2>&1; then
+    say plugin "ok marketplace browser-router"
+  else
+    # tolerate "already added" (a marketplace known by settings only): the install below is what must succeed
+    act plugin "claude plugin marketplace add $d" sh -c "'$c' plugin marketplace add '$d' >/dev/null 2>&1 || true"
+  fi
+  if jq -e --arg p "$p" '.plugins | has($p)' "$HOME/.claude/plugins/installed_plugins.json" >/dev/null 2>&1; then
+    say plugin "ok $p"
+  else
+    act plugin "claude plugin install $p --scope user" sh -c "'$c' plugin install '$p' --scope user >/dev/null"
+  fi
 }
 
 # agent-browser, pinned: cloud installs with sudo (system node), the Mac without (npm -g under the user's nvm node).

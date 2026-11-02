@@ -216,7 +216,12 @@ Today the Mac has both notif flags `true` and no `remoteControlAtStartup`; these
 ```json
 {
   "permissions": { "defaultMode": "auto" },
-  "env": { "CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX": "cloud" }
+  "env": { "CLAUDE_REMOTE_CONTROL_SESSION_NAME_PREFIX": "cloud", "CLAUDE_CODE_ENABLE_CFC": "1" },
+  "extraKnownMarketplaces": {
+    "browser-router": {
+      "source": { "source": "directory", "path": "/data/home/agent/.local/share/browser-router" }
+    }
+  }
 }
 ```
 

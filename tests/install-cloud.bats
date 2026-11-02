@@ -186,6 +186,26 @@ browser_fakes() {
   [ "$(wc -l < "$HOME/npm.calls")" -eq 1 ]
 }
 
+@test "cloud-local: the browser-router plugin is installed from the checkout's marketplace once; rerun changes nothing" {
+  local_setup; browser_fakes
+  mkdir -p "$CC_BROWSER_DIR/.claude-plugin" && echo '{"name":"browser-router"}' > "$CC_BROWSER_DIR/.claude-plugin/marketplace.json"
+  # fake claude: logs argv and records what `plugin marketplace add` / `plugin install` would leave in ~/.claude/plugins
+  # shellcheck disable=SC2016
+  printf '%s\n' '#!/bin/sh' 'echo "$*" >> "$HOME/claude.calls"; p="$HOME/.claude/plugins"; mkdir -p "$p"' \
+    'case "$1 $2 $3" in' \
+    '  "plugin marketplace add") echo "{\"browser-router\":{\"source\":{\"source\":\"directory\",\"path\":\"$4\"}}}" > "$p/known_marketplaces.json" ;;' \
+    '  "plugin install browser-router@browser-router") echo "{\"plugins\":{\"$3\":[]}}" > "$p/installed_plugins.json" ;;' \
+    'esac' > "$HOME/.local/bin/claude"
+  chmod +x "$HOME/.local/bin/claude"
+  run "$REPO/install.sh" cloud-local
+  [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+  grep -qx "plugin marketplace add $CC_BROWSER_DIR" "$HOME/claude.calls"
+  grep -qx 'plugin install browser-router@browser-router --scope user' "$HOME/claude.calls"
+  run "$REPO/install.sh" cloud-local
+  [[ "$output" == *"ok browser-router@browser-router"* && "$output" == *"no changes"* ]] || { echo "$output"; return 1; }
+  [ "$(grep -c '^plugin' "$HOME/claude.calls")" -eq 2 ]
+}
+
 @test "cloud-local: the linked browser-router entry is made executable (tsc writes 0644); a lost exec bit is restored" {
   local_setup; browser_fakes
   run "$REPO/install.sh" cloud-local

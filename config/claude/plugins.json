@@ -16,9 +16,20 @@
     "phone-control-router": {
       "source": "directory",
       "path": "~/code/phone-control-router"
+    },
+    "browser-router": {
+      "source": "directory",
+      "path": "~/code/browser-router"
     }
   },
   "plugins": [
+    {
+      "id": "browser-router@browser-router",
+      "scope": "user",
+      "version": "1.0.0",
+      "project": null,
+      "enabled": true
+    },
     {
       "id": "claude-hud@claude-hud",
       "scope": "user",

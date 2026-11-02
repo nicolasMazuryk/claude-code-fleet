@@ -36,11 +36,21 @@ Use). The Mac must stay unreachable from cloud (invariant 4).
   (cloud) and by locating browser-router without PATH (launchd). Cloud runs it only once browser-router is installed. `CLAUDE_CODE_ENABLE_CFC=1` is set in cloud's settings env so `claude -p --chrome` works.
 - **Install.** `install.sh cloud-local` clones browser-router to `~/.local/share/browser-router` (fast-forward, built by
   `pnpm install --frozen-lockfile && pnpm build`, linked to `~/.local/bin/browser-router`) and installs agent-browser pinned
-  (`AGENT_BROWSER_VERSION`, 0.39.1) with `npm -g` + `agent-browser install`.
-- **Hooks.** `~/.claude/hooks/browser-guard` (shipped by browser-router) is registered as PreToolUse for
-  `mcp__claude-in-chrome__.*`, `mcp__computer-use__.*` and `Bash` (agent-browser) on the Mac, each with `onFailure: "block"` (fail closed; the launcher finds `node` without the interactive PATH). The same script is also registered as PostToolUse for
-  `mcp__claude-in-chrome__(tabs_create_mcp|tabs_close_mcp|tabs_context_mcp|navigate)` and as a Stop hook (its own group beside
-  agent-push.sh). `install.sh mac` adds each once; the settings sync carries them to cloud.
+  (`AGENT_BROWSER_VERSION`, 0.39.1) with `npm -g` + `agent-browser install`, then installs the browser-router plugin from
+  that checkout (`claude plugin marketplace add ~/.local/share/browser-router`, `claude plugin install
+  browser-router@browser-router --scope user`).
+- **Hooks.** The browser-router skill and the browser-guard hook ship as the Claude Code plugin `browser-router@browser-router`,
+  from the local directory marketplace `browser-router` in the browser-router checkout (`.claude-plugin/marketplace.json` →
+  `./plugin`). The plugin's `hooks/hooks.json` registers `${CLAUDE_PLUGIN_ROOT}/hooks/browser-guard` as PreToolUse for
+  `mcp__claude-in-chrome__`, `mcp__computer-use__`, `Bash` (agent-browser) and the Peekaboo MCP with `onFailure: "block"`
+  (fail closed; the launcher finds `node` without the interactive PATH), as PostToolUse for the Chrome tab tools
+  (`tabs_create_mcp|tabs_close_mcp|tabs_context_mcp|navigate`) and as Stop. The plugin, not `settings.json`, owns these
+  hooks, so they load the same way on both hosts and update with the checkout. On the Mac `make install` in browser-router
+  adds the marketplace (`~/code/browser-router`) and installs the plugin; `install.sh mac` removes any browser-guard
+  handler from `settings.json` so the guard never runs twice. On cloud `install.sh cloud-local` installs it (above), and
+  `config/claude/cloud-settings.json` points `extraKnownMarketplaces.browser-router` at `~/.local/share/browser-router`,
+  because the Mac's path rewritten under cloud `$HOME` does not exist there. The relay slot (SessionStart matcher
+  `browser-router-relay`) stays in `settings.json`: it belongs to this repo's relay, not to the plugin.
 - **sites.yaml.** `~/.config/browser-router/sites.yaml` on the Mac is mirrored to cloud by `cc-sync-settings`.
 
 ## Consequences
