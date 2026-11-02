@@ -169,6 +169,16 @@
             "onFailure": "block"
           }
         ]
+      },
+      {
+        "matcher": "mcp__plugin_mac-control-router_peekaboo__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/browser-guard",
+            "onFailure": "block"
+          }
+        ]
       }
     ],
     "StopFailure": [

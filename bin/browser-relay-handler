@@ -7,7 +7,7 @@
 #                   with --remote-debugging-port on loopback in 9300–9399, forward it to cloud's loopback over the
 #                   relay's ControlMaster socket (ssh -O forward -R, opened by the Mac), reply "lease-ready <id> <port>"
 #   BrowserRelease  {id}                                    cancel the forward, close the browser, reply "release-ok <id>"
-#   BrowserDispatch {job_id, site, task, cwd, executor}     run `claude -p <task>` here (mac-computer-use only),
+#   BrowserDispatch {job_id, site, task, cwd, executor}     run `claude -p <task>` here (mac-control-router, mac-computer-use),
 #                   reply "dispatch-ok <job_id>", then "dispatch-done <job_id> <exit>"
 # Cloud names data, never a command: every field is validated, the profile is a bare name under the profiles dir, the
 # port is chosen here, a dispatch cwd is resolved to a repo of the same name under AGENTS_ROOT.
@@ -128,7 +128,7 @@ main() {
       job=$(jq -r '.job_id // empty' <<<"$p"); task=$(jq -r '.task // empty' <<<"$p")
       cwd=$(jq -r '.cwd // empty' <<<"$p"); ex=$(jq -r '.executor // empty' <<<"$p")
       valid '^[A-Za-z0-9_-]{1,64}$' "$job" || { log "ignored dispatch: bad job id"; exit 0; }
-      if [ "$ex" != mac-computer-use ] || [ -z "$task" ] || [ "${#task}" -gt 8000 ]; then
+      if { [ "$ex" != mac-control-router ] && [ "$ex" != mac-computer-use ]; } || [ -z "$task" ] || [ "${#task}" -gt 8000 ]; then
         log "refused dispatch $job: executor '$ex' or task invalid"; reply "dispatch-done $job 126"; exit 0
       fi
       dispatch "$job" "$task" "$cwd" ;;

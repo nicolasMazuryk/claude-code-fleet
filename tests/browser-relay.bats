@@ -171,6 +171,13 @@ relay() { "$REPO/bin/agent-relay" --handle 2>> "$LOG" 3>&-; }
   [ ! -e "$T/pwned" ] && [ ! -e "$T/pwned2" ]
 }
 
+@test "dispatch: a mac-control-router job (vault-screen) runs claude -p like mac-computer-use" {
+  relay_setup
+  bev BrowserDispatch 0 "$SUM" "$(djob jm mac-control-router 'read inbox')" | relay
+  waitfor 'spooled | grep -q "dispatch-done jm 0"'
+  grep -qx 'arg=read inbox' "$CLAUDE_LOG"
+}
+
 @test "dispatch: unknown cwd runs in HOME; the claude exit code is reported" {
   relay_setup
   CLAUDE_RC=3 bev BrowserDispatch 0 "$SUM" "$(djob job2 mac-computer-use hello /somewhere/else)" | CLAUDE_RC=3 relay
@@ -248,12 +255,12 @@ up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   fixture_ext "$T/ext1" 1.0.99; fixture_ext "$T/ext1" 1.0.101; fixture_ext "$T/ext2" 1.0.100
   printf '#!/bin/sh\necho "agent-browser 0.39.1"\n' > "$HOME/.local/bin/agent-browser"; chmod +x "$HOME/.local/bin/agent-browser"
   printf 'Dia\n' > "$T/running"
-  seed_selftest ok mac-chrome mac-computer-use agent-browser
+  seed_selftest ok mac-chrome mac-computer-use mac-control-router agent-browser
   out=$(up)
   [ "$(wc -l <<<"$out" | tr -d ' ')" -eq 1 ]
   [ "$(jq -S . <<<"$out")" = "$(jq -S . <<<'{"schema":1,"ts":1000,"dia_running":true,"chrome_running":false,
     "versions":{"dia":"1.53.0","chrome":"155.0.8059.85","claude_in_chrome":"1.0.101","agent_browser":"0.39.1"},
-    "executors":{"mac-chrome":"ok","mac-computer-use":"not built","agent-browser":"ok"}}')" ]
+    "executors":{"mac-chrome":"ok","mac-computer-use":"not built","mac-control-router":"ok","agent-browser":"ok"}}')" ]
   printf 'Google Chrome\n' > "$T/running"
   out=$(up)
   [ "$(jq -c '[.dia_running, .chrome_running, .executors["mac-chrome"], .executors["agent-browser"]]' <<<"$out")" = '[false,true,"down","ok"]' ]
@@ -265,15 +272,15 @@ up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   printf '#!/bin/sh\necho "agent-browser 0.39.1"\n' > "$HOME/.local/bin/agent-browser"; chmod +x "$HOME/.local/bin/agent-browser"
   printf 'Dia\n' > "$T/running"
   # no record at all
-  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","agent-browser":"untrusted"}' ]
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","mac-control-router":"untrusted","agent-browser":"untrusted"}' ]
   # failed record for one, passing for another, none for the third
   seed_selftest untrusted mac-chrome; jq '.executors["agent-browser"] = .executors["mac-chrome"] | .executors["agent-browser"].status = "ok"' "$T/state/selftest.json" > "$T/s" && mv "$T/s" "$T/state/selftest.json"
-  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","agent-browser":"ok"}' ]
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","mac-control-router":"untrusted","agent-browser":"ok"}' ]
   # unreadable record
   echo 'not json' > "$T/state/selftest.json"
   [ "$(up | jq -c '.executors["agent-browser"]')" = '"untrusted"' ]
   # Dia not running: down regardless of the record
-  seed_selftest ok mac-chrome mac-computer-use agent-browser
+  seed_selftest ok mac-chrome mac-computer-use mac-control-router agent-browser
   : > "$T/running"
   [ "$(up | jq -c '[.executors["mac-chrome"], .executors["agent-browser"]]')" = '["down","ok"]' ]
 }
@@ -282,20 +289,20 @@ up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   fixture_app "$T/Dia.app" 1.53.0; fixture_app "$T/Chrome.app" 155.0.8059.85
   fixture_ext "$T/ext1" 1.0.101
   printf 'Dia\n' > "$T/running"
-  seed_selftest ok mac-chrome mac-computer-use agent-browser   # recorded agent_browser 0.39.1
+  seed_selftest ok mac-chrome mac-computer-use mac-control-router agent-browser   # recorded agent_browser 0.39.1
   # agent_browser change: only agent-browser
   printf '#!/bin/sh\necho "agent-browser 0.39.2"\n' > "$HOME/.local/bin/agent-browser"; chmod +x "$HOME/.local/bin/agent-browser"
-  [ "$(up | jq -c .executors)" = '{"mac-chrome":"ok","mac-computer-use":"not built","agent-browser":"untrusted"}' ]
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"ok","mac-computer-use":"not built","mac-control-router":"ok","agent-browser":"untrusted"}' ]
   # chrome change: agent-browser, not mac-chrome
   printf '#!/bin/sh\necho "agent-browser 0.39.1"\n' > "$HOME/.local/bin/agent-browser"
   fixture_app "$T/Chrome.app" 156.0.0.1
-  [ "$(up | jq -c .executors)" = '{"mac-chrome":"ok","mac-computer-use":"not built","agent-browser":"untrusted"}' ]
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"ok","mac-computer-use":"not built","mac-control-router":"ok","agent-browser":"untrusted"}' ]
   # dia change: mac-chrome only
   fixture_app "$T/Chrome.app" 155.0.8059.85; fixture_app "$T/Dia.app" 1.54.0
-  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","agent-browser":"ok"}' ]
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","mac-control-router":"untrusted","agent-browser":"ok"}' ]
   # claude_in_chrome change: mac-chrome only
   fixture_app "$T/Dia.app" 1.53.0; fixture_ext "$T/ext2" 1.0.102
-  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","agent-browser":"ok"}' ]
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","mac-control-router":"ok","agent-browser":"ok"}' ]
 }
 
 @test "browser-up: finds agent-browser in the newest nvm node dir with a minimal PATH (launchd)" {
@@ -320,7 +327,7 @@ up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   : > "$T/running"
   PATH="$T/fake:/usr/bin:/bin:/usr/sbin" out=$(up)
   [ "$(jq -S . <<<"$out")" = "$(jq -S . <<<'{"schema":1,"ts":1000,"dia_running":false,"chrome_running":false,
-    "versions":{},"executors":{"mac-chrome":"down","mac-computer-use":"not built","agent-browser":"down"}}')" ]
+    "versions":{},"executors":{"mac-chrome":"down","mac-computer-use":"not built","mac-control-router":"down","agent-browser":"down"}}')" ]
 }
 
 # --------------------------------------------------------------------------------------- cloud side

@@ -44,7 +44,7 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
      its text, or `cc-sync-settings` turns it into an async relay stub that cannot return `retry`.
    - `Bash(osascript *)` stays allowed. Check `/permissions` to see whether it survives auto mode. The narrow
      alternative, not applied: replace it with `Bash(osascript -e *)` and `Bash(osascript -l JavaScript -e *)`.
-   - `onFailure:"block"` is set on the three browser-guard PreToolUse entries (Chrome, computer-use, Bash), Mac only
+   - `onFailure:"block"` is set on the four browser-guard PreToolUse entries (Chrome, computer-use, Peekaboo, Bash), Mac only
      (Claude Code ≥ 2.1.295): a guard that cannot start, times out or exits other than 0/2 blocks the call instead of
      letting it through. browser-guard is a POSIX `sh` launcher that finds `node` itself (PATH, nvm, Homebrew,
      `/usr/local`) and exits 2 when none exists, so it also starts under a minimal PATH (LaunchAgent, Remote

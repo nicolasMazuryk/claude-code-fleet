@@ -83,6 +83,9 @@ s=$(jq --arg mh "$HOME" --arg ch "$cloud_home" --slurpfile mo "$mac_only" '
           else . end) | .permissions |= with_entries(select(.value != [])) else . end
       | if (.autoMode.allow | type) == "array" then .autoMode.allow |= map(select(. as $l
           | $mo.plugins | all(. as $n | $l | test("\\b" + $n + "\\b") | not))) else . end
+      | if .hooks then .hooks |= (with_entries(.value |= map(select((.matcher // "") as $m
+          | $mo.plugins | all(. as $n | $m | contains("plugin_" + $n + "_") | not))))
+          | with_entries(select(.value != []))) else . end
       | if .env then .env |= with_entries(select(.key | test("TOKEN|KEY|SECRET|PASSWORD|AUTH|CREDENTIAL"; "i") | not)) else . end
       | walk(if type == "string" then split($mh) | join($ch) else . end)' <<<"$s")
 [ -f "$overrides" ] && s=$(jq -s '.[0] * .[1]' <(printf '%s' "$s") "$overrides")
