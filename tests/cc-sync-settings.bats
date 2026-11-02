@@ -46,6 +46,9 @@ sum() { printf %s "$1" | shasum -a 256 | cut -c1-16; }
   [ "$(jq 'has("statusLine")' "$o")" = false ]
   [ "$(jq 'has("preferredNotifChannel")' "$o")" = false ]
   [ "$(jq '.enabledPlugins | has("warp@claude-code-warp")' "$o")" = false ]
+  [ "$(jq '.enabledPlugins | has("phone-control-router@phone-control-router")' "$o")" = false ]
+  [ "$(jq '.extraKnownMarketplaces | has("phone-control-router")' "$o")" = false ]
+  [ "$(jq '.permissions.allow | index("Bash(phone --status*)")' "$o")" = null ]
   [ "$(jq -r '.enabledPlugins["claude-hud@claude-hud"]' "$o")" = true ]
   [ "$(jq '.env | has("GITHUB_TOKEN")' "$o")" = false ]
   [ "$(jq -r .env.KEEP "$o")" = 1 ]
@@ -102,6 +105,7 @@ sum() { printf %s "$1" | shasum -a 256 | cut -c1-16; }
   [ "$status" -eq 0 ]
   [[ "$output" == *"plugins   missing on cloud: claude-hud@claude-hud"* ]]
   [[ "$output" != *mac-control-router* ]]
+  [[ "$output" != *phone-control-router* ]]
 }
 
 @test "the transform is deterministic (a second sync is a no-op)" {
