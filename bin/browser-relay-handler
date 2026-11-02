@@ -31,7 +31,6 @@ PROFILES=${BROWSER_AGENT_PROFILES:-$HOME/.chrome-agent-profiles}
 PORT_MIN=${BROWSER_PORT_MIN:-9300}
 PORT_MAX=${BROWSER_PORT_MAX:-9399}
 READY_SECS=${BROWSER_READY_SECS:-20}
-BROUTER=${BROWSER_ROUTER_BIN:-browser-router}
 AGENTS_ROOT=${BROWSER_AGENTS_ROOT:-$HOME/code}
 mkdir -p "$SPOOL" "$LEASES"
 
@@ -97,12 +96,25 @@ lease() {
   reply "lease-ready $id $port"
 }
 
+find_router() { # same lookup as browser-vault-drain: launchd's PATH lacks the nvm bin dir
+  local c
+  if [ -n "${BROWSER_ROUTER_BIN:-}" ] && [ -x "$BROWSER_ROUTER_BIN" ]; then printf %s "$BROWSER_ROUTER_BIN"; return; fi
+  c=$(command -v browser-router 2>/dev/null) && [ -x "$c" ] && { printf %s "$c"; return; }
+  c=$(for c in "$HOME/.nvm"/versions/node/*/bin/browser-router; do [ -x "$c" ] && echo "$c"; done | sort -V | tail -n1)
+  [ -n "$c" ] && { printf %s "$c"; return; }
+  [ -x /opt/homebrew/bin/browser-router ] && printf %s /opt/homebrew/bin/browser-router
+  return 0
+}
+
 dispatch() { # dispatch <job_id> <payload-json>: the Mac's browser-router decides (contracts §7); never claude -p here
-  local job=$1 p=$2 log_f
+  local job=$1 p=$2 log_f router
   log_f=$STATE/dispatch-$job.log
+  router=$(find_router)
+  if [ -z "$router" ]; then log "refused dispatch $job: browser-router not found"; reply "dispatch-done $job 127"; return; fi
   reply "dispatch-ok $job"
   (
-    cd "$HOME" && printf '%s' "$p" | AGENTS_ROOT="$AGENTS_ROOT" "$BROUTER" vault run-dispatched >> "$log_f" 2>&1
+    # the router's dir first on PATH: its node shebang, and the wrapper's own browser-router and claude calls
+    cd "$HOME" && printf '%s' "$p" | PATH="${router%/*}:$PATH" AGENTS_ROOT="$AGENTS_ROOT" "$router" vault run-dispatched >> "$log_f" 2>&1
     reply "dispatch-done $job $?"
   ) >/dev/null 2>&1 &
   log "dispatched $job to browser-router vault run-dispatched"
