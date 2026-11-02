@@ -7,7 +7,8 @@
 #                  - dropped: statusLine (needs ccstatusline + claude-hud, Mac only), preferredNotifChannel,
 #                    credential-like env keys (TOKEN, KEY, SECRET, PASSWORD, AUTH, CREDENTIAL), and what
 #                    config/claude/mac-only.json lists: Mac-only plugins (enabledPlugins "<name>@…", their
-#                    extraKnownMarketplaces entry, mcp__plugin_<name>_* rules) and permission rules
+#                    extraKnownMarketplaces entry, mcp__plugin_<name>_* rules), permission rules and autoMode
+#                    rules (exact strings in its optional "autoMode" list)
 #                  - /Users/nicolas → cloud $HOME; config/claude/cloud-settings.json deep-merged on top
 #                  written only when it differs (previous one kept as settings.json.bak.<ts>)
 #   mirrored       CLAUDE.md keybindings.json skills agents commands output-styles hooks profile (rsync --delete; symlinks
@@ -81,6 +82,9 @@ s=$(jq --arg mh "$HOME" --arg ch "$cloud_home" --slurpfile mo "$mac_only" '
             | ($mo.permissions | index($r) | not)
               and ($mo.plugins | all(. as $n | $r | startswith("mcp__plugin_" + $n + "_") | not))))
           else . end) | .permissions |= with_entries(select(.value != [])) else . end
+      | if .autoMode then .autoMode |= with_entries(
+          if (.value | type) == "array" then .value |= map(select(. as $r | ($mo.autoMode // []) | index($r) | not))
+          else . end) else . end
       | if .env then .env |= with_entries(select(.key | test("TOKEN|KEY|SECRET|PASSWORD|AUTH|CREDENTIAL"; "i") | not)) else . end
       | walk(if type == "string" then split($mh) | join($ch) else . end)' <<<"$s")
 [ -f "$overrides" ] && s=$(jq -s '.[0] * .[1]' <(printf '%s' "$s") "$overrides")
