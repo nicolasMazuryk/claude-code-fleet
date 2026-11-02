@@ -50,17 +50,20 @@
       "mcp__ccd_session_mgmt__search_session_transcripts",
       "mcp__plugin_mac-control-router_imcp__*",
       "mcp__plugin_mac-control-router_peekaboo__*",
-      "mcp__plugin_playwright_playwright__*"
+      "mcp__plugin_playwright_playwright__*",
+      "mcp__claude-artifacts__publish_files",
+      "Bash(open -a *)",
+      "Bash(open -ga *)",
+      "Bash(open x-apple.systempreferences:*)",
+      "Bash(killall Dock)",
+      "Bash(killall Finder)",
+      "Bash(killall SystemUIServer)",
+      "Bash(killall ControlCenter)",
+      "Bash(defaults write com.apple.dock *)",
+      "Bash(cliclick *)"
     ],
     "deny": [
       "Bash(sudo *)",
-      "Bash(csrutil *)",
-      "Bash(tccutil *)",
-      "Bash(nvram *)",
-      "Bash(fdesetup *)",
-      "Bash(gh repo create *--public*)",
-      "Bash(gh repo edit *--visibility public*)",
-      "Bash(gh repo edit *--visibility=public*)",
       "Bash(git push --force* main*)",
       "Bash(git push --force* master*)",
       "Bash(git push -f * main*)",
@@ -71,7 +74,20 @@
       "Bash(git push * *:master*)",
       "Bash(git push * *:refs/heads/main*)",
       "Bash(git push * *:refs/heads/master*)",
-      "mcp__computer-use"
+      "mcp__computer-use",
+      "Bash(csrutil disable*)",
+      "Bash(csrutil clear*)",
+      "Bash(csrutil enable*)",
+      "Bash(nvram -c*)",
+      "Bash(nvram -d *)",
+      "Bash(nvram *=*)",
+      "Bash(fdesetup enable*)",
+      "Bash(fdesetup disable*)",
+      "Bash(fdesetup changerecovery*)",
+      "Bash(fdesetup removerecovery*)",
+      "Bash(gh repo create *--public*)",
+      "Bash(gh repo edit *--visibility public*)",
+      "Bash(gh repo edit *--visibility=public*)"
     ],
     "defaultMode": "auto"
   },
@@ -197,6 +213,17 @@
           }
         ]
       }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/permission-away",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   },
   "worktree": {
@@ -261,9 +288,10 @@
     "allow": [
       "$defaults",
       "Repointing (git remote add / set-url) or renaming (gh repo rename) the user's own github.com/nicolasMazuryk repos is allowed.",
-      "Merging the user's own pull requests on github.com/nicolasMazuryk repos is allowed once CI checks on the PR are green.",
-      "rm -rf inside a .claude/worktrees/<name> directory or inside ~/.claude/jobs/*/tmp is allowed: these are disposable.",
-      "Editing ~/.claude/settings.json is allowed when a .bak copy of it was written earlier in the same session."
+      "Merging the user's own pull requests on github.com/nicolasMazuryk repos is allowed.",
+      "Deleting files or directories anywhere under the user's home directory (~/**, including rm, rm -rf, rmdir, unlink, trash, find -delete) is allowed. Exceptions that still need confirmation: deleting ~ itself or all of its top-level contents, ~/.ssh, ~/.gnupg, ~/Library/Keychains, ~/.claude/settings.json and ~/.claude.json.",
+      "Editing ~/.claude/settings.json is allowed when a .bak copy of it was written earlier in the same session.",
+      "GUI automation of this Mac through mac-control-router (peekaboo, osascript/System Events UI scripting, open -a/-g, sleep, killall Dock/Finder/SystemUIServer/ControlCenter, defaults write of UI preferences) is allowed. The mac-control-router PreToolUse guard enforces security policy and asks for sensitive actions."
     ],
     "hard_deny": [
       "$defaults",
@@ -276,7 +304,8 @@
       "$defaults",
       "Organization: solo developer (Nicolas Mazuryk). Primary use: software development and personal automation on this Mac.",
       "Source control: github.com/nicolasMazuryk and every repo under it is owned by the user; every git repo under ~/code is the user's own.",
-      "Disposable paths: git worktrees under any .claude/worktrees/ directory and background-job tmp dirs ~/.claude/jobs/*/tmp are scratch space owned by the agent session."
+      "Disposable paths: git worktrees under any .claude/worktrees/ directory and background-job tmp dirs ~/.claude/jobs/*/tmp are scratch space owned by the agent session.",
+      "Home directory: everything under ~ (/Users/nicolas on the Mac, /data/home/agent on cloud) is the user's own data on a single-user machine; it is not shared or production state."
     ]
   }
 }

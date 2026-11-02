@@ -50,6 +50,16 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
      `/usr/local`) and exits 2 when none exists, so it also starts under a minimal PATH (LaunchAgent, Remote
      Control). Not set on PostToolUse/Stop entries (no effect or not a gate) nor on cloud (the guard is not wired
      there).
+   - Auto-mode deletion scope: `autoMode.allow` lets the classifier delete anything under `~/**` (`rm`, `rm -rf`,
+     `rmdir`, `unlink`, `trash`, `find -delete`), and `autoMode.environment` declares `~` the user's own single-user data
+     (`/Users/nicolas` on the Mac, `/data/home/agent` on cloud). Still confirmed: `~` itself or all its top-level
+     contents, `~/.ssh`, `~/.gnupg`, `~/Library/Keychains`, `~/.claude/settings.json`, `~/.claude.json`. On the Mac the
+     mac-control-router PreToolUse guard separately rejects `rm -rf`/`rm -f` and points to `trash <path>` (recoverable);
+     plain `rm` and `trash` pass. Cloud gets the rules with the next `make sync`. Mac-only autoMode rules (the
+     mac-control-router GUI allow) are listed verbatim under `autoMode` in `config/claude/mac-only.json` and dropped
+     from cloud's copy; edit that list whenever the live rule's text changes.
+   - `autoMode.hard_deny` and `permissions.deny` both block making a repo public (`gh repo create --public`,
+     `gh repo edit --visibility public`); keep both when editing live settings.
 6. The global profile (`~/.claude/profile/*.md`: who the owner is, goals, working style, environments) and the
    project memories (`~/.claude/projects/<dir>/memory/`) are edited on the Mac in place. `make capture` saves them
    to `config/claude/profile/` and `config/claude/memory/<dir>/` in **plaintext in this public repo**
