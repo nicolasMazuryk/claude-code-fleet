@@ -173,6 +173,19 @@ relay() { "$REPO/bin/agent-relay" --handle 2>> "$LOG" 3>&-; }
   [ ! -e "$T/pwned" ] && [ ! -e "$T/pwned2" ]
 }
 
+@test "dispatch: finds browser-router in the newest nvm node dir with launchd's PATH; none found -> dispatch-done 127" {
+  relay_setup
+  mkdir -p "$HOME/.nvm/versions/node/v9.0.0/bin" "$HOME/.nvm/versions/node/v24.1.0/bin"
+  cp "$T/fake/browser-router" "$HOME/.nvm/versions/node/v24.1.0/bin/browser-router"
+  bev BrowserDispatch 0 "$SUM" "$(djob jn mac-control-router t)" | env -u BROWSER_ROUTER_BIN PATH=/usr/bin:/bin:/usr/sbin:/sbin "$REPO/bin/agent-relay" --handle 2>> "$LOG" 3>&-
+  waitfor 'spooled | grep -q "dispatch-done jn 0"'
+  grep -qx 'arg=run-dispatched' "$BR_LOG"
+  rm "$HOME/.nvm/versions/node/v24.1.0/bin/browser-router"
+  bev BrowserDispatch 0 "$SUM" "$(djob jx mac-control-router t)" | env -u BROWSER_ROUTER_BIN PATH=/usr/bin:/bin:/usr/sbin:/sbin "$REPO/bin/agent-relay" --handle 2>> "$LOG" 3>&-
+  waitfor 'spooled | grep -q "dispatch-done jx 127"'
+  ! spooled | grep -q "dispatch-ok jx"
+}
+
 @test "dispatch: the run-dispatched exit code is reported (2 refused, 3 not runnable)" {
   relay_setup
   bev BrowserDispatch 0 "$SUM" "$(djob job2 mac-control-router hello)" | BR_RC=2 relay
