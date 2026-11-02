@@ -75,10 +75,10 @@ mcp_in() { jq -nc --arg t "$1" --arg a "$2" '{tool_name:$t,tool_input:(if $a==""
   done
 }
 
-@test "settings: PermissionDenied hook wired; onFailure block only on the 3 PreToolUse browser-guard entries" {
+@test "settings: PermissionDenied hook wired; onFailure block only on the 4 PreToolUse browser-guard entries" {
   jq -e '.hooks.PermissionDenied[0].hooks[0].command == "~/.claude/hooks/permission-retry"' "$SETTINGS"
-  [ "$(jq '[.. | objects | select(has("onFailure"))] | length' "$SETTINGS")" = "3" ]
-  [ "$(jq '[.hooks.PreToolUse[].hooks[] | select(.command == "~/.claude/hooks/browser-guard" and .onFailure == "block")] | length' "$SETTINGS")" = "3" ]
+  [ "$(jq '[.. | objects | select(has("onFailure"))] | length' "$SETTINGS")" = "4" ]
+  [ "$(jq '[.hooks.PreToolUse[].hooks[] | select(.command == "~/.claude/hooks/browser-guard" and .onFailure == "block")] | length' "$SETTINGS")" = "4" ]
 }
 
 @test "mac-only lists the system-settings open permission" {

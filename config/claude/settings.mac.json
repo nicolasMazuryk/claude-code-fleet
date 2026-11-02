@@ -84,10 +84,7 @@
       "Bash(fdesetup enable*)",
       "Bash(fdesetup disable*)",
       "Bash(fdesetup changerecovery*)",
-      "Bash(fdesetup removerecovery*)",
-      "Bash(gh repo create *--public*)",
-      "Bash(gh repo edit *--visibility public*)",
-      "Bash(gh repo edit *--visibility=public*)"
+      "Bash(fdesetup removerecovery*)"
     ],
     "defaultMode": "auto"
   },
@@ -165,6 +162,16 @@
       },
       {
         "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/browser-guard",
+            "onFailure": "block"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__plugin_mac-control-router_peekaboo__.*",
         "hooks": [
           {
             "type": "command",
@@ -295,7 +302,6 @@
     ],
     "hard_deny": [
       "$defaults",
-      "Never make a repository public (gh repo create --public, gh repo edit --visibility public, or the GitHub API/web equivalent).",
       "Never force-push or otherwise rewrite the history of a main or master branch.",
       "Never run make apply* (or any terraform/IaC apply) against the cloud production VM or OCI production resources.",
       "Never run sudo on the cloud host over ssh (ssh cloud ... sudo ...)."

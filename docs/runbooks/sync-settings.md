@@ -44,12 +44,26 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
      its text, or `cc-sync-settings` turns it into an async relay stub that cannot return `retry`.
    - `Bash(osascript *)` stays allowed. Check `/permissions` to see whether it survives auto mode. The narrow
      alternative, not applied: replace it with `Bash(osascript -e *)` and `Bash(osascript -l JavaScript -e *)`.
-   - `onFailure:"block"` is set on the three browser-guard PreToolUse entries (Chrome, computer-use, Bash), Mac only
+   - `onFailure:"block"` is set on the four browser-guard PreToolUse entries (Chrome, computer-use, Peekaboo, Bash), Mac only
      (Claude Code ≥ 2.1.295): a guard that cannot start, times out or exits other than 0/2 blocks the call instead of
      letting it through. browser-guard is a POSIX `sh` launcher that finds `node` itself (PATH, nvm, Homebrew,
      `/usr/local`) and exits 2 when none exists, so it also starts under a minimal PATH (LaunchAgent, Remote
      Control). Not set on PostToolUse/Stop entries (no effect or not a gate) nor on cloud (the guard is not wired
      there).
+   - `config/claude/hooks/permission-away` (the `PermissionRequest` hook, both hosts) keeps unattended sessions moving:
+     while `agent-present` fails it denies every permission prompt with "Human away: approval needed for <tool> …
+     list it under needs-approval", logs to `~/.local/state/agent-push/permission-away.log` and pushes a needs-input
+     notification through `agent-push.sh`; while you are present it prints nothing and the normal prompt shows. Any
+     error prints nothing (fail-open to the prompt). Claude Code runs PermissionRequest hooks only when it is about to
+     prompt or would auto-deny a call that cannot prompt, so allowed calls never reach it.
+   - mac-control-router GUI work runs unprompted: `permissions.allow` lists `open -a|-ga`, `open
+     x-apple.systempreferences:*`, `killall Dock|Finder|SystemUIServer|ControlCenter`, `defaults write com.apple.dock *`
+     and `cliclick` (Mac-only), and an `autoMode.allow` line names the GUI automation the guard already polices.
+     `cc-sync-settings` drops every `autoMode.allow` line that names a Mac-only plugin, so cloud never gets it.
+   - The SIP/FileVault deny floor lists only mutation forms (`csrutil disable|clear|enable`, `nvram -c|-d|*=*`,
+     `fdesetup enable|disable|changerecovery|removerecovery`), so the status reads the mac-control-router guard allows
+     (`csrutil status`, `nvram -p`, `fdesetup status`) are reachable; `tccutil reset` is asked by the guard. Repository
+     visibility is not restricted, and merging the owner's own PRs is allowed at any time.
    - Auto-mode deletion scope: `autoMode.allow` lets the classifier delete anything under `~/**` (`rm`, `rm -rf`,
      `rmdir`, `unlink`, `trash`, `find -delete`), and `autoMode.environment` declares `~` the user's own single-user data
      (`/Users/nicolas` on the Mac, `/data/home/agent` on cloud). Still confirmed: `~` itself or all its top-level
@@ -58,8 +72,6 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
      plain `rm` and `trash` pass. Cloud gets the rules with the next `make sync`. Mac-only autoMode rules (the
      mac-control-router GUI allow) are listed verbatim under `autoMode` in `config/claude/mac-only.json` and dropped
      from cloud's copy; edit that list whenever the live rule's text changes.
-   - `autoMode.hard_deny` and `permissions.deny` both block making a repo public (`gh repo create --public`,
-     `gh repo edit --visibility public`); keep both when editing live settings.
 6. The global profile (`~/.claude/profile/*.md`: who the owner is, goals, working style, environments) and the
    project memories (`~/.claude/projects/<dir>/memory/`) are edited on the Mac in place. `make capture` saves them
    to `config/claude/profile/` and `config/claude/memory/<dir>/` in **plaintext in this public repo**

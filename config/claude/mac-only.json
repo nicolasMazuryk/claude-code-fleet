@@ -1,5 +1,8 @@
 {
-  "plugins": ["warp", "mac-control-router"],
+  "plugins": [
+    "warp",
+    "mac-control-router"
+  ],
   "permissions": [
     "Bash(mac-control-router *)",
     "Bash(peekaboo *)",
@@ -37,7 +40,16 @@
     "Bash(fdesetup changerecovery*)",
     "Bash(fdesetup removerecovery*)",
     "Bash(peekaboo agent *)",
-    "mcp__computer-use"
+    "mcp__computer-use",
+    "Bash(open -a *)",
+    "Bash(open -ga *)",
+    "Bash(open x-apple.systempreferences:*)",
+    "Bash(killall Dock)",
+    "Bash(killall Finder)",
+    "Bash(killall SystemUIServer)",
+    "Bash(killall ControlCenter)",
+    "Bash(defaults write com.apple.dock *)",
+    "Bash(cliclick *)"
   ],
   "autoMode": [
     "GUI automation of this Mac through mac-control-router (peekaboo, osascript/System Events UI scripting, open -a/-g, sleep, killall Dock/Finder/SystemUIServer/ControlCenter, defaults write of UI preferences) is allowed. The mac-control-router PreToolUse guard enforces security policy and asks for sensitive actions."
