@@ -12,7 +12,7 @@ setup() {
   export AGENT_RELAY_SSH="$T/fake/ssh" SSH_LOG="$T/ssh.log" FWD_FAIL="$T/fwd-fail"
   export BROWSER_CHROME_BIN="$T/fake/chrome" CHROME_LOG="$T/chrome.log" CHROME_PID="$T/chrome.pid"
   export BROWSER_AGENT_PROFILES="$T/profiles" BROWSER_PORT_MIN=9390 BROWSER_PORT_MAX=9396 BROWSER_READY_SECS=5
-  export BROWSER_CLAUDE_BIN="$T/fake/claude" CLAUDE_LOG="$T/claude.log" BROWSER_AGENTS_ROOT="$T/agents"
+  export BROWSER_ROUTER_BIN="$T/fake/browser-router" BR_LOG="$T/br.log" BROWSER_AGENTS_ROOT="$T/agents"
   : > "$SSH_LOG"
   cat > "$T/fake/ssh" <<'EOF'
 #!/usr/bin/env bash
@@ -26,12 +26,13 @@ echo "$*" >> "$CHROME_LOG"; echo $$ > "$CHROME_PID"
 for a in "$@"; do case $a in --remote-debugging-port=*) p=${a#*=} ;; esac; done
 exec perl -MIO::Socket::INET -e '$s = IO::Socket::INET->new(LocalAddr => "127.0.0.1", LocalPort => shift, Listen => 5, ReuseAddr => 1) or die; while (1) { $c = $s->accept; close $c if $c }' "$p"
 EOF
-  cat > "$T/fake/claude" <<'EOF'
+  cat > "$T/fake/browser-router" <<'EOF'
 #!/usr/bin/env bash
-{ echo "argc=$#"; echo "pwd=$PWD"; for a in "$@"; do printf 'arg=%s\n' "$a"; done; } >> "$CLAUDE_LOG"
-exit "${CLAUDE_RC:-0}"
+{ echo "argc=$#"; echo "pwd=$PWD"; echo "agents_root=$AGENTS_ROOT"; for a in "$@"; do printf 'arg=%s\n' "$a"; done
+  printf 'stdin=%s\n' "$(cat)"; } >> "$BR_LOG"
+exit "${BR_RC:-0}"
 EOF
-  chmod +x "$T/fake/ssh" "$T/fake/chrome" "$T/fake/claude"
+  chmod +x "$T/fake/ssh" "$T/fake/chrome" "$T/fake/browser-router"
   P="t${BATS_TEST_NUMBER}x"   # id prefix, so teardown finds this test's watchers
 }
 
@@ -153,54 +154,51 @@ bev() { # bev <event> <group> <sum> <payload-json>
   jq -nc --arg e "$1" --argjson g "$2" --arg s "$3" --argjson p "$4" --argjson ts "$(date +%s)" \
     '{event: $e, group: $g, handler: 0, sum: $s, ts: $ts, payload: $p}'
 }
-djob() { jq -nc --arg id "$1" --arg ex "${2:-mac-computer-use}" --arg task "$3" --arg cwd "${4:-/data/fleet/repo1}" \
+djob() { jq -nc --arg id "$1" --arg ex "${2:-mac-control-router}" --arg task "$3" --arg cwd "${4:-/data/fleet/repo1}" \
   '{job_id: $id, site: "linkedin.com", task: $task, cwd: $cwd, executor: $ex}'; }
 relay() { "$REPO/bin/agent-relay" --handle 2>> "$LOG" 3>&-; }
 
-@test "dispatch through the relay: hash matches, claude -p gets the task as one argv, cwd mapped to AGENTS_ROOT/<basename>" {
+@test "dispatch through the relay: hash matches, the payload goes to browser-router vault run-dispatched on stdin, never to claude" {
   relay_setup
   task='say "hi" $(touch '"$T"'/pwned) `touch '"$T"'/pwned2` '"'"'; x'
-  bev BrowserDispatch 0 "$SUM" "$(djob job1 mac-computer-use "$task")" | relay
+  bev BrowserDispatch 0 "$SUM" "$(djob job1 mac-control-router "$task")" | relay
   waitfor 'spooled | grep -q "dispatch-done job1 0"'
   spooled | grep -qx "dispatch-ok job1"
   grep -q 'ran BrowserDispatch/0/0' "$LOG"
-  [ "$(grep -c '^argc=' "$CLAUDE_LOG")" -eq 1 ]
-  grep -qx 'argc=2' "$CLAUDE_LOG"; grep -qx 'arg=-p' "$CLAUDE_LOG"
-  grep -qxF "arg=$task" "$CLAUDE_LOG"
-  grep -qE "^pwd=.*/agents/repo1$" "$CLAUDE_LOG"
+  [ "$(grep -c '^argc=' "$BR_LOG")" -eq 1 ]
+  grep -qx 'argc=2' "$BR_LOG"; grep -qx 'arg=vault' "$BR_LOG"; grep -qx 'arg=run-dispatched' "$BR_LOG"
+  [ "$(sed -n 's/^stdin=//p' "$BR_LOG" | jq -r .task)" = "$task" ]
+  [ "$(sed -n 's/^stdin=//p' "$BR_LOG" | jq -r .cwd)" = /data/fleet/repo1 ]   # browser-router maps the cwd, not the handler
+  grep -qE "^pwd=.*/mac$" "$BR_LOG"; grep -qx "agents_root=$T/agents" "$BR_LOG"
   [ ! -e "$T/pwned" ] && [ ! -e "$T/pwned2" ]
 }
 
-@test "dispatch: a mac-control-router job (vault-screen) runs claude -p like mac-computer-use" {
+@test "dispatch: the run-dispatched exit code is reported (2 refused, 3 not runnable)" {
   relay_setup
-  bev BrowserDispatch 0 "$SUM" "$(djob jm mac-control-router 'read inbox')" | relay
-  waitfor 'spooled | grep -q "dispatch-done jm 0"'
-  grep -qx 'arg=read inbox' "$CLAUDE_LOG"
-}
-
-@test "dispatch: unknown cwd runs in HOME; the claude exit code is reported" {
-  relay_setup
-  CLAUDE_RC=3 bev BrowserDispatch 0 "$SUM" "$(djob job2 mac-computer-use hello /somewhere/else)" | CLAUDE_RC=3 relay
-  waitfor 'spooled | grep -q "dispatch-done job2 3"'
-  grep -qE "^pwd=.*/mac$" "$CLAUDE_LOG"
+  bev BrowserDispatch 0 "$SUM" "$(djob job2 mac-control-router hello)" | BR_RC=2 relay
+  waitfor 'spooled | grep -q "dispatch-done job2 2"'
+  bev BrowserDispatch 0 "$SUM" "$(djob job3 mac-control-router hello)" | BR_RC=3 relay
+  waitfor 'spooled | grep -q "dispatch-done job3 3"'
 }
 
 @test "dispatch: wrong hash, group != 0, another matcher and a foreign executor are refused" {
   relay_setup
-  { bev BrowserDispatch 0 0123456789abcdef "$(djob j1 mac-computer-use t)"
-    bev BrowserDispatch 1 "$SUM" "$(djob j2 mac-computer-use t)"; } | relay
-  sleep 0.5; [ ! -e "$CLAUDE_LOG" ]
+  { bev BrowserDispatch 0 0123456789abcdef "$(djob j1 mac-control-router t)"
+    bev BrowserDispatch 1 "$SUM" "$(djob j2 mac-control-router t)"; } | relay
+  sleep 0.5; [ ! -e "$BR_LOG" ]
   [ "$(grep -c 'skipped' "$LOG")" -eq 2 ]
   relay_setup some-other-matcher
-  bev BrowserDispatch 0 "$SUM" "$(djob j3 mac-computer-use t)" | relay
-  sleep 0.5; [ ! -e "$CLAUDE_LOG" ]
+  bev BrowserDispatch 0 "$SUM" "$(djob j3 mac-control-router t)" | relay
+  sleep 0.5; [ ! -e "$BR_LOG" ]
   [ "$(grep -c 'skipped' "$LOG")" -eq 3 ]
   relay_setup
   bev BrowserDispatch 0 "$SUM" "$(djob j4 mac-chrome t)" | relay
   waitfor 'spooled | grep -q "dispatch-done j4 126"'
-  [ ! -e "$CLAUDE_LOG" ]
-  bev BrowserDispatch 0 "$SUM" "$(djob 'j 5' mac-computer-use t)" | relay
-  sleep 0.5; [ ! -e "$CLAUDE_LOG" ]
+  bev BrowserDispatch 0 "$SUM" "$(djob j6 mac-computer-use t)" | relay
+  waitfor 'spooled | grep -q "dispatch-done j6 126"'
+  [ ! -e "$BR_LOG" ]
+  bev BrowserDispatch 0 "$SUM" "$(djob 'j 5' mac-control-router t)" | relay
+  sleep 0.5; [ ! -e "$BR_LOG" ]
 }
 
 @test "relay: BrowserLease via the slot passes the event name; BrowserRelease releases" {
@@ -255,12 +253,12 @@ up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   fixture_ext "$T/ext1" 1.0.99; fixture_ext "$T/ext1" 1.0.101; fixture_ext "$T/ext2" 1.0.100
   printf '#!/bin/sh\necho "agent-browser 0.39.1"\n' > "$HOME/.local/bin/agent-browser"; chmod +x "$HOME/.local/bin/agent-browser"
   printf 'Dia\n' > "$T/running"
-  seed_selftest ok mac-chrome mac-computer-use mac-control-router agent-browser
+  seed_selftest ok mac-chrome mac-control-router agent-browser
   out=$(up)
   [ "$(wc -l <<<"$out" | tr -d ' ')" -eq 1 ]
   [ "$(jq -S . <<<"$out")" = "$(jq -S . <<<'{"schema":1,"ts":1000,"dia_running":true,"chrome_running":false,
     "versions":{"dia":"1.53.0","chrome":"155.0.8059.85","claude_in_chrome":"1.0.101","agent_browser":"0.39.1"},
-    "executors":{"mac-chrome":"ok","mac-computer-use":"not built","mac-control-router":"ok","agent-browser":"ok"}}')" ]
+    "executors":{"mac-chrome":"ok","mac-control-router":"ok","agent-browser":"ok"}}')" ]
   printf 'Google Chrome\n' > "$T/running"
   out=$(up)
   [ "$(jq -c '[.dia_running, .chrome_running, .executors["mac-chrome"], .executors["agent-browser"]]' <<<"$out")" = '[false,true,"down","ok"]' ]
@@ -272,15 +270,15 @@ up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   printf '#!/bin/sh\necho "agent-browser 0.39.1"\n' > "$HOME/.local/bin/agent-browser"; chmod +x "$HOME/.local/bin/agent-browser"
   printf 'Dia\n' > "$T/running"
   # no record at all
-  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","mac-control-router":"untrusted","agent-browser":"untrusted"}' ]
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-control-router":"untrusted","agent-browser":"untrusted"}' ]
   # failed record for one, passing for another, none for the third
   seed_selftest untrusted mac-chrome; jq '.executors["agent-browser"] = .executors["mac-chrome"] | .executors["agent-browser"].status = "ok"' "$T/state/selftest.json" > "$T/s" && mv "$T/s" "$T/state/selftest.json"
-  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","mac-control-router":"untrusted","agent-browser":"ok"}' ]
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-control-router":"untrusted","agent-browser":"ok"}' ]
   # unreadable record
   echo 'not json' > "$T/state/selftest.json"
   [ "$(up | jq -c '.executors["agent-browser"]')" = '"untrusted"' ]
   # Dia not running: down regardless of the record
-  seed_selftest ok mac-chrome mac-computer-use mac-control-router agent-browser
+  seed_selftest ok mac-chrome mac-control-router agent-browser
   : > "$T/running"
   [ "$(up | jq -c '[.executors["mac-chrome"], .executors["agent-browser"]]')" = '["down","ok"]' ]
 }
@@ -289,20 +287,20 @@ up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   fixture_app "$T/Dia.app" 1.53.0; fixture_app "$T/Chrome.app" 155.0.8059.85
   fixture_ext "$T/ext1" 1.0.101
   printf 'Dia\n' > "$T/running"
-  seed_selftest ok mac-chrome mac-computer-use mac-control-router agent-browser   # recorded agent_browser 0.39.1
+  seed_selftest ok mac-chrome mac-control-router agent-browser   # recorded agent_browser 0.39.1
   # agent_browser change: only agent-browser
   printf '#!/bin/sh\necho "agent-browser 0.39.2"\n' > "$HOME/.local/bin/agent-browser"; chmod +x "$HOME/.local/bin/agent-browser"
-  [ "$(up | jq -c .executors)" = '{"mac-chrome":"ok","mac-computer-use":"not built","mac-control-router":"ok","agent-browser":"untrusted"}' ]
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"ok","mac-control-router":"ok","agent-browser":"untrusted"}' ]
   # chrome change: agent-browser, not mac-chrome
   printf '#!/bin/sh\necho "agent-browser 0.39.1"\n' > "$HOME/.local/bin/agent-browser"
   fixture_app "$T/Chrome.app" 156.0.0.1
-  [ "$(up | jq -c .executors)" = '{"mac-chrome":"ok","mac-computer-use":"not built","mac-control-router":"ok","agent-browser":"untrusted"}' ]
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"ok","mac-control-router":"ok","agent-browser":"untrusted"}' ]
   # dia change: mac-chrome only
   fixture_app "$T/Chrome.app" 155.0.8059.85; fixture_app "$T/Dia.app" 1.54.0
-  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","mac-control-router":"untrusted","agent-browser":"ok"}' ]
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-control-router":"untrusted","agent-browser":"ok"}' ]
   # claude_in_chrome change: mac-chrome only
   fixture_app "$T/Dia.app" 1.53.0; fixture_ext "$T/ext2" 1.0.102
-  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-computer-use":"not built","mac-control-router":"ok","agent-browser":"ok"}' ]
+  [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-control-router":"ok","agent-browser":"ok"}' ]
 }
 
 @test "browser-up: finds agent-browser in the newest nvm node dir with a minimal PATH (launchd)" {
@@ -327,7 +325,7 @@ up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   : > "$T/running"
   PATH="$T/fake:/usr/bin:/bin:/usr/sbin" out=$(up)
   [ "$(jq -S . <<<"$out")" = "$(jq -S . <<<'{"schema":1,"ts":1000,"dia_running":false,"chrome_running":false,
-    "versions":{},"executors":{"mac-chrome":"down","mac-computer-use":"not built","mac-control-router":"down","agent-browser":"down"}}')" ]
+    "versions":{},"executors":{"mac-chrome":"down","mac-control-router":"down","agent-browser":"down"}}')" ]
 }
 
 # --------------------------------------------------------------------------------------- cloud side
