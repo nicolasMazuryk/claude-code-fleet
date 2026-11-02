@@ -109,14 +109,6 @@
             "command": "jq -e '((.background_tasks // []) + (.session_crons // [])) | length == 0' >/dev/null && afplay ~/.claude/sounds/choo-choo.mp3 || true"
           }
         ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/browser-guard"
-          }
-        ]
       }
     ],
     "Notification": [
@@ -137,46 +129,6 @@
           {
             "type": "command",
             "command": "afplay ~/.claude/sounds/choo-choo.mp3"
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__claude-in-chrome__.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/browser-guard",
-            "onFailure": "block"
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__computer-use__.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/browser-guard",
-            "onFailure": "block"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/browser-guard",
-            "onFailure": "block"
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__plugin_mac-control-router_peekaboo__.*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/browser-guard",
-            "onFailure": "block"
           }
         ]
       }
@@ -210,17 +162,6 @@
         ]
       }
     ],
-    "PostToolUse": [
-      {
-        "matcher": "mcp__claude-in-chrome__(tabs_create_mcp|tabs_close_mcp|tabs_context_mcp|navigate)",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.claude/hooks/browser-guard"
-          }
-        ]
-      }
-    ],
     "PermissionRequest": [
       {
         "hooks": [
@@ -247,7 +188,8 @@
     "claude-hud@claude-hud": true,
     "cowork-plugin-management@synced": false,
     "mac-control-router@mac-control-router": true,
-    "phone-control-router@phone-control-router": true
+    "phone-control-router@phone-control-router": true,
+    "browser-router@browser-router": true
   },
   "extraKnownMarketplaces": {
     "claude-hud": {
@@ -266,6 +208,12 @@
       "source": {
         "source": "directory",
         "path": "/Users/nicolas/code/phone-control-router"
+      }
+    },
+    "browser-router": {
+      "source": {
+        "source": "directory",
+        "path": "/Users/nicolas/code/browser-router"
       }
     }
   },

@@ -110,24 +110,30 @@ setup() {
   diff -r "$c/memory/$m" "$HOME/.claude/projects/$m/memory"
 }
 
-@test "browser-router: guard hooks per tool family and the relay slot are added once; relay copies installed" {
+@test "browser-router: settings browser-guard handlers are removed (the plugin registers them), the relay slot is added once" {
+  s="$HOME/.claude/settings.json"
+  # settings that register browser-guard themselves: own groups per tool family, one group shared with another handler
+  g='{type: "command", command: "~/.claude/hooks/browser-guard"}'
+  jq ".hooks.PreToolUse += [{matcher: \"mcp__claude-in-chrome__.*\", hooks: [$g + {onFailure: \"block\"}]},
+        {matcher: \"Bash\", hooks: [$g, {type: \"command\", command: \"~/bin/keep-me\"}]}]
+      | .hooks.PostToolUse = [{matcher: \"mcp__claude-in-chrome__(navigate)\", hooks: [$g]}]
+      | .hooks.Stop += [{hooks: [$g]}]" "$s" > "$HOME/s" && mv "$HOME/s" "$s"
+  pre=$(jq '.hooks.PreToolUse | length' "$s")
   run "$REPO/install.sh" mac
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  s="$HOME/.claude/settings.json"
-  for m in 'mcp__claude-in-chrome__.*' 'mcp__computer-use__.*' Bash; do
-    [ "$(jq --arg m "$m" '[.hooks.PreToolUse[] | select(.matcher == $m) | .hooks[] | select(.command == "~/.claude/hooks/browser-guard")] | length' "$s")" -eq 1 ]
-  done
-  pm='mcp__claude-in-chrome__(tabs_create_mcp|tabs_close_mcp|tabs_context_mcp|navigate)'
-  [ "$(jq --arg m "$pm" '[.hooks.PostToolUse[] | select(.matcher == $m) | .hooks[] | select(.command == "~/.claude/hooks/browser-guard")] | length' "$s")" -eq 1 ]
-  [ "$(jq '[.hooks.Stop[] | select(.matcher == null) | .hooks[] | select(.command == "~/.claude/hooks/browser-guard")] | length' "$s")" -eq 1 ]
+  [ "$(jq '[.. | objects | select((.command // "") | test("browser-guard"))] | length' "$s")" -eq 0 ]
+  [ "$(jq '.hooks | has("PostToolUse")' "$s")" = false ]
+  [ "$(jq -c '[.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[].command]' "$s")" = '["~/bin/keep-me"]' ]
+  [ "$(jq '.hooks.PreToolUse | length' "$s")" -eq $((pre - 1)) ]
   [ "$(jq '[.hooks.Stop[].hooks[] | select(.command | test("agent-push"))] | length' "$s")" -eq 1 ]
+  [ "$(jq '[.hooks[][].hooks[] | select(.command | test("afplay"))] | length' "$s")" -eq 4 ]
   [ "$(jq -r '[.hooks.SessionStart[] | select(.matcher == "browser-router-relay")] | length' "$s")" -eq 1 ]
   [ "$(jq -r '.hooks.SessionStart[] | select(.matcher == "browser-router-relay") | .hooks[0].command' "$s")" = "~/.local/libexec/cc-orchestrator/browser-relay-handler" ]
   for f in browser-up browser-relay-handler; do cmp "$REPO/bin/$f" "$HOME/.local/libexec/cc-orchestrator/$f"; done
-  "$REPO/install.sh" mac >/dev/null
-  [ "$(jq '[.hooks.PreToolUse[] | select(.matcher == "Bash")] | length' "$s")" -eq 1 ]
-  [ "$(jq --arg m "$pm" '[.hooks.PostToolUse[] | select(.matcher == $m)] | length' "$s")" -eq 1 ]
-  [ "$(jq '[.hooks.Stop[].hooks[] | select(.command | test("browser-guard"))] | length' "$s")" -eq 1 ]
+  cp "$s" "$HOME/after-first"
+  run "$REPO/install.sh" mac
+  [[ "$output" == *"ok $s"* ]] || { echo "$output"; return 1; }
+  cmp "$s" "$HOME/after-first"
 }
 
 @test "session-env: hook installed and registered once on SessionStart (all sources)" {

@@ -18,4 +18,4 @@ Who I am, my goals and how to work with me, for every repo.
 @~/.claude/profile/environments.md
 
 # Browser
-- Before any browser or web-app task (sites, logins, forms, scraping, accounts), use the `browser-router` skill (`~/.claude/skills/browser-router`); never pick a browser tool directly.
+- Before any browser or web-app task (sites, logins, forms, scraping, accounts), use the `browser-router` skill (plugin `browser-router`); never pick a browser tool directly.

@@ -17,6 +17,8 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
    - It lists plugins enabled on the Mac but missing on cloud with the `claude plugin install` command to run;
      `make sync ARGS=--install-plugins` runs them, adding the Mac's marketplace on cloud first: a GitHub repo, or a
      `directory` marketplace at the same path under cloud `$HOME` (clone that repo on cloud first, e.g. `~/code/phone-control-router`).
+     browser-router is the exception: `install.sh cloud-local` installs its plugin from `~/.local/share/browser-router`,
+     and `cloud-settings.json` sets `extraKnownMarketplaces.browser-router` to that path.
    - Dropped on the way: `statusLine` (needs ccstatusline + claude-hud, Mac only), `preferredNotifChannel`,
      credential-like `env` keys, and everything `config/claude/mac-only.json` lists. `/Users/nicolas` becomes
      `/data/home/agent`.
@@ -44,12 +46,13 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
      its text, or `cc-sync-settings` turns it into an async relay stub that cannot return `retry`.
    - `Bash(osascript *)` stays allowed. Check `/permissions` to see whether it survives auto mode. The narrow
      alternative, not applied: replace it with `Bash(osascript -e *)` and `Bash(osascript -l JavaScript -e *)`.
-   - `onFailure:"block"` is set on the four browser-guard PreToolUse entries (Chrome, computer-use, Peekaboo, Bash), Mac only
-     (Claude Code ≥ 2.1.295): a guard that cannot start, times out or exits other than 0/2 blocks the call instead of
-     letting it through. browser-guard is a POSIX `sh` launcher that finds `node` itself (PATH, nvm, Homebrew,
-     `/usr/local`) and exits 2 when none exists, so it also starts under a minimal PATH (LaunchAgent, Remote
-     Control). Not set on PostToolUse/Stop entries (no effect or not a gate) nor on cloud (the guard is not wired
-     there).
+   - browser-guard is not in `settings.json`: the browser-router plugin registers it (its `hooks/hooks.json`), with
+     `onFailure:"block"` on its one PreToolUse entry (Chrome, computer-use, Peekaboo, Bash; Claude Code ≥ 2.1.295): a
+     guard that cannot start, times out or exits other than 0/2 blocks the call instead of letting it through.
+     browser-guard is a POSIX `sh` launcher that finds `node` itself (PATH, nvm, Homebrew, `/usr/local`) and exits 2
+     when none exists, so it also starts under a minimal PATH (LaunchAgent, Remote Control). Not set on the
+     PostToolUse/Stop entries (no effect or not a gate). `install.sh mac` strips any browser-guard handler left in
+     `settings.json`, so `settings.json` carries no `onFailure` field.
    - `config/claude/hooks/permission-away` (the `PermissionRequest` hook, both hosts) keeps unattended sessions moving:
      while `agent-present` fails it denies every permission prompt with "Human away: approval needed for <tool> …
      list it under needs-approval", logs to `~/.local/state/agent-push/permission-away.log` and pushes a needs-input
