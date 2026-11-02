@@ -7,14 +7,18 @@
 #                   with --remote-debugging-port on loopback in 9300–9399, forward it to cloud's loopback over the
 #                   relay's ControlMaster socket (ssh -O forward -R, opened by the Mac), reply "lease-ready <id> <port>"
 #   BrowserRelease  {id}                                    cancel the forward, close the browser, reply "release-ok <id>"
-#   BrowserDispatch {job_id, site, task, cwd, executor}     run `claude -p <task>` here (mac-control-router, mac-computer-use),
-#                   reply "dispatch-ok <job_id>", then "dispatch-done <job_id> <exit>"
+#   BrowserDispatch {job_id, site, task, cwd, executor}     mac-control-router only: pipe the payload to
+#                   `browser-router vault run-dispatched`, which validates the site against the Mac's own registry, takes
+#                   the Mac's vault lock and runs the job in the route → attach → claude → finish wrapper (cwd: a repo of
+#                   the same basename under AGENTS_ROOT, else HOME); reply "dispatch-ok <job_id>", then
+#                   "dispatch-done <job_id> <exit>" with its exit code (2 refused, 3 not runnable now)
 # Cloud names data, never a command: every field is validated, the profile is a bare name under the profiles dir, the
-# port is chosen here, a dispatch cwd is resolved to a repo of the same name under AGENTS_ROOT.
+# port is chosen here, and a dispatch never runs claude directly (the payload is untrusted: the relay sum names the
+# handler, not the sender).
 # Replies are written to the spool; agent-relay sends them up its ssh connection within a second.
 #   browser-relay-handler release-expired <id>   (internal: the ttl watcher)
 # Test switches: BROWSER_RELAY_STATE, AGENT_RELAY_SSH, AGENT_RELAY_HOST, AGENT_RELAY_CM, BROWSER_CHROME_BIN,
-# BROWSER_AGENT_PROFILES, BROWSER_PORT_MIN/MAX, BROWSER_READY_SECS, BROWSER_CLAUDE_BIN, BROWSER_AGENTS_ROOT.
+# BROWSER_AGENT_PROFILES, BROWSER_PORT_MIN/MAX, BROWSER_READY_SECS, BROWSER_ROUTER_BIN, BROWSER_AGENTS_ROOT.
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH:/usr/bin:/bin"
 STATE=${BROWSER_RELAY_STATE:-$HOME/.local/state/browser-router/relay}
 SPOOL=$STATE/out
@@ -27,7 +31,7 @@ PROFILES=${BROWSER_AGENT_PROFILES:-$HOME/.chrome-agent-profiles}
 PORT_MIN=${BROWSER_PORT_MIN:-9300}
 PORT_MAX=${BROWSER_PORT_MAX:-9399}
 READY_SECS=${BROWSER_READY_SECS:-20}
-CLAUDE=${BROWSER_CLAUDE_BIN:-claude}
+BROUTER=${BROWSER_ROUTER_BIN:-browser-router}
 AGENTS_ROOT=${BROWSER_AGENTS_ROOT:-$HOME/code}
 mkdir -p "$SPOOL" "$LEASES"
 
@@ -93,21 +97,19 @@ lease() {
   reply "lease-ready $id $port"
 }
 
-dispatch() { # dispatch <job_id> <task> <cwd>
-  local job=$1 task=$2 cwd=$3 dir log_f
-  dir=$AGENTS_ROOT/$(basename "$cwd")
-  [ -d "$dir" ] || dir=$HOME
+dispatch() { # dispatch <job_id> <payload-json>: the Mac's browser-router decides (contracts §7); never claude -p here
+  local job=$1 p=$2 log_f
   log_f=$STATE/dispatch-$job.log
   reply "dispatch-ok $job"
   (
-    cd "$dir" && "$CLAUDE" -p "$task" </dev/null >> "$log_f" 2>&1
+    cd "$HOME" && printf '%s' "$p" | AGENTS_ROOT="$AGENTS_ROOT" "$BROUTER" vault run-dispatched >> "$log_f" 2>&1
     reply "dispatch-done $job $?"
   ) >/dev/null 2>&1 &
-  log "dispatched $job in $dir"
+  log "dispatched $job to browser-router vault run-dispatched"
 }
 
 main() {
-  local ev=${BROWSER_RELAY_EVENT:-} p id profile ttl job task cwd ex
+  local ev=${BROWSER_RELAY_EVENT:-} p id profile ttl job task ex
   if [ "${1:-}" = release-expired ]; then
     sleep "${3:-900}" & trap 'kill $! 2>/dev/null; exit 0' TERM INT
     wait $!; release "$2"; exit 0
@@ -126,12 +128,12 @@ main() {
       release "$id"; reply "release-ok $id" ;;
     BrowserDispatch)
       job=$(jq -r '.job_id // empty' <<<"$p"); task=$(jq -r '.task // empty' <<<"$p")
-      cwd=$(jq -r '.cwd // empty' <<<"$p"); ex=$(jq -r '.executor // empty' <<<"$p")
+      ex=$(jq -r '.executor // empty' <<<"$p")
       valid '^[A-Za-z0-9_-]{1,64}$' "$job" || { log "ignored dispatch: bad job id"; exit 0; }
-      if { [ "$ex" != mac-control-router ] && [ "$ex" != mac-computer-use ]; } || [ -z "$task" ] || [ "${#task}" -gt 8000 ]; then
+      if [ "$ex" != mac-control-router ] || [ -z "$task" ] || [ "${#task}" -gt 8000 ]; then
         log "refused dispatch $job: executor '$ex' or task invalid"; reply "dispatch-done $job 126"; exit 0
       fi
-      dispatch "$job" "$task" "$cwd" ;;
+      dispatch "$job" "$(jq -c . <<<"$p")" ;;
     *) log "ignored event '$ev'" ;;
   esac
 }

@@ -11,7 +11,7 @@ Use). The Mac must stay unreachable from cloud (invariant 4).
 - **One connection, still opened by the Mac.** `agent-relay`'s ssh to `cloud` is also the ControlMaster
   (`~/.local/state/agent-relay/cm.sock`, dir 0700). Nothing on cloud ever dials the Mac.
 - **Upstream (Mac → cloud), same ssh:** a `mac-up <json>` line every beacon (`bin/browser-up`: Dia/Chrome running,
-  versions, executors, and the Mac's IANA `tz` for `tz: local`; `mac-computer-use` is always `not built`) which cloud writes to `~/.local/state/agent-events/mac-up` (stale after 45 s), and one-line replies
+  versions, executors, and the Mac's IANA `tz` for `tz: local`) which cloud writes to `~/.local/state/agent-events/mac-up` (stale after 45 s), and one-line replies
   (`lease-ready`, `lease-failed`, `release-ok`, `dispatch-ok`, `dispatch-done`) spooled by the handler and flushed each
   second. `bin/browser-relay-cloud line` validates every line; port must be 9300–9399; ids are `[A-Za-z0-9_-]`.
 - **Downstream (cloud → Mac), same event stream as the hook relay:** `BrowserLease`, `BrowserRelease`, `BrowserDispatch`
@@ -23,9 +23,13 @@ Use). The Mac must stay unreachable from cloud (invariant 4).
   `ssh -S <cm.sock> -O forward -R 127.0.0.1:<p>:127.0.0.1:<p> cloud` on the ControlMaster. Cloud gets a loopback-only port;
   the forward is cancelled on release or when the ttl ends. The forward travels over the Mac-opened connection, so the
   tailnet policy still has no rule with `src: tag:cloud`.
-- **Dispatch.** A `BrowserDispatch` for `mac-computer-use` runs `claude -p <task>` on the Mac, in the repo of the same
-  name under `AGENTS_ROOT` (else `$HOME`), with the Mac's own permission settings; the task is one argv, never shell text.
-  `dispatch-done` makes cloud run `browser-router vault finish`, freeing the global lock.
+- **Dispatch.** A `BrowserDispatch` for `mac-control-router` is untrusted data: the relay sum names the handler, not the
+  sender, so any process on cloud can emit one. The handler never runs `claude` itself; it pipes the payload to
+  `browser-router vault run-dispatched` (browser-router contracts §7), which runs the job only for a vault site the Mac's
+  own registry routes to `mac-control-router`, under the Mac's vault lock, hours and caps, inside the route → attach →
+  claude → finish wrapper, so browser-guard confines the session to that site. The cwd is the repo of the same basename
+  under `AGENTS_ROOT` (else `$HOME`). `dispatch-done` carries its exit code (2 refused, 3 not runnable now) and makes
+  cloud run `browser-router vault finish`, freeing cloud's lock.
 - **Vault queue.** Queue state is per host, so each host drains its own: `browser-router-vault-drain.timer` on cloud (every
   3 min) and the LaunchAgent `cc-orchestrator.claude.vault-drain` on the Mac (every 180 s), both running `bin/browser-vault-drain`,
   which starts at most one runnable job. One script serves both hosts rather than a Mac wrapper: it only differs by the relay sum
