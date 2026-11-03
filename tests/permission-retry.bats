@@ -82,6 +82,6 @@ mcp_in() { jq -nc --arg t "$1" --arg a "$2" '{tool_name:$t,tool_input:(if $a==""
   jq -e '.enabledPlugins["browser-router@browser-router"] == true' "$SETTINGS"
 }
 
-@test "mac-only lists the system-settings open permission" {
-  jq -e '.permissions | index("Bash(open -g x-apple.systempreferences:*)")' "$MACONLY"
+@test "mac-only takes the plugin's permission rules (incl. the system-settings open) from its template" {
+  jq -e '.permissionFiles | index("mac-control-router/setup/user-settings.json")' "$MACONLY"
 }

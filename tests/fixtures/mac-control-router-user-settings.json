@@ -1,0 +1,43 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_mac-control-router_peekaboo__*",
+      "mcp__plugin_mac-control-router_imcp__*",
+      "Bash(mac-control-router *)",
+      "Bash(peekaboo *)",
+      "Bash(osascript *)",
+      "Bash(shortcuts *)",
+      "Bash(sleep *)",
+      "Bash(mdfind *)",
+      "Bash(mdls *)",
+      "Bash(open -g *)",
+      "Bash(open -g x-apple.systempreferences:*)",
+      "Bash(open -a *)",
+      "Bash(open -ga *)",
+      "Bash(open x-apple.systempreferences:*)",
+      "Bash(killall Dock)",
+      "Bash(killall Finder)",
+      "Bash(killall SystemUIServer)",
+      "Bash(killall ControlCenter)",
+      "Bash(defaults write com.apple.dock *)",
+      "Bash(cliclick *)",
+      "Bash(trash *)",
+      "Bash(lsappinfo *)",
+      "Bash(defaults read *)"
+    ],
+    "deny": [
+      "Bash(sudo *)",
+      "Bash(csrutil disable*)",
+      "Bash(csrutil clear*)",
+      "Bash(csrutil enable*)",
+      "Bash(nvram -c*)",
+      "Bash(nvram -d *)",
+      "Bash(nvram *=*)",
+      "Bash(fdesetup enable*)",
+      "Bash(fdesetup disable*)",
+      "Bash(fdesetup changerecovery*)",
+      "Bash(fdesetup removerecovery*)",
+      "mcp__computer-use"
+    ]
+  }
+}
