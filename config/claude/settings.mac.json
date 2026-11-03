@@ -50,7 +50,6 @@
       "mcp__ccd_session_mgmt__search_session_transcripts",
       "mcp__plugin_mac-control-router_imcp__*",
       "mcp__plugin_mac-control-router_peekaboo__*",
-      "mcp__plugin_playwright_playwright__*",
       "mcp__claude-artifacts__publish_files",
       "Bash(open -a *)",
       "Bash(open -ga *)",
@@ -189,6 +188,8 @@
     "cowork-plugin-management@synced": false,
     "mac-control-router@mac-control-router": true,
     "phone-control-router@phone-control-router": true,
+    "security-guidance@claude-plugins-official": true,
+    "plugin-dev@claude-plugins-official": true,
     "browser-router@browser-router": true
   },
   "extraKnownMarketplaces": {
