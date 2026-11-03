@@ -15,9 +15,13 @@
      held, and notify the user with a line in your output (Agent View turns it into a presence-gated ntfy push; never use PushNotification):
      `needs input: <job>: <question> | options: … | recommend: …`.
    - Independent jobs continue and may launch per step 5; held jobs do not (SKILL.md "Blocking escalation").
-   - When the user answers (in this session, or by writing `answer.md`): write/keep the answer verbatim in
-     `jobs/<job>/answer.md`, then `cd <job cwd> && claude --resume <session_id> --bg "Read <R>/jobs/<job>/answer.md and
-     continue from handoff.md."` If resume fails, relaunch fresh with `orchestrator-launch` using the Resume prompt.
+   - When the user answers in this session (or `/orchestrate answer <job> "<text>"`): `$S/orchestrator-answer $R <job>
+     "<text>"` (verbatim; `-` + stdin for quotes/newlines). It appends to `answer.md` and restarts the session safely
+     (stop + resume when blocked/idle; exit 10 = still working → SendMessage the printed text; never `--resume` a
+     running session). When the user wrote `answer.md` directly, resume with `cd <job cwd> && claude --resume
+     <session_id> --bg "Read <R>/jobs/<job>/answer.md and continue from handoff.md."` (same never-resume-running rule).
+     If resume fails or exit 3, relaunch fresh with `orchestrator-launch` using the Resume prompt. Re-arm the loop if
+     it was paused for this answer.
    - **Merge requests** (`state == blocked`, step `merge <job> <sha>`) are not a human decision. Check that `<sha>` is
      the tip of `orchestrator/<slug>/<job>`, that the job's verifier PASSed on it (when the card has Verify = V), and
      that the default branch's checkout is clean. Then `git -C <repo> merge --ff-only <sha>` in that checkout, record
