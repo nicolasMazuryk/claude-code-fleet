@@ -1,9 +1,12 @@
 {
   "plugins": [
     "warp",
-    "mac-control-router"
+    "mac-control-router",
+    "phone-control-router"
   ],
-  "permissions": [],
+  "permissions": [
+    "Bash(phone --status*)"
+  ],
   "permissionFiles": [
     "mac-control-router/setup/user-settings.json"
   ],

@@ -16,13 +16,14 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
    - Fewer than 4: a sound hook changed or uses a tool outside `CC_MAC_ONLY`; fix before relying on cloud sounds.
    - It lists plugins enabled on the Mac but missing on cloud with the `claude plugin install` command to run;
      `make sync ARGS=--install-plugins` runs them, adding the Mac's marketplace on cloud first: a GitHub repo, or a
-     `directory` marketplace at the same path under cloud `$HOME` (clone that repo on cloud first, e.g. `~/code/phone-control-router`).
+     `directory` marketplace at the same path under cloud `$HOME` (clone that repo on cloud first, under `~/code/<repo>`).
      browser-router is the exception: `install.sh cloud-local` installs its plugin from `~/.local/share/browser-router`,
      and `cloud-settings.json` sets `extraKnownMarketplaces.browser-router` to that path.
    - Dropped on the way: `statusLine` (needs ccstatusline + claude-hud, Mac only), `preferredNotifChannel`,
      credential-like `env` keys, and everything `config/claude/mac-only.json` lists. `/Users/nicolas` becomes
      `/data/home/agent`.
-   - `config/claude/mac-only.json` `plugins`: Mac-only plugins by name (`warp`, `mac-control-router`). Their
+   - `config/claude/mac-only.json` `plugins`: Mac-only plugins by name (`warp`, `mac-control-router`,
+     `phone-control-router`: the iPhone is driven only from the MacBook, and cloud agents never use it). Their
      `enabledPlugins` entry, their `extraKnownMarketplaces` entry (unless a synced plugin shares it) and every
      `mcp__plugin_<name>_*` permission rule are dropped, so they are never listed as missing on cloud.
      `permissions`: exact rules dropped from every permission list. `permissionFiles`: settings files, relative to
