@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# orchestrator-answer <run-dir> <job> "<text>"|- — relay the user's answer verbatim and restart the job's session.
+# 1. Appends the text (verbatim; "-" reads stdin) under a UTC timestamp header to jobs/<job>/answer.md.
+# 2. Restarts the job's current session (status.json session_id/cwd):
+#    - working/busy (alive, not waiting): never resumed (a resume of a running session forks a duplicate copy);
+#      prints the SendMessage text for the orchestrator and exits 10;
+#    - alive but blocked/waiting: `claude stop`, then resume;
+#    - stopped/idle/done: `cd <cwd> && claude --resume <session_id> --bg "<msg>"`.
+# 3. Sets the job `running "answer relayed"` and prints the loop re-arm reminder (cron cannot be created from bash).
+# Exit: 0 resumed, 10 send-message needed, 2 usage, 3 no session recorded, 1 other error. bash 3.2 compatible.
+set -euo pipefail
+usage() { echo 'usage: orchestrator-answer <run-dir> <job> "<text>"|-' >&2; exit 2; }
+[ $# -eq 3 ] || usage
+run=$(cd "$1" && pwd) job=$2 text=$3
+[ "$text" = - ] && text=$(cat)
+[ -n "$text" ] || usage
+S=$(cd "$(dirname "$0")" && pwd)
+d="$run/jobs/$job"; f="$d/status.json"
+[ -s "$f" ] || { echo "orchestrator-answer: no $f" >&2; exit 3; }
+now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+sep=''; [ -s "$d/answer.md" ] && sep=$'\n'
+printf '%s## Answer %s (user, verbatim)\n\n%s\n' "$sep" "$now" "$text" >>"$d/answer.md"
+echo "answer.md: appended ($d/answer.md)"
+
+sid=$(jq -r '.session_id // empty' "$f"); short=$(jq -r '.short_id // empty' "$f")
+name=$(jq -r '.session_name // empty' "$f"); cwd=$(jq -r '.cwd // empty' "$f")
+[ -n "$sid" ] && [ -n "$cwd" ] || { echo "orchestrator-answer: $job has no recorded session_id/cwd; relaunch it from handoff.md" >&2; exit 3; }
+msg="Read $d/answer.md and continue from handoff.md."
+row=$(claude agents --json --all 2>/dev/null | jq -c --arg s "$sid" --arg i "$short" \
+  '[.[] | select(.sessionId == $s or .id == $i)] | last // {}')
+state=$(jq -r '.state // "absent"' <<<"$row"); status=$(jq -r '.status // ""' <<<"$row")
+pid=$(jq -r '.pid // empty' <<<"$row"); waiting=$(jq -r '.waitingFor // empty' <<<"$row")
+echo "session: ${name:-?} ($short) state=$state status=${status:--} pid=${pid:--} waiting=${waiting:--}"
+
+if [ -n "$pid" ] && [ -z "$waiting" ] && { [ "$state" = working ] || [ "$state" = busy ] || [ "$status" = busy ]; }; then
+  echo "running: not resumed. SendMessage to \"$name\": $msg"
+  "$S/orchestrator-set-status" "$run" "$job" running "answer relayed via SendMessage" >/dev/null
+  exit 10
+fi
+if [ -n "$pid" ]; then
+  echo "stopping $short (alive, waiting/blocked)"
+  claude stop "$short" >/dev/null
+fi
+( cd "$cwd" && claude --resume "$sid" --bg "$msg" )
+"$S/orchestrator-set-status" "$run" "$job" running "answer relayed; session resumed" >/dev/null
+echo "resumed $short in $cwd"
+echo "next: re-arm the loop if it is stopped (CronList; CronCreate */3 \"Run one orchestrator tick for $run per the orchestrate skill references/tick.md\")"

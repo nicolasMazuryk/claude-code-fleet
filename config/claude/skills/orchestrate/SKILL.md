@@ -61,8 +61,23 @@ Scripts (in this skill's `scripts/`, call by absolute path `~/.claude/skills/orc
   `plan: ready|asking|none` for live planners.
 - `orchestrator-recontext <run-dir> <job|P-job|V-job|PV-job|orchestrator>`: the run context re-injected after compaction (it runs as
   a SessionStart `compact` hook). `--settings <run-dir> <job>` prints the `--settings` JSON that installs that hook.
+- `orchestrator-answer <run-dir> <job> "<text>"|-`: append the user's answer verbatim (UTC header) to
+  `jobs/<job>/answer.md`, then restart the job's recorded session: stopped/idle → `claude --resume <id> --bg` from the
+  job cwd; alive but blocked/waiting → `claude stop`, then resume; working → never resumed (a resume of a running
+  session forks a duplicate), prints the SendMessage text and exits 10. Sets the job `running`. Exit 3: no session
+  recorded (relaunch from handoff.md).
 
-Two modes. Read the argument: `run <dir>` → **Run mode**. Anything else → **Plan mode**.
+Modes. Read the argument: `run <dir>` → **Run mode**. `answer <job> "<text>" [--run-dir DIR]` → **Answer**. Anything
+else → **Plan mode**.
+
+## Answer (`/orchestrate answer <job> "<text>"`)
+Run dir: `--run-dir`, else the current directory if it holds `PLAN.md` and `jobs/`, else ask. Then:
+1. `~/.claude/skills/orchestrate/scripts/orchestrator-answer <run-dir> <job> "<text>"` with the user's words exactly
+   (pass them via `-` and stdin when they contain quotes or newlines). Exit 10 → SendMessage the printed text to the
+   printed session name (exact ListAgents name). Exit 3 → relaunch per `references/tick.md` step 3 (Resume prompt).
+2. Remove the job from "Pending decisions" in `ORCHESTRATOR.md`, release its held dependents, Log the answer.
+3. Re-arm the loop if CronList shows no tick task for this run: CronCreate `*/3 * * * *`, recurring, prompt
+   `Run one orchestrator tick for <run-dir> per the orchestrate skill references/tick.md`. Then run one tick now.
 
 ---
 
