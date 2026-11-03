@@ -25,9 +25,11 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
    - `config/claude/mac-only.json` `plugins`: Mac-only plugins by name (`warp`, `mac-control-router`). Their
      `enabledPlugins` entry, their `extraKnownMarketplaces` entry (unless a synced plugin shares it) and every
      `mcp__plugin_<name>_*` permission rule are dropped, so they are never listed as missing on cloud.
-     `permissions`: exact rules dropped from every permission list (the macOS automation allows such as
-     `Bash(osascript *)` and the Mac safety denies such as `Bash(sudo *)`, which would break cloud's sudo workflows).
-     A new Mac-only plugin or rule goes there.
+     `permissions`: exact rules dropped from every permission list. `permissionFiles`: settings files, relative to
+     `$AGENTS_ROOT`, whose every permission rule is dropped too; `mac-control-router/setup/user-settings.json` is the
+     single source of the plugin's rules (the macOS automation allows such as `Bash(osascript *)` and the Mac safety
+     denies such as `Bash(sudo *)`, which would break cloud's sudo workflows). A listed file that is missing fails the
+     sync. A new Mac-only plugin, rule or rule file goes there.
    - Mirrored with `rsync --delete`: `CLAUDE.md keybindings.json skills agents commands output-styles hooks profile`
      (symlinks copied as files; `skills/synced` is claude.ai's own). The previous cloud `settings.json` is kept as
      `settings.json.bak.<ts>`; nothing is written when it is unchanged.
@@ -36,7 +38,7 @@ Model: [ADR 0005](../decisions/0005-capture-apply-settings.md).
    `config/claude/cloud-settings.json` (cloud). Change them there, then `./install.sh mac` / `make sync`.
 5. Never edit cloud's `~/.claude` directly; the next sync overwrites it.
 6. Permission-stall settings (`PermissionDenied` hook, narrow allows):
-   - `Bash(open -g x-apple.systempreferences:*)` is Mac-only (listed in `mac-only.json` `permissions`).
+   - `Bash(open -g x-apple.systempreferences:*)` is Mac-only (a mac-control-router rule, via `mac-only.json` `permissionFiles`).
    - `config/claude/hooks/permission-retry` (the `PermissionDenied` hook) runs unrelayed and returns `retry:true` only for
      read-only GUI probes: `peekaboo see|list|window list|menu list`, `defaults read`, `lsappinfo` read subcommands,
      `mdfind`, and the Peekaboo MCP `see` and `window`/`menu` with `action: list`. Anything else, any chained or

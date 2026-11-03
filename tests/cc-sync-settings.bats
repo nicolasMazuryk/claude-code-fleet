@@ -18,6 +18,10 @@ setup() {
       | .worktree.baseDir = ($home + "/Documents/x")' \
     "$REPO/config/claude/settings.mac.json" "$REPO/config/claude/settings.orchestrator.json" > "$F"
   export CC_SYNC_SRC="$F" CC_SYNC_CLOUD_HOME=/data/home/agent
+  # mac-only.json permissionFiles: the mac-control-router plugin's permission template (copy of its
+  # setup/user-settings.json permissions), under AGENTS_ROOT (= $HOME here)
+  mkdir -p "$HOME/mac-control-router/setup"
+  cp "$BATS_TEST_DIRNAME/fixtures/mac-control-router-user-settings.json" "$HOME/mac-control-router/setup/user-settings.json"
 }
 
 sum() { printf %s "$1" | shasum -a 256 | cut -c1-16; }
@@ -63,7 +67,7 @@ sum() { printf %s "$1" | shasum -a 256 | cut -c1-16; }
       | .extraKnownMarketplaces["shared-mkt"] = {source: {source: "github", repo: "o/r"}}
       | .permissions.allow += ["mcp__plugin_mac-control-router_peekaboo__*", "Bash(osascript *)", "Bash(peekaboo *)",
                                "Bash(make keep*)", "mcp__plugin_mac-control-router-x_y__*"]
-      | .permissions.deny = ["Bash(sudo *)", "mcp__computer-use", "Bash(peekaboo agent *)"]' \
+      | .permissions.deny = ["Bash(sudo *)", "mcp__computer-use", "Bash(csrutil disable*)"]' \
     "$CC_SYNC_SRC" > "$BATS_TEST_TMPDIR/src.json"
   CC_SYNC_SRC="$BATS_TEST_TMPDIR/src.json" "$HOME/.local/bin/cc-sync-settings" --print > "$BATS_TEST_TMPDIR/out.json" 2>/dev/null
   o="$BATS_TEST_TMPDIR/out.json"
@@ -72,7 +76,7 @@ sum() { printf %s "$1" | shasum -a 256 | cut -c1-16; }
   [ "$(jq -r '.enabledPlugins["other@shared-mkt"]' "$o")" = true ]
   [ "$(jq '.extraKnownMarketplaces | has("mac-control-router")' "$o")" = false ]
   [ "$(jq -r '.extraKnownMarketplaces["shared-mkt"].source.repo' "$o")" = o/r ]
-  ! grep -qE 'mcp__plugin_mac-control-router_|osascript|peekaboo|sudo|computer-use' "$o"
+  ! grep -qE 'mcp__plugin_mac-control-router_|osascript|peekaboo|sudo|computer-use|csrutil' "$o"
   [ "$(jq '.permissions.allow | index("Bash(make keep*)") != null' "$o")" = true ]
   [ "$(jq '.permissions.allow | index("mcp__plugin_mac-control-router-x_y__*") != null' "$o")" = true ]
   [ "$(jq '.permissions | has("deny")' "$o")" = false ]
@@ -108,6 +112,13 @@ sum() { printf %s "$1" | shasum -a 256 | cut -c1-16; }
   a=$("$HOME/.local/bin/cc-sync-settings" --print 2>/dev/null)
   b=$("$HOME/.local/bin/cc-sync-settings" --print 2>/dev/null)
   [ "$a" = "$b" ]
+}
+
+@test "a missing permissionFiles entry fails the sync instead of leaking its rules to cloud" {
+  rm "$HOME/mac-control-router/setup/user-settings.json"
+  run "$HOME/.local/bin/cc-sync-settings" --print
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"mac-control-router/setup/user-settings.json (mac-only.json permissionFiles) is missing"* ]]
 }
 
 @test "refuses to run on cloud" {

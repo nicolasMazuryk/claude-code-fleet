@@ -7,8 +7,9 @@
 #                  - dropped: statusLine (needs ccstatusline + claude-hud, Mac only), preferredNotifChannel,
 #                    credential-like env keys (TOKEN, KEY, SECRET, PASSWORD, AUTH, CREDENTIAL), and what
 #                    config/claude/mac-only.json lists: Mac-only plugins (enabledPlugins "<name>@…", their
-#                    extraKnownMarketplaces entry, mcp__plugin_<name>_* rules), permission rules and autoMode
-#                    rules (exact strings in its optional "autoMode" list)
+#                    extraKnownMarketplaces entry, mcp__plugin_<name>_* rules), permission rules (its "permissions"
+#                    list plus every rule in its "permissionFiles", paths under $AGENTS_ROOT) and autoMode rules
+#                    (exact strings in its optional "autoMode" list)
 #                  - /Users/nicolas → cloud $HOME; config/claude/cloud-settings.json deep-merged on top
 #                  written only when it differs (previous one kept as settings.json.bak.<ts>)
 #   mirrored       CLAUDE.md keybindings.json skills agents commands output-styles hooks profile (rsync --delete; symlinks
@@ -35,7 +36,7 @@ for a in "$@"; do
     --dry-run) mode=dry ;;
     --print) mode=print ;;
     --install-plugins) plugins=install ;;
-    -h|--help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "cc-sync-settings: unknown option $a" >&2; exit 2 ;;
   esac
 done
@@ -55,6 +56,16 @@ is_mac_only() { # the command, or the script it runs, uses a macOS-only tool
   [ -f "$f" ] && grep -qE "$MAC_ONLY" "$f"
 }
 
+# Rules owned by a Mac-only repo's settings file (mac-only.json "permissionFiles", relative to $AGENTS_ROOT) are
+# Mac-only too. A listed file that is missing fails the sync: its rules must never reach cloud by omission.
+owned='[]'
+while IFS= read -r pf; do
+  [ -n "$pf" ] || continue
+  jq -e '.permissions | type == "object"' "$AGENTS_ROOT/$pf" >/dev/null 2>&1 \
+    || { echo "cc-sync-settings: $AGENTS_ROOT/$pf (mac-only.json permissionFiles) is missing or has no permissions" >&2; exit 1; }
+  owned=$(jq -c --argjson o "$owned" '$o + [.permissions[] | arrays | .[]]' "$AGENTS_ROOT/$pf")
+done < <(jq -r '(.permissionFiles // [])[]' "$mac_only")
+
 s=$(cat "$src"); relayed=0
 while IFS=$'\t' read -r ev g h; do
   [ -n "$ev" ] || continue
@@ -69,8 +80,8 @@ done < <(jq -r '(.hooks // {}) | to_entries[] | .key as $ev | .value | to_entrie
                 | (.value.hooks // []) | to_entries[] | select(.value.type == "command") | [$ev, $g, .key] | @tsv' "$src")
 
 # shellcheck disable=SC2016  # jq program
-s=$(jq --arg mh "$HOME" --arg ch "$cloud_home" --slurpfile mo "$mac_only" '
-      $mo[0] as $mo
+s=$(jq --arg mh "$HOME" --arg ch "$cloud_home" --slurpfile mo "$mac_only" --argjson owned "$owned" '
+      ($mo[0] | .permissions += $owned) as $mo
       | ((.enabledPlugins // {}) | keys | map(select(split("@")[0] as $n | $mo.plugins | index($n)))) as $drop
       | ((.enabledPlugins // {}) | keys - $drop | map(split("@")[1])) as $keep_mkts
       | ($drop | map(split("@")[1]) - $keep_mkts) as $drop_mkts
