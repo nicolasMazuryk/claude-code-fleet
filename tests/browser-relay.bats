@@ -242,6 +242,7 @@ seed_selftest() { # seed_selftest <status> <executor>... : selftest.json recorde
 }
 up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   printf '#!/bin/sh\n[ "$1" = -x ] && grep -qxF "$2" "%s"\n' "$T/running" > "$T/fake/pgrep"; chmod +x "$T/fake/pgrep"
+  BROWSER_UP_REQUALIFY="${BROWSER_UP_REQUALIFY-0}" \
   BROWSER_UP_LOCALTIME="${BROWSER_UP_LOCALTIME-$T/no-localtime}" BROWSER_UP_PGREP="$T/fake/pgrep" BROWSER_UP_NOW=1000 BROWSER_ROUTER_STATE="$T/state" \
     BROWSER_UP_DIA_APP="$T/Dia.app" BROWSER_UP_CHROME_APP="$T/Chrome.app" BROWSER_UP_EXT_DIRS="$T/ext1:$T/ext2" \
     "$REPO/bin/browser-up"
@@ -314,6 +315,36 @@ up() { # up: browser-up with the fixtures; $RUNNING lists running process names
   # claude_in_chrome change: mac-chrome only
   fixture_app "$T/Dia.app" 1.53.0; fixture_ext "$T/ext2" 1.0.102
   [ "$(up | jq -c .executors)" = '{"mac-chrome":"untrusted","mac-control-router":"ok","agent-browser":"ok"}' ]
+}
+
+@test "browser-up: a stale-only agent-browser record starts browser-router requalify once per version set; failed records never" {
+  fixture_app "$T/Dia.app" 1.53.0; fixture_app "$T/Chrome.app" 156.0.0.1   # recorded chrome 155.0.8059.85
+  fixture_ext "$T/ext1" 1.0.101
+  printf '#!/bin/sh\necho "agent-browser 0.39.1"\n' > "$HOME/.local/bin/agent-browser"; chmod +x "$HOME/.local/bin/agent-browser"
+  printf 'Dia\n' > "$T/running"
+  printf '#!/bin/sh\necho "$*" >> "%s"\n' "$T/rq.calls" > "$T/fake/br"; chmod +x "$T/fake/br"
+  seed_selftest ok mac-chrome mac-control-router agent-browser
+  wait_calls() { local i; for i in 1 2 3 4 5 6 7 8 9 10; do [ "$(wc -l < "$T/rq.calls" 2>/dev/null | tr -d ' ')" = "$1" ] && return 0; perl -e 'select(undef,undef,undef,0.1)'; done; return 1; }
+  # this beacon still reports untrusted; the detached requalify runs once
+  [ "$(BROWSER_UP_REQUALIFY="$T/fake/br" up | jq -c '.executors["agent-browser"]')" = '"untrusted"' ]
+  wait_calls 1
+  [ "$(cat "$T/rq.calls")" = "requalify --quiet" ]
+  [ "$(cat "$T/state/requalify-attempt")" = "chrome=156.0.0.1 agent_browser=0.39.1" ]
+  # same versions: no second attempt
+  BROWSER_UP_REQUALIFY="$T/fake/br" up > /dev/null
+  ! wait_calls 2
+  # a new version set: one more attempt
+  fixture_app "$T/Chrome.app" 157.0.0.1
+  BROWSER_UP_REQUALIFY="$T/fake/br" up > /dev/null
+  wait_calls 2
+  # failed record or 0: never
+  rm -f "$T/rq.calls" "$T/state/requalify-attempt"
+  seed_selftest untrusted agent-browser
+  BROWSER_UP_REQUALIFY="$T/fake/br" up > /dev/null
+  seed_selftest ok agent-browser
+  BROWSER_UP_REQUALIFY=0 up > /dev/null
+  ! wait_calls 1
+  [ ! -e "$T/rq.calls" ]
 }
 
 @test "browser-up: finds agent-browser in the newest nvm node dir with a minimal PATH (launchd)" {
