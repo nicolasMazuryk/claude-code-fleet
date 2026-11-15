@@ -8,6 +8,10 @@
 # (mac-chrome: dia, claude_in_chrome; mac-control-router: dia; agent-browser: chrome, agent_browser);
 # up without such a record is "untrusted" (cloud trusts executors from this payload alone); not up is "down".
 # A version that cannot be read is left out of "versions". Reads only: Info.plists, extension manifests, pgrep.
+# Self-healing trust: when agent-browser's record passed and only its versions changed, `browser-router requalify --quiet` is
+# started detached (it takes up to ~60 s and the beacon must stay fast), once per version set (<state>/requalify-attempt);
+# the next beacon reads the new record. Log: /tmp/browser-requalify.log. BROWSER_UP_REQUALIFY: command to run instead of
+# browser-router (tests), or 0 to turn it off.
 # tz comes from the /etc/localtime symlink (zoneinfo/<zone>); left out when underivable (systemsetup -gettimezone needs root).
 # agent-browser is located without relying on PATH (command -v, $AGENT_BROWSER_BIN, newest ~/.nvm node, /opt/homebrew/bin); "up" = its version is readable.
 # Test switches: BROWSER_UP_TZ (zone, overrides the symlink; empty = underivable), BROWSER_UP_LOCALTIME, BROWSER_UP_DIA_APP, BROWSER_UP_CHROME_APP, BROWSER_UP_PGREP (command taking -x <name>),
@@ -66,9 +70,33 @@ fi
 
 selftest=$(jq -c 'select(.schema == 1) | .executors // {}' "$SELFTEST" 2>/dev/null)
 [ -n "$selftest" ] || selftest='{}'
+vchrome=$(plist_version "$CHROME")
+
+find_router() { # same lookup as browser-vault-drain
+  local c
+  if [ -n "${BROWSER_ROUTER_BIN:-}" ] && [ -x "$BROWSER_ROUTER_BIN" ]; then printf %s "$BROWSER_ROUTER_BIN"; return; fi
+  c=$(command -v browser-router 2>/dev/null) && [ -x "$c" ] && { printf %s "$c"; return; }
+  c=$(for c in "$HOME/.nvm"/versions/node/*/bin/browser-router; do [ -x "$c" ] && echo "$c"; done | sort -V | tail -n1)
+  [ -n "$c" ] && [ -x "$c" ] && { printf %s "$c"; return; }
+  [ -x /opt/homebrew/bin/browser-router ] && printf %s /opt/homebrew/bin/browser-router
+  return 0
+}
+requalify_bg() { # requalify_bg <version key>
+  local stamp="${SELFTEST%/*}/requalify-attempt" br
+  [ "${BROWSER_UP_REQUALIFY:-}" = 0 ] && return 0
+  [ "$(cat "$stamp" 2>/dev/null)" = "$1" ] && return 0
+  br=${BROWSER_UP_REQUALIFY:-$(find_router)}
+  [ -n "$br" ] || return 0
+  printf %s "$1" > "$stamp" 2>/dev/null || return 0
+  (PATH="${br%/*}:$PATH" nohup "$br" requalify --quiet >> /tmp/browser-requalify.log 2>&1 < /dev/null &) || true
+}
+# stale-only: a passing record whose readable relevant versions differ (mirrors browser-router staleOnly)
+ab_stale=$(jq -r --arg c "$vchrome" --arg a "$ab" '(.["agent-browser"] // null) as $r
+  | if $r != null and $r.status == "ok" and ([["chrome", $c], ["agent_browser", $a]] | map(select(.[1] != "")) | any(.[1] != ($r.versions[.[0]] // null))) then "yes" else "" end' <<<"$selftest")
+[ -n "$ab" ] && [ "$ab_stale" = yes ] && requalify_bg "chrome=$vchrome agent_browser=$ab"
 
 jq -nc --argjson ts "${BROWSER_UP_NOW:-$(date +%s)}" --argjson dia "$dia_running" --argjson chrome "$chrome_running" \
-  --arg vdia "$(plist_version "$DIA")" --arg vchrome "$(plist_version "$CHROME")" --arg vext "$(ext_version)" \
+  --arg vdia "$(plist_version "$DIA")" --arg vchrome "$vchrome" --arg vext "$(ext_version)" \
   --arg vab "$ab" --arg tz "$(mac_tz)" --argjson st "$selftest" '
   ({dia: $vdia, chrome: $vchrome, claude_in_chrome: $vext, agent_browser: $vab} | with_entries(select(.value != ""))) as $ver
   | {"mac-chrome": ["dia", "claude_in_chrome"], "mac-control-router": ["dia"], "agent-browser": ["chrome", "agent_browser"]} as $rel

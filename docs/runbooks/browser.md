@@ -51,9 +51,13 @@ carries `AGENT_BROWSER_EXECUTABLE_PATH` (override the binary with `BROWSER_ROUTE
 `AGENT_BROWSER_ARGS=--disable-blink-features=AutomationControlled`, which keeps `navigator.webdriver` false in real Chrome.
 A selftest record goes stale only for its own executor's versions: `dia` or `claude_in_chrome` changes stale mac-chrome; `chrome` or `agent_browser` changes stale agent-browser.
 Its selftest expects the host system locale unless `BROWSER_ROUTER_EXPECT_LOCALE` is set. Chrome for Testing is not used
-on the Mac: it crashes OLX's login page. Linux keeps agent-browser's default browser. Headed selftest re-run (`[H]`, needs a display):
-`AGENT_BROWSER_EXECUTABLE_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" AGENT_BROWSER_ARGS=--disable-blink-features=AutomationControlled browser-router selftest --executor agent-browser --serve`
-and open the printed probe URL with `agent-browser --headed --executable-path … --args … open <url>`.
+on the Mac: it crashes OLX's login page. Linux keeps agent-browser's default browser.
+After a Chrome or agent-browser update, agent-browser re-qualifies itself: `route` runs the probe when its passing record is
+stale only by a version change, and `browser-up` starts `browser-router requalify --quiet` in the background on the next beacon
+(log `/tmp/browser-requalify.log`), so cloud sees `agent-browser: ok` again without a human. A Chrome window shows for a few
+seconds while the probe runs (it needs a visible tab), and it needs a logged-in GUI session. By hand: `browser-router requalify`.
+A failed check is never re-qualified automatically. Headed selftest re-run after a failure (`[H]`, needs a display):
+`browser-router selftest --executor agent-browser --auto` (the CLI opens and closes the probe itself).
 Anti-bot systems block logins in an automated browser, so a human logs in to each `agent-browser` site (nofluffjobs.com,
 indeed.com, allegro.pl, olx.pl) once with plain Chrome on the site's profile:
 1. `[H]` `browser-router login <site>` opens Chrome on `~/.chrome-agent-profiles/<profile>` without automation or a locale flag. Log in, then quit Chrome with Cmd+Q.
