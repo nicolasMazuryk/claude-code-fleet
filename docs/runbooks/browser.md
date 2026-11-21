@@ -1,14 +1,14 @@
 # Runbook: browser-router on the fleet
 
 Design: [ADR 0007](../decisions/0007-browser-router-control-plane.md). The CLI, skill and hook live in `~/code/browser-router`;
-this repo owns the relay, the cloud install, the drain timer and the settings wiring.
+this repo owns the cloud install and the settings wiring. The cloud brain never drives the Mac browser: cloud runs shield
+sites on Browser Use Cloud, and vault or Mac-only sites run from a Mac session.
 
 ## What runs where
 | | Mac | Cloud |
 |---|---|---|
-| relay | `agent-relay` (LaunchAgent) sends `mac-up` (incl. the Mac's IANA `tz`, read from `/etc/localtime`; omitted when underivable) every 15 s, runs `browser-relay-handler` for lease/release/dispatch | `browser-relay-cloud line` (called by the relay's remote script) writes `mac-up` and `replies/<id>` |
 | CLI | `agent-browser` (pinned, `npm -g` under the nvm node, plus Chrome for Testing), installed by `install-mac`; browser-router comes from the `~/code/browser-router` checkout via a global link | `~/.local/bin/browser-router` (`~/.local/share/browser-router`) and `agent-browser` |
-| queue | LaunchAgent `cc-orchestrator.claude.vault-drain` every 180 s (`~/.local/libexec/cc-orchestrator/browser-vault-drain`, log `/tmp/browser-vault-drain.log`) | `browser-router-vault-drain.timer` every 3 min |
+| vault | `browser-router vault submit` runs the job now or exits 5 with the reasons (no queue) | vault sites are blocked |
 | config | `~/.config/browser-router/sites.yaml` (source) | mirrored by `cc-sync-settings` |
 
 ## Browser profiles (Mac)
@@ -18,15 +18,15 @@ this repo owns the relay, the cloud install, the drain timer and the settings wi
 | Dia | `vault-screen` | no extensions; LinkedIn via computer use |
 | Chrome | `shield-extension` | Claude in Chrome; mac-chrome shield profile, no sites assigned |
 
-Leased Chrome profiles (`~/.chrome-agent-profiles/<profile>`) are separate from these.
+agent-browser Chrome profiles (`~/.chrome-agent-profiles/<profile>`) are separate from these.
 
 ## Install / update
-1. Mac: `./install.sh mac` (copies `browser-up` + `browser-relay-handler` next to `agent-relay` in `~/.local/libexec/cc-orchestrator/`,
-   registers the guard hooks and the `browser-router-relay` SessionStart slot, restarts the relay, and installs the pinned
-   `agent-browser@0.39.1` + `agent-browser install`; a rerun prints ok and changes nothing; `CC_INSTALL_NO_BROWSER=1` skips it).
-2. `cc-sync-settings` (mirrors settings with `CLAUDE_CODE_ENABLE_CFC=1`, the relay slot, and `sites.yaml`).
+1. Mac: `./install.sh mac` (removes browser-guard handlers from `settings.json`, since the plugin registers them, and
+   installs the pinned `agent-browser@0.39.1` + `agent-browser install`; a rerun prints ok and changes nothing;
+   `CC_INSTALL_NO_BROWSER=1` skips it).
+2. `cc-sync-settings` (mirrors settings with `CLAUDE_CODE_ENABLE_CFC=1`, and `sites.yaml`).
 3. `./install.sh cloud` (human step, pushes the checkout and runs `cloud-local`: clone + build browser-router, install
-   agent-browser, units + timer). `CC_INSTALL_NO_BROWSER=1` skips the browser step.
+   agent-browser and the plugin). `CC_INSTALL_NO_BROWSER=1` skips the browser step.
    On Linux ARM64 (cloud) Chrome for Testing does not exist, so the step installs Playwright's Chromium
    (`playwright@1.63.0 install-deps chromium`, then `install chromium` into `~/.cache/ms-playwright`) and sets
    `executablePath` in `~/.agent-browser/config.json`; a rerun changes nothing. macOS runs `agent-browser install` as before.
@@ -40,23 +40,19 @@ written only if it matches `[A-Za-z0-9-]+`. `install.sh mac` installs the script
 mirrors the script and the registration to cloud. Check in a new session: `echo $CLAUDE_SESSION_ID`.
 
 ## Use
-- Lease a Mac Chrome profile from cloud: `browser-relay-cloud lease <site> <profile> [--session <sid>] [--ttl 900]` prints `<id> <port>`
-  (CDP on cloud's `127.0.0.1:<port>`); `browser-relay-cloud release <id>` ends it. Exit 5: Mac down, refused, or no answer.
-- Check what the Mac reports: `ssh cloud 'cat ~/.local/state/agent-events/mac-up'` (fresh = mtime under 45 s).
-- Vault drain by hand: `ssh cloud browser-vault-drain`; logs: `journalctl -u browser-router-vault-drain`. On the Mac: `launchctl kickstart gui/$(id -u)/cc-orchestrator.claude.vault-drain`; log `/tmp/browser-vault-drain.log`. Queue state is per host, so each host drains the jobs queued on it (a `vault submit` exit 3 on the Mac brain is drained by the Mac agent). `install.sh mac` renders and loads the agent; `bin/browser-vault-drain` is one script for both hosts (it finds browser-router without relying on PATH, and sets `BROWSER_ROUTER_RELAY_SUM` only on cloud).
+- State on either host: `browser-router status` (running vault jobs, the lock, leases, caps, untrusted executors and
+  version warnings) and `browser-router doctor` (failing checks with their fix).
+- Vault: `browser-router vault submit …` starts the job now under the global lock (hours, caps, gap and Dia apply) or
+  exits 5 and lists what blocks it; retry later. Nothing runs vault jobs in the background.
 
 ## agent-browser: Chrome and logins
 On the Mac, `agent-browser` drives the installed Google Chrome in the system locale (no `--lang` flag): the route result
 carries `AGENT_BROWSER_EXECUTABLE_PATH` (override the binary with `BROWSER_ROUTER_AGENT_CHROME`) and
 `AGENT_BROWSER_ARGS=--disable-blink-features=AutomationControlled`, which keeps `navigator.webdriver` false in real Chrome.
-A selftest record goes stale only for its own executor's versions: `dia` or `claude_in_chrome` changes stale mac-chrome; `chrome` or `agent_browser` changes stale agent-browser.
+A version change after a passing selftest only warns (`route` returns `warning`; `status`, `doctor` and `selftest --status` show it): `dia` or `claude_in_chrome` changes warn for mac-chrome; `chrome` or `agent_browser` changes warn for agent-browser.
 Its selftest expects the host system locale unless `BROWSER_ROUTER_EXPECT_LOCALE` is set. Chrome for Testing is not used
 on the Mac: it crashes OLX's login page. Linux keeps agent-browser's default browser.
-After a Chrome or agent-browser update, agent-browser re-qualifies itself: `route` runs the probe when its passing record is
-stale only by a version change, and `browser-up` starts `browser-router requalify --quiet` in the background on the next beacon
-(log `/tmp/browser-requalify.log`), so cloud sees `agent-browser: ok` again without a human. A Chrome window shows for a few
-seconds while the probe runs (it needs a visible tab), and it needs a logged-in GUI session. By hand: `browser-router requalify`.
-A failed check is never re-qualified automatically. Headed selftest re-run after a failure (`[H]`, needs a display):
+A missing or failed record blocks the executor. Headed selftest re-run after a failure or to clear a warning (`[H]`, needs a display):
 `browser-router selftest --executor agent-browser --auto` (the CLI opens and closes the probe itself).
 Anti-bot systems block logins in an automated browser, so a human logs in to each `agent-browser` site (nofluffjobs.com,
 indeed.com, allegro.pl, olx.pl) once with plain Chrome on the site's profile:
@@ -99,8 +95,7 @@ Mode `isp` sends them through a persistent Polish ISP proxy, so a site sees one 
 4. Browser Use API key: Mac Keychain `cc-browser-use-api-key`; `./install.sh mac` and `./install.sh cloud` write it to
    `~/.config/browser-router/env` (0600, key `BROWSER_USE_API_KEY`) via `bin/browser-router-env-push`. A missing item skips
    the key with a log line; re-run both installs after adding it.
-- Exit node for the Mac itself (not for Browser Use): `browser-router exit-node use <macbook|iphone|cloud|none> [--for self]`
-  ([tailscale.md](tailscale.md) §6).
+- Exit node for the Mac itself (not for Browser Use): `tailscale set --exit-node=…` ([tailscale.md](tailscale.md) §6).
 
 ## Decommission the egress gateway (human, once; do not script)
 The self-hosted egress gateway (gost, nftables guard, tailscale sidecar, Mac certificate renewal) is not used. After this
@@ -122,9 +117,6 @@ change is merged and `./install.sh mac` and `./install.sh cloud` have run, retir
 ## Troubleshooting
 | Symptom | Cause / fix |
 |---|---|
-| `skipped BrowserLease…: the Mac's hook changed` in `/tmp/agent-relay.log` | run `cc-sync-settings` (the relay handler's hash changed) |
-| lease `chrome_missing`, `chrome_not_ready`, `forward_failed` | Chrome not installed / profile locked by a running Chrome / ControlMaster socket gone (relay reconnecting) |
-| `no_free_port` | 100 leases held: release stale ones (`~/.local/state/browser-router/relay/leases/`) |
-| `browser-relay-cloud sum` fails | the synced settings lack the `browser-router-relay` group: `./install.sh mac` then `cc-sync-settings` |
+| `vault submit` exits 5 | it prints what blocks the job (hours, caps, gap, lock, Dia); retry when that clears |
+| `warning: … versions changed` from `route`/`status` | a browser or extension updated after the last selftest; re-run the headed selftest above when convenient |
 | `browser-router: Permission denied` | `dist/cli.js` lost its exec bit: `./install.sh cloud` (step_browser sets it) |
-| timer not active | browser-router not installed on cloud: `./install.sh cloud` |

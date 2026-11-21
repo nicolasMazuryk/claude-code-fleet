@@ -5,7 +5,7 @@
 // Nodes (2026-10): all three are exit nodes, and each member device picks the exit node it uses, or none (a device
 // that uses one offers none meanwhile). The static egress IP means picking `cloud` (oci ADR 0007).
 //   macbook    the Mac, user-owned (member). Renamed from `nicolas-macbook` (admin console → machine → Edit
-//              name, or `tailscale set --hostname=macbook`). Picks its exit node with `browser-router exit-node use`.
+//              name, or `tailscale set --hostname=macbook`). Picks its exit node with `tailscale set --exit-node`.
 //   cloud      core-vm-cloud, tagged tag:cloud, joined by the oci bootstrap with a reusable tagged auth key.
 //              Always an exit node and never a client: egress IP 193.123.182.227 (OCI reserved core-pip-natgw,
 //              survives an OCI wipe/restore).

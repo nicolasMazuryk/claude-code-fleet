@@ -160,27 +160,31 @@ browser_fakes() {
   git -C "$CC_BROWSER_DIR" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
 }
 
-@test "cloud-local: vault drain units are installed; the timer stays off until browser-router exists" {
+@test "cloud-local: unshipped units are stopped, disabled and removed, stale bin links dropped; Mac-only scripts not linked" {
   local_setup
   export CC_INSTALL_NO_BROWSER=1
+  mkdir -p "$CC_UNIT_DIR"
+  touch "$CC_UNIT_DIR/browser-router-vault-drain.service" "$CC_UNIT_DIR/browser-router-vault-drain.timer"
+  for u in browser-router-vault-drain.service browser-router-vault-drain.timer.service; do # fake systemctl's names
+    touch "$FAKE_SYSTEMD/enabled/$u" "$FAKE_SYSTEMD/active/$u"
+  done
+  ln -s "$(cd "$REPO" && pwd)/bin/browser-vault-drain" "$HOME/.local/bin/browser-vault-drain"
   run "$REPO/install.sh" cloud-local
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  cmp "$REPO/config/cloud/systemd/browser-router-vault-drain.service" "$CC_UNIT_DIR/browser-router-vault-drain.service"
-  cmp "$REPO/config/cloud/systemd/browser-router-vault-drain.timer" "$CC_UNIT_DIR/browser-router-vault-drain.timer"
-  [ -z "$(ls "$FAKE_SYSTEMD/enabled" | grep vault-drain || true)" ]
-  # cloud links the cloud-side scripts, not the Mac-only ones
-  [ -L "$HOME/.local/bin/browser-relay-cloud" ] && [ -L "$HOME/.local/bin/browser-vault-drain" ]
-  [ ! -e "$HOME/.local/bin/browser-up" ] && [ ! -e "$HOME/.local/bin/browser-relay-handler" ]
+  [ -z "$(ls "$CC_UNIT_DIR" "$FAKE_SYSTEMD/enabled" "$FAKE_SYSTEMD/active" | grep vault-drain || true)" ]
+  [ ! -L "$HOME/.local/bin/browser-vault-drain" ]
+  [ ! -e "$HOME/.local/bin/agent-relay" ] && [ ! -e "$HOME/.local/bin/browser-router-env-push" ]
+  run "$REPO/install.sh" cloud-local
+  [[ "$output" == *"no changes"* ]] || { echo "$output"; return 1; }
 }
 
-@test "cloud-local: browser-router is built and linked, agent-browser pinned, drain timer enabled; rerun changes nothing" {
+@test "cloud-local: browser-router is built and linked, agent-browser pinned; rerun changes nothing" {
   local_setup; browser_fakes
   run "$REPO/install.sh" cloud-local
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
   [ -x "$CC_BROWSER_DIR/dist/cli.js" ]
   [ "$(readlink "$HOME/.local/bin/browser-router")" = "$CC_BROWSER_DIR/dist/cli.js" ]
   grep -qx 'install -g agent-browser@0.39.1' "$HOME/npm.calls"
-  [ -e "$FAKE_SYSTEMD/enabled/browser-router-vault-drain.timer.service" ]
   run "$REPO/install.sh" cloud-local
   [[ "$output" == *"no changes"* ]] || { echo "$output"; return 1; }
   [ "$(wc -l < "$HOME/npm.calls")" -eq 1 ]

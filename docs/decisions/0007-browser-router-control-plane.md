@@ -1,44 +1,31 @@
-# 0007 — browser-router: the relay carries browser leases and dispatches
+# 0007 — browser-router: each host browses on its own; cloud never drives the Mac browser
 
 - Status: accepted (2026-10-21)
-- Plan: browser-router (`~/Documents/browser-router`, contracts in its `docs/contracts.md` §7)
+- Plan: browser-router (`~/code/browser-router`, contracts in its `docs/contracts.md`)
 
 ## Context
-Cloud agents need a real, logged-in browser on the Mac (headed Chrome profiles, Dia with the Claude extension, Computer
-Use). The Mac must stay unreachable from cloud (invariant 4).
+Agents on both hosts need logged-in browsers (headed Chrome profiles, Dia with the Claude extension, Computer Use on the
+Mac; Browser Use Cloud from anywhere). The Mac must stay unreachable from cloud (invariant 4).
 
 ## Decision
-- **One connection, still opened by the Mac.** `agent-relay`'s ssh to `cloud` is also the ControlMaster
-  (`~/.local/state/agent-relay/cm.sock`, dir 0700). Nothing on cloud ever dials the Mac.
-- **Upstream (Mac → cloud), same ssh:** a `mac-up <json>` line every beacon (`bin/browser-up`: Dia/Chrome running,
-  versions, executors, and the Mac's IANA `tz` for `tz: local`) which cloud writes to `~/.local/state/agent-events/mac-up` (stale after 45 s), and one-line replies
-  (`lease-ready`, `lease-failed`, `release-ok`, `dispatch-ok`, `dispatch-done`) spooled by the handler and flushed each
-  second. `bin/browser-relay-cloud line` validates every line; port must be 9300–9399; ids are `[A-Za-z0-9_-]`.
-- **Downstream (cloud → Mac), same event stream as the hook relay:** `BrowserLease`, `BrowserRelease`, `BrowserDispatch`
-  lines in `events.jsonl`. Cloud names a handler slot, never a command: the SessionStart group with matcher
-  `browser-router-relay` (a source Claude Code never reports) in the Mac's `~/.claude/settings.json`, hash-checked like any
-  relayed handler. `cc-sync-settings` copies that group to cloud unchanged so the sum matches.
-- **CDP reverse forward.** On a lease the Mac starts headed Chrome on `~/.chrome-agent-profiles/<profile>` with
-  `--remote-debugging-port=<9300–9399> --remote-debugging-address=127.0.0.1` and runs
-  `ssh -S <cm.sock> -O forward -R 127.0.0.1:<p>:127.0.0.1:<p> cloud` on the ControlMaster. Cloud gets a loopback-only port;
-  the forward is cancelled on release or when the ttl ends. The forward travels over the Mac-opened connection, so the
-  tailnet policy still has no rule with `src: tag:cloud`.
-- **Dispatch.** A `BrowserDispatch` for `mac-control-router` is untrusted data: the relay sum names the handler, not the
-  sender, so any process on cloud can emit one. The handler never runs `claude` itself; it pipes the payload to
-  `browser-router vault run-dispatched` (browser-router contracts §7), which runs the job only for a vault site the Mac's
-  own registry routes to `mac-control-router`, under the Mac's vault lock, hours and caps, inside the route → attach →
-  claude → finish wrapper, so browser-guard confines the session to that site. The cwd is the repo of the same basename
-  under `AGENTS_ROOT` (else `$HOME`). `dispatch-done` carries its exit code (2 refused, 3 not runnable now) and makes
-  cloud run `browser-router vault finish`, freeing cloud's lock.
-- **Vault queue.** Queue state is per host, so each host drains its own: `browser-router-vault-drain.timer` on cloud (every
-  3 min) and the LaunchAgent `cc-orchestrator.claude.vault-drain` on the Mac (every 180 s), both running `bin/browser-vault-drain`,
-  which starts at most one runnable job. One script serves both hosts rather than a Mac wrapper: it only differs by the relay sum
-  (cloud) and by locating browser-router without PATH (launchd). Cloud runs it only once browser-router is installed. `CLAUDE_CODE_ENABLE_CFC=1` is set in cloud's settings env so `claude -p --chrome` works.
+- **The cloud brain never drives the Mac browser.** No lease, port forward, dispatch or status marker crosses from cloud
+  to the Mac's browsers. `agent-relay` carries only hook events (sounds) and the presence beacon. On cloud, browser-router
+  runs shield sites on Browser Use Cloud and blocks vault sites, loopback sites and an explicitly named Mac executor; a
+  task that needs the Mac's logged-in browser runs in a Mac session. A cloud → Mac browser channel (CDP reverse forwards
+  over the relay's ssh, relayed vault dispatch) is not used because it lets an `auto`-mode cloud agent act in the Mac's
+  logged-in profiles, needs a hash-checked handler slot and a Mac status marker on cloud, and fails whenever the Mac
+  sleeps.
+- **Vault jobs never queue.** `browser-router vault submit` starts the job now under the host's global lock (hours, caps,
+  gap and Dia apply) or exits 5 with the reasons. There is no drain timer or LaunchAgent: a queue would run jobs at a
+  time nobody watches, and the caller retrying is simpler than per-host queue state.
+- **Selftest drift only warns.** A passing selftest record stays trusted after a browser, extension or agent-browser
+  update; `route`, `status` and `doctor` show the warning. Nothing re-qualifies in the background.
 - **Install.** `install.sh cloud-local` clones browser-router to `~/.local/share/browser-router` (fast-forward, built by
   `pnpm install --frozen-lockfile && pnpm build`, linked to `~/.local/bin/browser-router`) and installs agent-browser pinned
   (`AGENT_BROWSER_VERSION`, 0.39.1) with `npm -g` + `agent-browser install`, then installs the browser-router plugin from
   that checkout (`claude plugin marketplace add ~/.local/share/browser-router`, `claude plugin install
-  browser-router@browser-router --scope user`).
+  browser-router@browser-router --scope user`). `CLAUDE_CODE_ENABLE_CFC=1` is set in cloud's settings env so
+  `claude -p --chrome` works.
 - **Hooks.** The browser-router skill and the browser-guard hook ship as the Claude Code plugin `browser-router@browser-router`,
   from the local directory marketplace `browser-router` in the browser-router checkout (`.claude-plugin/marketplace.json` →
   `./plugin`). The plugin's `hooks/hooks.json` registers `${CLAUDE_PLUGIN_ROOT}/hooks/browser-guard` as PreToolUse for
@@ -47,23 +34,22 @@ Use). The Mac must stay unreachable from cloud (invariant 4).
   (`tabs_create_mcp|tabs_close_mcp|tabs_context_mcp|navigate`) and as Stop. The plugin, not `settings.json`, owns these
   hooks, so they load the same way on both hosts and update with the checkout. On the Mac `make install` in browser-router
   adds the marketplace (`~/code/browser-router`) and installs the plugin; `install.sh mac` removes any browser-guard
-  handler from `settings.json` so the guard never runs twice. On cloud `install.sh cloud-local` installs it (above), and
-  `config/claude/cloud-settings.json` points `extraKnownMarketplaces.browser-router` at `~/.local/share/browser-router`,
-  because the Mac's path rewritten under cloud `$HOME` does not exist there. The relay slot (SessionStart matcher
-  `browser-router-relay`) stays in `settings.json`: it belongs to this repo's relay, not to the plugin.
+  handler (and any `browser-router-relay` SessionStart group) from `settings.json` so nothing runs twice or points at a
+  missing script. On cloud `install.sh cloud-local` installs it (above), and `config/claude/cloud-settings.json` points
+  `extraKnownMarketplaces.browser-router` at `~/.local/share/browser-router`, because the Mac's path rewritten under
+  cloud `$HOME` does not exist there.
 - **sites.yaml.** `~/.config/browser-router/sites.yaml` on the Mac is mirrored to cloud by `cc-sync-settings`.
 
 ## Consequences
-- A dead relay, sleeping Mac or broken link means no `mac-up` marker: leases fail fast (exit 5), vault jobs wait.
-- Cloud, which runs agents in `auto` mode, can drive a Mac Chrome profile through the leased port while the lease lasts.
-  The profile is a bare name under `~/.chrome-agent-profiles`; the port range, ttl cap (4 h) and one lease per id bound it.
-- Changing the Mac's relay handler needs `cc-sync-settings` (the sum changes), as for other relayed hooks.
-- Verify rows 11a–11e check the relay, the lease/forward, the drain timer and the sites mirror.
+- A sleeping Mac or a dead relay never blocks cloud browser work: cloud only uses Browser Use Cloud.
+- Vault and Mac-only sites are done from a Mac session; cloud refuses them with a clear reason.
+- `install.sh` removes the units and LaunchAgents this repo does not ship (`OLD_UNITS`, `OLD_LAUNCHD`).
 
 ## Browser Use egress: Polish ISP proxy, no self-hosted gateway
 Browser Use browsers must present one stable Polish IP to a site (spec §6). They connect **directly through a persistent
 Polish ISP proxy**, set once per host with `browser-router proxy set <url>` (a human step, the URL is a secret) and checked
-with `browser-router proxy status` / `probe`. Until that proxy exists, Browser Use's own `pl` residential proxy is used.
+with `browser-router proxy status` / `probe`; a site with `isp_pin` always exits from the same proxy IP. Until that
+proxy exists, Browser Use's own `pl` residential proxy is used.
 
 - **No ingress, invariant 3 intact.** Cloud opens no public port for this. There is no exception to invariant 3.
 - **No self-hosted gateway.** An egress gateway on cloud (a TLS CONNECT proxy in front of a tailscale exit node) is not used:
@@ -72,7 +58,8 @@ with `browser-router proxy status` / `probe`. Until that proxy exists, Browser U
 - **Secrets.** The proxy URL is stored by browser-router on the host that needs it and never enters git. The Browser Use
   key (`core-secret-browser-use-api-key`) stays readable by cloud: the cloud brain calls Browser Use; the Mac's copy is
   `~/.config/browser-router/env`, written from the Keychain by `bin/browser-router-env-push`.
-- **Tailnet.** macbook, iPhone and cloud are exit nodes, and the Mac picks its own with `browser-router exit-node use <macbook|iphone|cloud|none> --for self` (tailscale runbook §6); `cloud` is the static egress IP.
-  The policy has no rule with `src: tag:cloud` and no other tag for egress.
+- **Tailnet.** macbook, iPhone and cloud are exit nodes; the Mac picks its own with `tailscale set --exit-node=<node>`
+  (tailscale runbook §6); `cloud` is the static egress IP. browser-router does not switch exit nodes. The policy has no
+  rule with `src: tag:cloud` and no other tag for egress.
 - **Retiring the earlier gateway.** The commands to switch off any previously deployed instance are in
   [browser.md](../runbooks/browser.md) (decommission section); they are human steps.
