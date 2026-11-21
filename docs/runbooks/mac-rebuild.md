@@ -5,7 +5,7 @@ Status: all steps runnable; dry-run drill 2026-10-17 (Phase 7, see `docs/progres
 ## Facts
 - User `nicolas`; repos in `~/code`; node via nvm (`~/.nvm`, default alias v24.x), pnpm via corepack.
 - `jq` is `/usr/bin/jq`; gh, rsync in `/opt/homebrew/bin`; cmux and Ghostty installed.
-- Tailscale node name **`macbook`** (tailnet `tailnet-example`; was `nicolas-macbook`). An exit node like iPhone and cloud; it advertises while it uses none and picks one with `browser-router exit-node use` (`cloud` = egress IP `193.123.182.227`).
+- Tailscale node name **`macbook`** (tailnet `tailnet-example`; was `nicolas-macbook`). An exit node like iPhone and cloud; it advertises while it uses none and picks one with `tailscale set --exit-node` (`cloud` = egress IP `193.123.182.227`).
 - macOS hostname **`nicolas-macbook`**: ComputerName, LocalHostName and HostName, so it is also the Remote Control
   device name. `[H]` on a new Mac (sudo prompts):
   `for k in ComputerName LocalHostName HostName; do sudo scutil --set $k nicolas-macbook; done`.

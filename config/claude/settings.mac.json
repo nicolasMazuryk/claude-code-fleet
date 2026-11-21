@@ -144,15 +144,6 @@
     ],
     "SessionStart": [
       {
-        "matcher": "browser-router-relay",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "~/.local/libexec/cc-orchestrator/browser-relay-handler"
-          }
-        ]
-      },
-      {
         "hooks": [
           {
             "type": "command",

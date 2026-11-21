@@ -110,14 +110,16 @@ setup() {
   diff -r "$c/memory/$m" "$HOME/.claude/projects/$m/memory"
 }
 
-@test "browser-router: settings browser-guard handlers are removed (the plugin registers them), the relay slot is added once" {
+@test "browser-router: settings browser-guard handlers and the browser-router-relay group are removed (the plugin registers the guard)" {
   s="$HOME/.claude/settings.json"
   # settings that register browser-guard themselves: own groups per tool family, one group shared with another handler
   g='{type: "command", command: "~/.claude/hooks/browser-guard"}'
   jq ".hooks.PreToolUse += [{matcher: \"mcp__claude-in-chrome__.*\", hooks: [$g + {onFailure: \"block\"}]},
         {matcher: \"Bash\", hooks: [$g, {type: \"command\", command: \"~/bin/keep-me\"}]}]
       | .hooks.PostToolUse = [{matcher: \"mcp__claude-in-chrome__(navigate)\", hooks: [$g]}]
-      | .hooks.Stop += [{hooks: [$g]}]" "$s" > "$HOME/s" && mv "$HOME/s" "$s"
+      | .hooks.Stop += [{hooks: [$g]}]
+      | .hooks.SessionStart += [{matcher: \"browser-router-relay\", hooks: [{type: \"command\", command: \"~/x/browser-relay-handler\"}]}]" \
+    "$s" > "$HOME/s" && mv "$HOME/s" "$s"
   pre=$(jq '.hooks.PreToolUse | length' "$s")
   run "$REPO/install.sh" mac
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
@@ -127,9 +129,8 @@ setup() {
   [ "$(jq '.hooks.PreToolUse | length' "$s")" -eq $((pre - 1)) ]
   [ "$(jq '[.hooks.Stop[].hooks[] | select(.command | test("agent-push"))] | length' "$s")" -eq 1 ]
   [ "$(jq '[.hooks[][].hooks[] | select(.command | test("afplay"))] | length' "$s")" -eq 4 ]
-  [ "$(jq -r '[.hooks.SessionStart[] | select(.matcher == "browser-router-relay")] | length' "$s")" -eq 1 ]
-  [ "$(jq -r '.hooks.SessionStart[] | select(.matcher == "browser-router-relay") | .hooks[0].command' "$s")" = "~/.local/libexec/cc-orchestrator/browser-relay-handler" ]
-  for f in browser-up browser-relay-handler; do cmp "$REPO/bin/$f" "$HOME/.local/libexec/cc-orchestrator/$f"; done
+  [ "$(jq -r '[.hooks.SessionStart[] | select(.matcher == "browser-router-relay")] | length' "$s")" -eq 0 ]
+  [ "$(jq '[.hooks.SessionStart[].hooks[] | select(.command | test("session-env"))] | length' "$s")" -eq 1 ]
   cp "$s" "$HOME/after-first"
   run "$REPO/install.sh" mac
   [[ "$output" == *"ok $s"* ]] || { echo "$output"; return 1; }
@@ -189,18 +190,15 @@ STUB
   [ ! -e "$HOME/npm.calls" ]
 }
 
-@test "vault drain LaunchAgent: 180 s interval, runs the libexec copy, logs to /tmp, idempotent" {
+@test "LaunchAgents: only agents and relay; an unshipped plist and libexec copies are removed, then nothing changes" {
+  la="$HOME/Library/LaunchAgents" d="$HOME/.local/libexec/cc-orchestrator"
+  mkdir -p "$la" "$d"
+  touch "$la/cc-orchestrator.claude.vault-drain.plist" "$d/browser-vault-drain" "$d/browser-relay-handler"
   run "$REPO/install.sh" mac
   [ "$status" -eq 0 ] || { echo "$output"; return 1; }
-  p="$HOME/Library/LaunchAgents/cc-orchestrator.claude.vault-drain.plist"
-  plutil -lint "$p" >/dev/null
-  cmp "$REPO/bin/browser-vault-drain" "$HOME/.local/libexec/cc-orchestrator/browser-vault-drain"
-  [ -x "$HOME/.local/libexec/cc-orchestrator/browser-vault-drain" ]
-  [ "$(plutil -extract Label raw "$p")" = cc-orchestrator.claude.vault-drain ]
-  [ "$(plutil -extract StartInterval raw "$p")" = 180 ]
-  [ "$(plutil -extract ProgramArguments.0 raw "$p")" = "$HOME/.local/libexec/cc-orchestrator/browser-vault-drain" ]
-  [ "$(plutil -extract StandardErrorPath raw "$p")" = /tmp/browser-vault-drain.log ]
-  ! grep -q '@HOME@' "$p"
+  [ "$(ls "$la")" = "$(printf 'cc-orchestrator.claude.agents.plist\ncc-orchestrator.claude.relay.plist')" ]
+  [ "$(ls "$d")" = "$(printf 'agent-present\nagent-relay')" ]
+  [[ "$output" == *"removed $la/cc-orchestrator.claude.vault-drain.plist"* ]] || { echo "$output"; return 1; }
   run "$REPO/install.sh" mac
   [[ "$output" == *"install.sh mac: no changes"* ]] || { echo "$output"; return 1; }
 }

@@ -159,18 +159,10 @@ sum() { printf %s "$1" | shasum -a 256 | cut -c1-16; }
   grep -qx cloud:.claude/ "$BATS_TEST_TMPDIR/rsync.args"
 }
 
-@test "browser-router relay slot is not Mac-only: it reaches cloud unchanged, so the sum matches; CFC env is set" {
-  jq 'if any(.hooks.SessionStart[]?; .matcher == "browser-router-relay") then . else .hooks.SessionStart += [{matcher: "browser-router-relay", hooks: [{type: "command", command: "~/.local/libexec/cc-orchestrator/browser-relay-handler"}]}] end' \
-    "$CC_SYNC_SRC" > "$BATS_TEST_TMPDIR/s2.json"
-  export CC_SYNC_SRC="$BATS_TEST_TMPDIR/s2.json"
+@test "cloud settings set the CFC env" {
   "$HOME/.local/bin/cc-sync-settings" --print > "$BATS_TEST_TMPDIR/out.json" 2> "$BATS_TEST_TMPDIR/err"
   grep -qx '4 macOS-only hook handler(s) relayed' "$BATS_TEST_TMPDIR/err"
-  o="$BATS_TEST_TMPDIR/out.json"
-  [ "$(jq -r '.hooks.SessionStart[] | select(.matcher == "browser-router-relay") | .hooks[0].command' "$o")" = "~/.local/libexec/cc-orchestrator/browser-relay-handler" ]
-  [ "$(jq -r .env.CLAUDE_CODE_ENABLE_CFC "$o")" = 1 ]
-  # the hash cloud derives equals the hash agent-relay computes on the Mac
-  BROWSER_RELAY_SETTINGS="$o" run "$REPO/bin/browser-relay-cloud" sum
-  [ "$output" = "$(sum '~/.local/libexec/cc-orchestrator/browser-relay-handler')" ]
+  [ "$(jq -r .env.CLAUDE_CODE_ENABLE_CFC "$BATS_TEST_TMPDIR/out.json")" = 1 ]
 }
 
 @test "sites.yaml is mirrored to cloud with rsync; a dry run passes -n" {
